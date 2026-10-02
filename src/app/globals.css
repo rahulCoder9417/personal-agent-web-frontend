@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+/* Light only, matching textcrew.in: one look, whatever the OS theme says. */
+:root {
+  /* The desk (window chrome, sidebar) is warm paper; the work sits on a white sheet on top of it. */
+  --bg: #f4f2ec;
+  --chrome: #f4f2ec;
+  --surface: #ffffff;
+  --surface-2: #f6f5f1;
+  --fg: #151515;
+  --fg-2: #3f3d38;
+  --nav: #55524c;
+  --muted: #716e67;
+  --line: #ebe8e1;
+  --line-strong: #dcd8cf;
+  --accent: #3355f5;
+  --accent-dark: #2440c4;
+  --accent-soft: #eef1ff;
+  --screen: #16151a;
+  --shadow: #151515;
+  --success: #14713d;
+  --success-soft: #e7f6ec;
+  --online: #22a45d;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --scout: #11a39b;
+  --tock: #ff6b2c;
+  color-scheme: only light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-chrome: var(--chrome);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-nav: var(--nav);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-dark);
+  --color-accent-soft: var(--accent-soft);
+  --color-screen: var(--screen);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-online: var(--online);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-scout: var(--scout);
+  --color-tock: var(--tock);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --shadow-soft: 0 1px 2px rgb(21 21 21 / 0.04), 0 8px 24px -12px rgb(21 21 21 / 0.12);
+  --shadow-raised: 0 0 0 1px rgb(21 21 21 / 0.06), 0 1px 2px rgb(21 21 21 / 0.06);
+  --shadow-pop: 0 1px 2px rgb(21 21 21 / 0.06), 0 18px 40px -16px rgb(21 21 21 / 0.28);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  /* An app, not a document: the panes scroll, the page doesn't. */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    text-wrap-style: balance;
+  }
+
+  p {
+    text-wrap-style: pretty;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: default;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+}
+
+/* Quiet scrollbars inside panes */
+.scroll-pane {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* Tex (2D) motion */
+.agent-breathe { animation: agent-breathe 3.4s ease-in-out infinite; }
+.agent-breathe-slow { animation: agent-breathe-slow 5s ease-in-out infinite; }
+.agent-blink { transform-box: fill-box; transform-origin: center; animation: agent-blink 4.2s infinite; }
+.agent-dot { animation: agent-dot 0.9s ease-in-out infinite; }
+.agent-caret { animation: agent-caret 1.06s steps(1, end) infinite; }
+.agent-caret-fast { animation: agent-caret 0.5s steps(1, end) infinite; }
+.brand-caret { animation: agent-caret 1.06s steps(1, end) infinite; }
+.spin { animation: spin 0.9s linear infinite; }
+
+@keyframes agent-breathe { 50% { transform: translateY(-3px); } }
+@keyframes agent-breathe-slow { 50% { transform: translateY(2px); } }
+@keyframes agent-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.12); } }
+@keyframes agent-dot { 0%, 50%, 100% { transform: translateY(0); } 25% { transform: translateY(-7px); } }
+@keyframes agent-caret { 50% { opacity: 0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-breathe,
+  .agent-breathe-slow,
+  .agent-blink,
+  .agent-dot,
+  .agent-caret,
+  .agent-caret-fast,
+  .brand-caret { animation: none; }
+}
