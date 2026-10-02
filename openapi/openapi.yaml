@@ -1,0 +1,1915 @@
+openapi: 3.1.0
+info:
+  title: Personal Agent Platform API
+  version: 0.1.0
+  description: |
+    REST API of the Personal Agent backend (the `api` process).
+
+    **This file is the contract.** The api must implement it exactly: requests and responses are
+    validated against it in tests. The web app generates its client types from it. Change this
+    file first, then the code.
+
+    Not covered here:
+    - `/mcp`: the Platform MCP, which speaks the MCP protocol (streamable HTTP), not REST.
+    - Backend ↔ vm-manager: gRPC, defined in `vm-manager/proto/vm/v1/vm.proto`.
+
+    Conventions:
+    - Auth: Clerk session JWT as `Authorization: Bearer <token>` on every `/v1` route.
+    - Lists use cursor pagination (`cursor`, `limit`); responses carry `nextCursor` (null at the end).
+    - Money is in US cents; credits are integers (1 credit = $0.01 of price).
+    - Errors always use the `Error` schema.
+servers:
+  - url: https://api.example.com
+    description: Production (replace with the real domain)
+  - url: http://localhost:8080
+    description: Local development
+
+security:
+  - clerkAuth: []
+
+tags:
+  - name: system
+  - name: me
+  - name: channels
+  - name: chat
+  - name: approvals
+  - name: apps
+  - name: mcp-servers
+  - name: byok
+  - name: automations
+  - name: agent
+  - name: billing
+  - name: credits
+  - name: coupons
+  - name: activity
+  - name: admin
+  - name: waitlist
+  - name: webhooks
+
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      tags: [system]
+      summary: Liveness check
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok] }
+
+  # ---------------------------------------------------------------- me
+  /v1/me:
+    get:
+      operationId: getMe
+      tags: [me]
+      summary: Current user profile, plan and balance summary
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      operationId: updateMe
+      tags: [me]
+      summary: Update profile settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MeUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ---------------------------------------------------------------- channels
+  /v1/channels:
+    get:
+      operationId: listChannels
+      tags: [channels]
+      summary: Linked chat apps
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ChannelLink" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/channels/link-codes:
+    post:
+      operationId: createLinkCode
+      tags: [channels]
+      summary: Create a one-time code to link a chat app
+      description: |
+        The user sends the returned code to our WhatsApp number / Telegram bot / iMessage number.
+        Single use, expires after 10 minutes. Rate limited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel]
+              properties:
+                channel: { $ref: "#/components/schemas/ChannelType" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LinkCode" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/channels/{channelLinkId}:
+    delete:
+      operationId: unlinkChannel
+      tags: [channels]
+      summary: Unlink a chat app
+      parameters:
+        - $ref: "#/components/parameters/ChannelLinkId"
+      responses:
+        "204": { description: Unlinked }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------- chat
+  /v1/messages:
+    get:
+      operationId: listMessages
+      tags: [chat]
+      summary: Chat history (all channels, newest first)
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: channel
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/ChannelType" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Message" }
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: sendMessage
+      tags: [chat]
+      summary: Send a message to the agent from the web app
+      description: |
+        Queued like any other channel message. The reply arrives on the SSE stream.
+        Returns 402 when the balance is zero.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, clientMessageId]
+              properties:
+                text: { type: string, minLength: 1, maxLength: 8000 }
+                clientMessageId:
+                  type: string
+                  format: uuid
+                  description: Idempotency key; resending the same id does not create a second message.
+                attachmentIds:
+                  type: array
+                  items: { type: string }
+                  maxItems: 5
+      responses:
+        "202":
+          description: Accepted and queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Message" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/OutOfCredits" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/attachments:
+    post:
+      operationId: uploadAttachment
+      tags: [chat]
+      summary: Upload a file for a web message
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201":
+          description: Uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, sizeBytes, mimeType]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  sizeBytes: { type: integer }
+                  mimeType: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413":
+          description: File too large
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/stream:
+    get:
+      operationId: streamEvents
+      tags: [chat]
+      summary: Live updates (Server-Sent Events)
+      description: |
+        One long-lived SSE connection per browser tab. Event types:
+        `message.created`, `message.status`, `approval.created`, `approval.resolved`,
+        `agent.status`, `credits.updated`, `automation.updated`.
+        Each event's `data` is JSON matching the `StreamEvent` schema.
+        Browsers can't set headers on EventSource, so the token may be passed as `?token=`.
+      parameters:
+        - name: token
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/StreamEvent" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ---------------------------------------------------------------- approvals
+  /v1/approvals:
+    get:
+      operationId: listApprovals
+      tags: [approvals]
+      summary: Approvals (default pending)
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/ApprovalStatus" }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Approval" }
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/approvals/{approvalId}/decision:
+    post:
+      operationId: decideApproval
+      tags: [approvals]
+      summary: Approve or reject a pending action
+      parameters:
+        - name: approvalId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+      responses:
+        "200":
+          description: Recorded; the answer is sent to the agent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Approval" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Already decided or expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  # ---------------------------------------------------------------- apps (Composio)
+  /v1/apps:
+    get:
+      operationId: listApps
+      tags: [apps]
+      summary: App catalog with connection status and plan availability
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/App" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/apps/{appSlug}/connect:
+    post:
+      operationId: connectApp
+      tags: [apps]
+      summary: Start connecting an app (returns the provider login URL)
+      parameters:
+        - name: appSlug
+          in: path
+          required: true
+          schema: { type: string, examples: [gmail] }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                returnUrl:
+                  type: string
+                  format: uri
+                  description: Where to send the user after connecting (must be our web app's domain).
+      responses:
+        "200":
+          description: Redirect the browser to `redirectUrl`
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [redirectUrl]
+                properties:
+                  redirectUrl: { type: string, format: uri }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PlanLimit" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/connections/{connectionId}:
+    delete:
+      operationId: disconnectApp
+      tags: [apps]
+      summary: Disconnect an app
+      parameters:
+        - name: connectionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Disconnected }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------- user MCP servers
+  /v1/mcp-servers:
+    get:
+      operationId: listMcpServers
+      tags: [mcp-servers]
+      summary: The user's own MCP servers (Max plan)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/McpServer" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createMcpServer
+      tags: [mcp-servers]
+      summary: Add an MCP server
+      description: The domain is added to the user's egress allowlist. The secret is stored encrypted and never returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/McpServerCreate" }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/McpServer" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PlanLimit" }
+
+  /v1/mcp-servers/{mcpServerId}:
+    patch:
+      operationId: updateMcpServer
+      tags: [mcp-servers]
+      summary: Enable/disable or rename
+      parameters:
+        - $ref: "#/components/parameters/McpServerId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 60 }
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/McpServer" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteMcpServer
+      tags: [mcp-servers]
+      summary: Remove an MCP server
+      parameters:
+        - $ref: "#/components/parameters/McpServerId"
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------- bring your own key
+  /v1/byok:
+    get:
+      operationId: listByokKeys
+      tags: [byok]
+      summary: Which providers have a user key set (keys are never returned)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ByokKey" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/byok/{provider}:
+    put:
+      operationId: setByokKey
+      tags: [byok]
+      summary: Set or replace the user's own API key for a provider
+      parameters:
+        - $ref: "#/components/parameters/Provider"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [apiKey]
+              properties:
+                apiKey: { type: string, minLength: 10, writeOnly: true }
+                model: { type: string, description: Preferred model id for this provider }
+      responses:
+        "200":
+          description: Saved (the key is test-called before saving)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ByokKey" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      operationId: deleteByokKey
+      tags: [byok]
+      summary: Remove the user's key for a provider
+      parameters:
+        - $ref: "#/components/parameters/Provider"
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ---------------------------------------------------------------- automations
+  /v1/automations:
+    get:
+      operationId: listAutomations
+      tags: [automations]
+      summary: The user's automations and reminders
+      description: Automations are created by chatting with the agent; the web app can list, pause and delete them.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Automation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/automations/{automationId}:
+    patch:
+      operationId: updateAutomation
+      tags: [automations]
+      summary: Pause or resume
+      parameters:
+        - $ref: "#/components/parameters/AutomationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteAutomation
+      tags: [automations]
+      summary: Delete (timer or trigger is removed too)
+      parameters:
+        - $ref: "#/components/parameters/AutomationId"
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------- agent
+  /v1/agent/status:
+    get:
+      operationId: getAgentStatus
+      tags: [agent]
+      summary: Whether the user's agent container is asleep, waking, awake or busy
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/agent/settings:
+    get:
+      operationId: getAgentSettings
+      tags: [agent]
+      summary: Which agent runs for this user, and which AI source pays for it
+      description: |
+        Rule: a connected Claude plan → Claude Code (when chosen); an own API key → Hermes;
+        neither → Hermes on platform credits, or nothing when the platform requires your own AI
+        (`aiAccess: none`).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      operationId: updateAgentSettings
+      tags: [agent]
+      summary: Choose the agent runtime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [runtime]
+              additionalProperties: false
+              properties:
+                runtime: { $ref: "#/components/schemas/AgentRuntime" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentSettings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Claude Code needs a connected Claude plan first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/agent/claude/login:
+    post:
+      operationId: startClaudeLogin
+      tags: [agent]
+      summary: Start connecting the user's Claude plan (official Claude Code sign-in)
+      description: |
+        Wakes the user's container and starts the unmodified Claude Code sign-in there. Open
+        `authorizeUrl` (Anthropic's own page), sign in, then send the code Anthropic shows to the
+        complete endpoint. We never see or store Claude credentials. Rate limited.
+      responses:
+        "201":
+          description: Sign-in started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClaudeLoginStart" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: The agent container is unavailable right now; retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/agent/claude/login/{loginId}/complete:
+    post:
+      operationId: completeClaudeLogin
+      tags: [agent]
+      summary: Finish connecting the Claude plan with the code from Anthropic's page
+      parameters:
+        - name: loginId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              additionalProperties: false
+              properties:
+                code: { type: string, minLength: 4, maxLength: 2000, writeOnly: true }
+      responses:
+        "200":
+          description: Connected; Claude Code is now the user's agent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentSettings" }
+        "400":
+          description: Wrong or expired code (the message says which)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/agent/claude:
+    delete:
+      operationId: disconnectClaude
+      tags: [agent]
+      summary: Disconnect the Claude plan (signs Claude Code out; the agent goes back to Hermes)
+      responses:
+        "204": { description: Disconnected }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503":
+          description: The agent container is unavailable right now; retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  # ---------------------------------------------------------------- billing
+  /v1/billing/plans:
+    get:
+      operationId: listPlans
+      tags: [billing]
+      summary: Available plans and top-up packs
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [plans, topUps]
+                properties:
+                  plans:
+                    type: array
+                    items: { $ref: "#/components/schemas/Plan" }
+                  topUps:
+                    type: array
+                    items: { $ref: "#/components/schemas/TopUpPack" }
+
+  /v1/billing/subscription:
+    get:
+      operationId: getSubscription
+      tags: [billing]
+      summary: Current subscription
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subscription" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/billing/checkout:
+    post:
+      operationId: createCheckout
+      tags: [billing]
+      summary: Start a Polar checkout for a plan or a top-up
+      description: |
+        Returns a hosted Polar checkout URL. The plan or credits change only when Polar's signed
+        webhook arrives, never from this call. Top-ups are only for paid plans.
+        Waitlist members (verified email on a non-rejected, unflagged waitlist entry) get 50% off
+        their first month of Pro or Max once; `discountApplied` says whether it was applied.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/CheckoutPlanRequest"
+                - $ref: "#/components/schemas/CheckoutTopUpRequest"
+              discriminator:
+                propertyName: kind
+                mapping:
+                  plan: "#/components/schemas/CheckoutPlanRequest"
+                  topup: "#/components/schemas/CheckoutTopUpRequest"
+      responses:
+        "200":
+          description: Redirect the browser to `checkoutUrl`
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [checkoutUrl, discountApplied]
+                properties:
+                  checkoutUrl: { type: string, format: uri }
+                  discountApplied:
+                    type: boolean
+                    description: The waitlist offer (50% off the first month) is on this checkout.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PlanLimit" }
+
+  /v1/billing/subscription/cancel:
+    post:
+      operationId: cancelSubscription
+      tags: [billing]
+      summary: Cancel at the end of the current period
+      responses:
+        "200":
+          description: Cancellation scheduled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subscription" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: No active paid subscription
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  # ---------------------------------------------------------------- credits
+  /v1/credits:
+    get:
+      operationId: getCredits
+      tags: [credits]
+      summary: Balance and the grants it is made of
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreditBalance" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/credits/ledger:
+    get:
+      operationId: listLedger
+      tags: [credits]
+      summary: Credit history (grants, charges, expiries, refunds)
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/LedgerEntry" }
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/usage:
+    get:
+      operationId: getUsage
+      tags: [credits]
+      summary: Usage per period (AI, awake time, tools) between two dates
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, totals]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/UsagePeriod" }
+                  totals: { $ref: "#/components/schemas/UsageTotals" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ---------------------------------------------------------------- coupons
+  /v1/coupons/redeem:
+    post:
+      operationId: redeemCoupon
+      tags: [coupons]
+      summary: Redeem a coupon code for free credits
+      description: |
+        Rules (see HLD 7.7): verified email and at least one linked chat app required;
+        max 5 attempts per user per hour and 20 per IP per hour; one redemption per user per coupon.
+        Every failure (wrong, expired, used up, disabled, not eligible) returns the **same**
+        400 `invalid_or_expired_code`, so codes can't be probed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  minLength: 8
+                  maxLength: 40
+                  examples: [AGT-7KQ2-M9XP-4RWD]
+      responses:
+        "200":
+          description: Redeemed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CouponRedemption" }
+        "400":
+          description: invalid_or_expired_code (generic on purpose)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ---------------------------------------------------------------- activity
+  /v1/activity:
+    get:
+      operationId: listActivity
+      tags: [activity]
+      summary: Audit log of everything the agent did for this user
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ActivityEntry" }
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ---------------------------------------------------------------- admin
+  /v1/admin/coupons:
+    get:
+      operationId: adminListCoupons
+      tags: [admin]
+      summary: List coupons (admin)
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Coupon" }
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: adminCreateCoupon
+      tags: [admin]
+      summary: Create a coupon campaign (admin)
+      description: |
+        Returns the plaintext code(s) **once**; only hashes are stored.
+        `codeCount: 1` creates one shared code with `maxRedemptions` uses;
+        `codeCount > 1` creates that many single-use codes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CouponCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [coupon, codes]
+                properties:
+                  coupon: { $ref: "#/components/schemas/Coupon" }
+                  codes:
+                    type: array
+                    items: { type: string }
+                    description: Plaintext codes, shown only in this response.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/coupons/{couponId}:
+    patch:
+      operationId: adminUpdateCoupon
+      tags: [admin]
+      summary: Disable/enable a coupon, optionally revoking unspent credits (admin)
+      parameters:
+        - name: couponId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active: { type: boolean }
+                revokeUnspentCredits: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Coupon" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/users/{userId}/credits:
+    post:
+      operationId: adminAdjustCredits
+      tags: [admin]
+      summary: Manually adjust a user's credits (admin)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, reason, idempotencyKey]
+              properties:
+                amount: { type: integer, description: "Positive adds credits; negative removes them" }
+                reason: { type: string, maxLength: 200 }
+                expiresAt:
+                  type: [string, "null"]
+                  format: date-time
+                  description: Omitted = 90 days from now (like every grant); null = never expires.
+                idempotencyKey: { type: string }
+      responses:
+        "200":
+          description: Adjusted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreditBalance" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/stats/free-credits:
+    get:
+      operationId: adminFreeCreditStats
+      tags: [admin]
+      summary: Free credits granted this month vs the monthly cap (admin)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [month, signupCredits, couponCredits, capCredits, capReached]
+                properties:
+                  month: { type: string, examples: ["2026-10"] }
+                  signupCredits: { type: integer }
+                  couponCredits: { type: integer }
+                  capCredits: { type: [integer, "null"] }
+                  capReached: { type: boolean }
+                  abuseFlags:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ip: { type: string }
+                        redemptions: { type: integer }
+                        userIds: { type: array, items: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- waitlist
+  /v1/waitlist:
+    post:
+      operationId: joinWaitlist
+      tags: [waitlist]
+      summary: Join the waitlist (public)
+      description: |
+        No auth. The caller's IP, user agent and request headers are stored with the entry for
+        abuse monitoring. The answer is the same whether the email is new or already on the list,
+        so emails can't be probed. Rate limited per IP and per email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WaitlistJoin" }
+      responses:
+        "202":
+          description: Accepted (new or already on the list)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WaitlistJoined" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/admin/waitlist:
+    get:
+      operationId: adminListWaitlist
+      tags: [admin]
+      summary: Waitlist entries with abuse data (admin)
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/WaitlistStatus" }
+        - name: flagged
+          in: query
+          required: false
+          schema: { type: boolean }
+        - name: ip
+          in: query
+          required: false
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/WaitlistEntry" }
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/waitlist/stats:
+    get:
+      operationId: adminWaitlistStats
+      tags: [admin]
+      summary: Waitlist totals and abuse signals (admin)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WaitlistStats" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/waitlist/{entryId}:
+    patch:
+      operationId: adminUpdateWaitlistEntry
+      tags: [admin]
+      summary: Invite, reject or (un)flag an entry (admin)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                status: { $ref: "#/components/schemas/WaitlistStatus" }
+                flagged: { type: boolean }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WaitlistEntry" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------- webhooks (called by external services)
+  /webhooks/clerk:
+    post:
+      operationId: webhookClerk
+      tags: [webhooks]
+      summary: Clerk events (user.created, user.deleted)
+      security: []
+      parameters:
+        - { name: svix-id, in: header, required: true, schema: { type: string } }
+        - { name: svix-timestamp, in: header, required: true, schema: { type: string } }
+        - { name: svix-signature, in: header, required: true, schema: { type: string } }
+      requestBody: { $ref: "#/components/requestBodies/RawWebhook" }
+      responses:
+        "200": { $ref: "#/components/responses/WebhookAccepted" }
+        "401": { $ref: "#/components/responses/WebhookUnauthorized" }
+
+  /webhooks/whatsapp:
+    get:
+      operationId: webhookWhatsappVerify
+      tags: [webhooks]
+      summary: Meta verification handshake
+      security: []
+      parameters:
+        - { name: hub.mode, in: query, required: true, schema: { type: string } }
+        - { name: hub.verify_token, in: query, required: true, schema: { type: string } }
+        - { name: hub.challenge, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Echo of hub.challenge
+          content:
+            text/plain:
+              schema: { type: string }
+        "403": { description: Wrong verify token }
+    post:
+      operationId: webhookWhatsapp
+      tags: [webhooks]
+      summary: WhatsApp messages, button replies and status updates
+      security: []
+      parameters:
+        - { name: X-Hub-Signature-256, in: header, required: true, schema: { type: string } }
+      requestBody: { $ref: "#/components/requestBodies/RawWebhook" }
+      responses:
+        "200": { $ref: "#/components/responses/WebhookAccepted" }
+        "401": { $ref: "#/components/responses/WebhookUnauthorized" }
+
+  /webhooks/telegram:
+    post:
+      operationId: webhookTelegram
+      tags: [webhooks]
+      summary: Telegram updates
+      security: []
+      parameters:
+        - { name: X-Telegram-Bot-Api-Secret-Token, in: header, required: true, schema: { type: string } }
+      requestBody: { $ref: "#/components/requestBodies/RawWebhook" }
+      responses:
+        "200": { $ref: "#/components/responses/WebhookAccepted" }
+        "401": { $ref: "#/components/responses/WebhookUnauthorized" }
+
+  /webhooks/sendblue:
+    post:
+      operationId: webhookSendblue
+      tags: [webhooks]
+      summary: iMessage events via Sendblue
+      security: []
+      parameters:
+        - { name: sb-signing-secret, in: header, required: true, schema: { type: string } }
+      requestBody: { $ref: "#/components/requestBodies/RawWebhook" }
+      responses:
+        "200": { $ref: "#/components/responses/WebhookAccepted" }
+        "401": { $ref: "#/components/responses/WebhookUnauthorized" }
+
+  /webhooks/polar:
+    post:
+      operationId: webhookPolar
+      tags: [webhooks]
+      summary: Polar order, subscription and refund events
+      description: |
+        Signed with Standard Webhooks (`webhook-id`, `webhook-timestamp`, `webhook-signature`).
+        The event is saved once per `webhook-id`, then handled by the worker.
+      security: []
+      parameters:
+        - { name: webhook-id, in: header, required: true, schema: { type: string } }
+        - { name: webhook-timestamp, in: header, required: true, schema: { type: string } }
+        - { name: webhook-signature, in: header, required: true, schema: { type: string } }
+      requestBody: { $ref: "#/components/requestBodies/RawWebhook" }
+      responses:
+        "200": { $ref: "#/components/responses/WebhookAccepted" }
+        "401": { $ref: "#/components/responses/WebhookUnauthorized" }
+
+  /webhooks/composio:
+    post:
+      operationId: webhookComposio
+      tags: [webhooks]
+      summary: Composio connection status and app-event triggers
+      security: []
+      parameters:
+        - { name: webhook-signature, in: header, required: true, schema: { type: string } }
+      requestBody: { $ref: "#/components/requestBodies/RawWebhook" }
+      responses:
+        "200": { $ref: "#/components/responses/WebhookAccepted" }
+        "401": { $ref: "#/components/responses/WebhookUnauthorized" }
+
+components:
+  securitySchemes:
+    clerkAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Clerk session token.
+
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+    ChannelLinkId:
+      name: channelLinkId
+      in: path
+      required: true
+      schema: { type: string }
+    McpServerId:
+      name: mcpServerId
+      in: path
+      required: true
+      schema: { type: string }
+    AutomationId:
+      name: automationId
+      in: path
+      required: true
+      schema: { type: string }
+    Provider:
+      name: provider
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/ByokProvider" }
+
+  requestBodies:
+    RawWebhook:
+      required: true
+      description: Provider-defined JSON. The signature is checked on the raw body before parsing.
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+
+  responses:
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing or invalid session
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Not allowed (e.g. not an admin)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found (or not owned by this user)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Too many requests
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    OutOfCredits:
+      description: Balance is zero; upgrade, top up or redeem a coupon
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    WebhookAccepted:
+      description: Accepted (event saved and queued, or a duplicate ignored)
+    WebhookUnauthorized:
+      description: Signature or secret invalid
+    PlanLimit:
+      description: The current plan doesn't allow this (e.g. app limit, own MCP servers, top-ups on Free)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: [invalid_request, unauthorized, forbidden, not_found, rate_limited,
+                         out_of_credits, plan_limit, invalid_or_expired_code, conflict, internal]
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+
+    PlanId:
+      type: string
+      enum: [free, pro, max]
+
+    CheckoutPlanRequest:
+      type: object
+      required: [kind, planId]
+      properties:
+        kind: { type: string, const: plan }
+        planId: { $ref: "#/components/schemas/PlanId" }
+
+    CheckoutTopUpRequest:
+      type: object
+      required: [kind, topUpId]
+      properties:
+        kind: { type: string, const: topup }
+        topUpId: { type: string }
+
+    ChannelType:
+      type: string
+      enum: [whatsapp, telegram, imessage, web]
+
+    Me:
+      type: object
+      required: [id, email, emailVerified, name, timezone, plan, role, credits, createdAt]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        emailVerified: { type: boolean }
+        name: { type: string }
+        timezone: { type: string, examples: [Asia/Kolkata] }
+        plan: { $ref: "#/components/schemas/PlanId" }
+        role: { type: string, enum: [user, admin] }
+        credits:
+          type: object
+          required: [balance]
+          properties:
+            balance: { type: integer }
+            nextExpiry: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    MeUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 80 }
+        timezone: { type: string }
+
+    ChannelLink:
+      type: object
+      required: [id, channel, displayId, linkedAt]
+      properties:
+        id: { type: string }
+        channel: { $ref: "#/components/schemas/ChannelType" }
+        displayId:
+          type: string
+          description: Masked phone number or Telegram username
+          examples: ["+91 •••• ••42 10"]
+        linkedAt: { type: string, format: date-time }
+        within24hWindow:
+          type: boolean
+          description: WhatsApp only; whether free-form replies are currently allowed.
+
+    LinkCode:
+      type: object
+      required: [code, channel, expiresAt, instructions]
+      properties:
+        code: { type: string, examples: [LINK-4821-QX] }
+        channel: { $ref: "#/components/schemas/ChannelType" }
+        expiresAt: { type: string, format: date-time }
+        instructions:
+          type: string
+          examples: ["Send LINK-4821-QX to +1 555 010 0000 on WhatsApp"]
+        deepLink:
+          type: [string, "null"]
+          format: uri
+          description: e.g. a wa.me or t.me link with the code pre-filled
+
+    Message:
+      type: object
+      required: [id, channel, direction, text, status, createdAt]
+      properties:
+        id: { type: string }
+        channel: { $ref: "#/components/schemas/ChannelType" }
+        direction: { type: string, enum: [in, out] }
+        text: { type: string }
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              mimeType: { type: string }
+        status: { type: string, enum: [queued, processing, sent, delivered, read, failed] }
+        approvalId: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+
+    ApprovalStatus:
+      type: string
+      enum: [pending, approved, rejected, expired]
+
+    Approval:
+      type: object
+      required: [id, status, summary, createdAt, expiresAt]
+      properties:
+        id: { type: string }
+        status: { $ref: "#/components/schemas/ApprovalStatus" }
+        summary: { type: string, examples: ["Send email to priya@acme.com: \"Report delayed to Monday\""] }
+        app: { type: [string, "null"], examples: [gmail] }
+        action: { type: [string, "null"], examples: [GMAIL_SEND_EMAIL] }
+        details: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        decidedAt: { type: [string, "null"], format: date-time }
+
+    App:
+      type: object
+      required: [slug, name, category, availableOnPlan, connections]
+      properties:
+        slug: { type: string, examples: [gmail] }
+        name: { type: string, examples: [Gmail] }
+        iconUrl: { type: [string, "null"], format: uri }
+        category: { type: string, examples: [email, calendar, notes, tasks, crm, dev, research] }
+        availableOnPlan: { type: boolean }
+        connections:
+          type: array
+          items:
+            type: object
+            required: [id, status]
+            properties:
+              id: { type: string }
+              accountLabel: { type: [string, "null"], examples: [work@acme.com] }
+              status: { type: string, enum: [active, expired, error] }
+
+    McpServer:
+      type: object
+      required: [id, name, url, enabled, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        url: { type: string, format: uri }
+        enabled: { type: boolean }
+        hasSecret: { type: boolean }
+        lastError: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+
+    McpServerCreate:
+      type: object
+      required: [name, url]
+      properties:
+        name: { type: string, maxLength: 60 }
+        url: { type: string, format: uri, description: Must be https }
+        authHeaderName: { type: string, examples: [Authorization] }
+        authSecret: { type: string, writeOnly: true }
+
+    ByokProvider:
+      type: string
+      enum: [anthropic, openai, openrouter]
+
+    ByokKey:
+      type: object
+      required: [provider, set]
+      properties:
+        provider: { $ref: "#/components/schemas/ByokProvider" }
+        set: { type: boolean }
+        last4: { type: [string, "null"] }
+        model: { type: [string, "null"] }
+        updatedAt: { type: [string, "null"], format: date-time }
+
+    Automation:
+      type: object
+      required: [id, kind, title, instruction, enabled, createdAt]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [once, repeat, event] }
+        title: { type: string }
+        instruction: { type: string }
+        runAt: { type: [string, "null"], format: date-time, description: kind=once }
+        cron: { type: [string, "null"], description: kind=repeat }
+        timezone: { type: [string, "null"] }
+        trigger:
+          type: [object, "null"]
+          description: kind=event
+          properties:
+            app: { type: string }
+            event: { type: string }
+        enabled: { type: boolean }
+        pausedReason: { type: [string, "null"], enum: [out_of_credits, failures, user, null] }
+        nextRunAt: { type: [string, "null"], format: date-time }
+        lastRunAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    AgentStatus:
+      type: object
+      required: [state]
+      properties:
+        state: { type: string, enum: [none, stopped, waking, awake, busy, broken] }
+        lastActiveAt: { type: [string, "null"], format: date-time }
+
+    Plan:
+      type: object
+      required: [id, name, priceCents, interval, monthlyCredits, signupCredits, limits, features]
+      properties:
+        id: { $ref: "#/components/schemas/PlanId" }
+        name: { type: string }
+        priceCents: { type: integer, examples: [0, 1200, 3000] }
+        interval: { type: [string, "null"], enum: [month, null] }
+        monthlyCredits: { type: integer, examples: [0, 1500, 4500] }
+        signupCredits: { type: integer, examples: [100, 0, 0] }
+        limits:
+          type: object
+          required: [apps, automations, ownMcpServers, topUps, models]
+          properties:
+            apps: { type: integer }
+            automations: { type: integer }
+            ownMcpServers: { type: boolean }
+            topUps: { type: boolean }
+            models: { type: string, enum: [cheap, all] }
+        features:
+          type: array
+          items: { type: string }
+
+    TopUpPack:
+      type: object
+      required: [id, priceCents, credits, expiresInDays]
+      properties:
+        id: { type: string, examples: [topup_10] }
+        priceCents: { type: integer, examples: [1000] }
+        credits: { type: integer, examples: [800] }
+        expiresInDays: { type: integer, examples: [90] }
+
+    Subscription:
+      type: object
+      required: [plan, status]
+      properties:
+        plan: { $ref: "#/components/schemas/PlanId" }
+        status: { type: string, enum: [none, active, cancel_at_period_end, past_due, cancelled] }
+        currentPeriodStart: { type: [string, "null"], format: date-time }
+        currentPeriodEnd: { type: [string, "null"], format: date-time }
+
+    GrantSource:
+      type: string
+      enum: [signup, coupon, monthly, topup, admin, refund]
+
+    CreditGrant:
+      type: object
+      required: [id, source, amount, remaining, cheapModelOnly, createdAt]
+      properties:
+        id: { type: string }
+        source: { $ref: "#/components/schemas/GrantSource" }
+        amount: { type: integer }
+        remaining: { type: integer }
+        expiresAt: { type: [string, "null"], format: date-time }
+        cheapModelOnly: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    CreditBalance:
+      type: object
+      required: [balance, grants]
+      properties:
+        balance: { type: integer, description: Sum of remaining unexpired grants (may be slightly negative after an overrun) }
+        grants:
+          type: array
+          items: { $ref: "#/components/schemas/CreditGrant" }
+
+    LedgerEntry:
+      type: object
+      required: [id, delta, reason, createdAt]
+      properties:
+        id: { type: string }
+        delta: { type: integer }
+        reason: { type: string, enum: [grant, charge, expire, refund, adjust, reversal] }
+        grantId: { type: [string, "null"] }
+        description: { type: string, examples: ["Task: moved meeting + emailed Priya"] }
+        createdAt: { type: string, format: date-time }
+
+    UsagePeriod:
+      type: object
+      required: [periodStart, periodEnd, aiCredits, awakeCredits, toolCredits, totalCredits]
+      properties:
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        aiCredits: { type: integer }
+        awakeSeconds: { type: integer }
+        awakeCredits: { type: integer }
+        toolCredits: { type: integer }
+        totalCredits: { type: integer }
+
+    UsageTotals:
+      type: object
+      required: [aiCredits, awakeCredits, toolCredits, totalCredits]
+      properties:
+        aiCredits: { type: integer }
+        awakeCredits: { type: integer }
+        toolCredits: { type: integer }
+        totalCredits: { type: integer }
+
+    CouponRedemption:
+      type: object
+      required: [creditsAdded, expiresAt, cheapModelOnly, balance]
+      properties:
+        creditsAdded: { type: integer, examples: [200] }
+        expiresAt: { type: [string, "null"], format: date-time }
+        cheapModelOnly: { type: boolean }
+        balance: { type: integer }
+
+    Coupon:
+      type: object
+      required: [id, campaign, codePrefix, credits, maxRedemptions, redeemedCount, active, createdAt]
+      properties:
+        id: { type: string }
+        campaign: { type: string }
+        codePrefix: { type: string, examples: ["AGT-7K…"] }
+        credits: { type: integer }
+        maxRedemptions: { type: integer }
+        redeemedCount: { type: integer }
+        expiresAt: { type: [string, "null"], format: date-time }
+        creditExpiryDays: { type: integer, default: 90 }
+        cheapModelOnly: { type: boolean, default: true }
+        newUsersOnly: { type: boolean, default: false }
+        plans:
+          type: array
+          items: { $ref: "#/components/schemas/PlanId" }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    CouponCreate:
+      type: object
+      required: [campaign, credits, maxRedemptions, expiresAt]
+      properties:
+        campaign: { type: string, maxLength: 80 }
+        credits: { type: integer, minimum: 1, maximum: 10000 }
+        maxRedemptions: { type: integer, minimum: 1 }
+        codeCount:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 1
+          description: 1 = one shared code; more = that many single-use codes.
+        expiresAt: { type: string, format: date-time }
+        creditExpiryDays: { type: integer, minimum: 1, maximum: 365, default: 90 }
+        cheapModelOnly: { type: boolean, default: true }
+        newUsersOnly: { type: boolean, default: false }
+        plans:
+          type: array
+          items: { $ref: "#/components/schemas/PlanId" }
+
+    WaitlistStatus:
+      type: string
+      enum: [pending, invited, rejected]
+
+    WaitlistJoin:
+      type: object
+      required: [email]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        name: { type: string, maxLength: 80 }
+        referralSource: { type: string, maxLength: 100, description: "How they heard about us" }
+        useCase: { type: string, maxLength: 500 }
+        utm:
+          type: object
+          additionalProperties: false
+          properties:
+            source: { type: string, maxLength: 100 }
+            medium: { type: string, maxLength: 100 }
+            campaign: { type: string, maxLength: 100 }
+            term: { type: string, maxLength: 100 }
+            content: { type: string, maxLength: 100 }
+        website:
+          type: string
+          maxLength: 200
+          description: Honeypot. The form hides this field; humans leave it empty.
+
+    WaitlistJoined:
+      type: object
+      required: [status, message]
+      properties:
+        status: { type: string, enum: [ok] }
+        message: { type: string, examples: ["You're on the list. We'll email you when it's your turn."] }
+
+    WaitlistEntry:
+      type: object
+      required: [id, email, status, flagged, flagReasons, ip, submitCount, createdAt, lastSeenAt]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        name: { type: [string, "null"] }
+        referralSource: { type: [string, "null"] }
+        useCase: { type: [string, "null"] }
+        utm: { type: [object, "null"], additionalProperties: { type: string } }
+        status: { $ref: "#/components/schemas/WaitlistStatus" }
+        flagged: { type: boolean }
+        flagReasons:
+          type: array
+          items: { type: string, enum: [disposable_email, ip_burst, email_alias, manual] }
+        ip: { type: string }
+        forwardedFor: { type: [string, "null"], description: "Raw X-Forwarded-For chain" }
+        userAgent: { type: [string, "null"] }
+        acceptLanguage: { type: [string, "null"] }
+        referer: { type: [string, "null"] }
+        origin: { type: [string, "null"] }
+        submitCount: { type: integer, description: "Times this email was submitted" }
+        createdAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+
+    WaitlistStats:
+      type: object
+      required: [total, pending, invited, rejected, flagged, last24h, attemptsLast24h, blockedLast24h, topIps]
+      properties:
+        total: { type: integer }
+        pending: { type: integer }
+        invited: { type: integer }
+        rejected: { type: integer }
+        flagged: { type: integer }
+        last24h: { type: integer }
+        attemptsLast24h: { type: integer, description: "Every submission, including rejected ones" }
+        blockedLast24h: { type: integer, description: "Honeypot hits and rate-limited attempts" }
+        topIps:
+          type: array
+          description: IPs with more than one entry or attempt in the last 7 days, busiest first
+          items:
+            type: object
+            required: [ip, entries, attempts, lastAt]
+            properties:
+              ip: { type: string }
+              entries: { type: integer }
+              attempts: { type: integer }
+              lastAt: { type: string, format: date-time }
+
+    AgentRuntime:
+      type: string
+      enum: [hermes, claude_code]
+
+    AgentSettings:
+      type: object
+      required: [runtime, effectiveRuntime, aiAccess, claude, ownKeyProviders]
+      properties:
+        runtime:
+          $ref: "#/components/schemas/AgentRuntime"
+        effectiveRuntime:
+          type: [string, "null"]
+          enum: [hermes, claude_code, null]
+          description: What actually runs (null when there's no AI source)
+        aiAccess:
+          type: string
+          enum: [claude_plan, own_key, platform, none]
+          description: What pays for the AI
+        claude:
+          type: object
+          required: [connected]
+          properties:
+            connected: { type: boolean }
+            connectedAt: { type: [string, "null"], format: date-time }
+        ownKeyProviders:
+          type: array
+          items: { $ref: "#/components/schemas/ByokProvider" }
+
+    ClaudeLoginStart:
+      type: object
+      required: [loginId, authorizeUrl, expiresAt]
+      properties:
+        loginId: { type: string }
+        authorizeUrl: { type: string, format: uri, description: "Anthropic's sign-in page" }
+        expiresAt: { type: string, format: date-time }
+
+    ActivityEntry:
+      type: object
+      required: [id, actor, action, summary, createdAt]
+      properties:
+        id: { type: string }
+        actor: { type: string, enum: [user, agent, admin, system] }
+        action: { type: string, examples: [app_action, approval_requested, approval_decided, automation_run, coupon_redeemed, channel_linked] }
+        summary: { type: string }
+        creditsCharged: { type: [integer, "null"] }
+        createdAt: { type: string, format: date-time }
+
+    StreamEvent:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          type: string
+          enum: [message.created, message.status, approval.created, approval.resolved,
+                 agent.status, credits.updated, automation.updated]
+        data:
+          oneOf:
+            - { $ref: "#/components/schemas/Message" }
+            - { $ref: "#/components/schemas/Approval" }
+            - { $ref: "#/components/schemas/AgentStatus" }
+            - { $ref: "#/components/schemas/CreditBalance" }
+            - { $ref: "#/components/schemas/Automation" }
