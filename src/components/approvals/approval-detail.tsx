@@ -1,0 +1,129 @@
+"use client";
+
+import { ApiError, type Approval } from "@/lib/api/client";
+import { useDecideApproval } from "@/lib/api/hooks";
+import { cn, formatDateTime, titleCase } from "@/lib/format";
+import { Button, IconTile, InlineError, Pill, type PillTone } from "../ui";
+import { ApprovalIcon } from "./approval-list";
+import { approvalReason, splitDetails, type ApprovalReason } from "@/lib/approvals";
+
+type Decision = "approve" | "reject";
+
+const REASON_CHIP: Record<ApprovalReason["tone"], string> = {
+  info: "bg-accent-soft text-accent-dark",
+  danger: "bg-danger-soft text-danger",
+  neutral: "bg-surface-2 text-fg-2",
+};
+
+const STATUS_LABEL: Record<Approval["status"], string> = {
+  pending: "Needs your OK",
+  approved: "Approved",
+  rejected: "Rejected",
+  expired: "Expired",
+};
+
+const STATUS_PILL: Record<Exclude<Approval["status"], "pending">, PillTone> = {
+  approved: "done",
+  rejected: "danger",
+  expired: "muted",
+};
+
+function outcome(approval: Approval): string {
+  if (approval.status === "approved") return "Tex went ahead with it.";
+  if (approval.status === "rejected") return "Tex didn’t do this.";
+  return "Nothing was done. Ask Tex again if you still want it.";
+}
+
+function settledLine(approval: Approval): string {
+  if (approval.status === "pending") return `Expires ${formatDateTime(approval.expiresAt)}`;
+  if (approval.status === "expired") return `Expired ${formatDateTime(approval.expiresAt)}`;
+  const when = approval.decidedAt ? ` ${formatDateTime(approval.decidedAt)}` : "";
+  return `${STATUS_LABEL[approval.status]}${when}`;
+}
+
+/** Everything about one approval, and the two buttons while it is still waiting. */
+export function ApprovalDetail({ approval, onDecided }: { approval: Approval; onDecided: (decision: Decision) => void }) {
+  const decide = useDecideApproval();
+  const reason = approvalReason(approval.action);
+  const { preview, fields } = splitDetails(approval.details);
+  const pending = approval.status === "pending";
+  const choosing = decide.isPending ? decide.variables?.decision : undefined;
+  const alreadyDecided = decide.error instanceof ApiError && decide.error.status === 409;
+
+  const run = (decision: Decision) =>
+    decide.mutate({ approvalId: approval.id, decision }, { onSuccess: () => onDecided(decision) });
+
+  return (
+    <article aria-label={approval.summary} className="flex max-w-[620px] flex-col gap-5 rounded-[20px] border border-line bg-surface p-6">
+      <div className="flex items-center gap-3.5">
+        <IconTile size={46}>
+          <ApprovalIcon app={approval.app} size={22} />
+        </IconTile>
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="flex items-center gap-[7px] text-[11.5px] text-muted">
+            <span aria-hidden className="h-3 w-1 bg-accent" />
+            {STATUS_LABEL[approval.status]}
+          </p>
+          <h2 className="text-[18px] leading-snug font-semibold tracking-[-0.01em]">{approval.summary}</h2>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={cn("rounded-full px-2.5 py-0.5 text-[12px] font-medium", REASON_CHIP[reason.tone])}>{reason.label}</span>
+        {(approval.app || approval.action) && (
+          <span className="text-[12px] text-muted">
+            {[approval.app && titleCase(approval.app), approval.action].filter(Boolean).join(" · ")}
+          </span>
+        )}
+      </div>
+
+      {fields.length > 0 && (
+        <dl className="flex flex-col gap-2">
+          {fields.map((field) => (
+            <div key={field.key} className="flex gap-4">
+              <dt className="w-[84px] shrink-0 text-[12px] leading-5 text-muted">{field.label}</dt>
+              <dd className="min-w-0 break-words">{field.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {preview && (
+        <p className="rounded-xl bg-surface-2 px-4 py-3.5 text-[14.5px] leading-relaxed whitespace-pre-wrap text-fg-2">{preview}</p>
+      )}
+
+      {pending ? (
+        <div className="flex flex-col gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5">
+            <Button size="lg" variant="secondary" pending={choosing === "reject"} disabled={decide.isPending} onClick={() => run("reject")}>
+              Reject
+            </Button>
+            <Button size="lg" variant="primary" pending={choosing === "approve"} disabled={decide.isPending} onClick={() => run("approve")}>
+              Approve
+            </Button>
+          </div>
+          {alreadyDecided ? (
+            <p role="alert" className="text-center text-[12.5px] text-danger">
+              This was already decided or has expired. The list is up to date now.
+            </p>
+          ) : (
+            <InlineError error={decide.error} className="text-center" />
+          )}
+          <p className="text-center text-[12.5px] text-muted">The same buttons are waiting in your chat. Either place works.</p>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <Pill tone={STATUS_PILL[approval.status as Exclude<Approval["status"], "pending">]} className="px-3 text-[12.5px]">
+            {STATUS_LABEL[approval.status]}
+          </Pill>
+          <span className="text-[13px] text-muted">{outcome(approval)}</span>
+        </div>
+      )}
+
+      <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 border-t border-line pt-4 text-[12px] text-muted">
+        <span>Asked {formatDateTime(approval.createdAt)}</span>
+        <span>{settledLine(approval)}</span>
+      </div>
+    </article>
+  );
+}
