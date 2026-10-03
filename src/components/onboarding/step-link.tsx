@@ -1,23 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ApiError, errorMessage, type ChannelType, type LinkCode } from "@/lib/api/client";
-import { useChannels, useCreateLinkCode } from "@/lib/api/hooks";
+import { ApiError, errorMessage, type LinkCode } from "@/lib/api/client";
+import { useAvailableChannels, useChannels, useCreateLinkCode } from "@/lib/api/hooks";
 import { BrandIcon } from "@/components/brand-icon";
 import { CheckIcon, CopyIcon, ExternalIcon, LockIcon } from "@/components/icons";
 import { AgentFigure } from "@/components/tex";
-import { Button, Card, SectionLabel } from "@/components/ui";
+import { Button, Card, ErrorState, SectionLabel, SkeletonRows } from "@/components/ui";
+import { linkableChannels, type LinkableChannel } from "@/lib/channels";
 import { openInNewTab } from "@/lib/navigate";
 import { CHANNEL_LABEL, cn } from "@/lib/format";
 import { ChatPreview } from "./chat-preview";
-
-export type LinkableChannel = Exclude<ChannelType, "web">;
-export const LINKABLE: readonly LinkableChannel[] = ["whatsapp", "telegram", "imessage"];
 
 const POLL_MS = 3000;
 
 function linkError(error: unknown): string {
   if (error instanceof ApiError && error.status === 429) return "That’s a lot of codes. Wait a minute, then ask for a new one.";
+  if (error instanceof ApiError && error.code === "channel_disabled") return "That chat app is switched off right now.";
   return errorMessage(error);
 }
 
@@ -63,9 +62,48 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-/** Step 1: send a one-time code from WhatsApp, Telegram or iMessage, and that chat becomes your agent. */
-export function StepLink({ initialChannel, onDone }: { initialChannel: LinkableChannel; onDone: () => void }) {
-  const [channel, setChannel] = useState<LinkableChannel>(initialChannel);
+/**
+ * Step 1: send a one-time code from a chat app, and that chat becomes your agent.
+ * Which chat apps are offered is the backend's call; `preferred` (from ?channel=) picks one of them.
+ */
+export function StepLink({ preferred, onDone }: { preferred?: string | null; onDone: () => void }) {
+  const available = useAvailableChannels();
+
+  if (available.isPending) {
+    return (
+      <Card className="max-w-[620px]">
+        <SkeletonRows rows={3} />
+      </Card>
+    );
+  }
+  if (available.isError) return <ErrorState error={available.error} onRetry={() => void available.refetch()} />;
+
+  const options = linkableChannels(available.data);
+  if (options.length === 0) return <NothingToLink onDone={onDone} />;
+  return <LinkChat options={options} initial={options.find((option) => option === preferred) ?? options[0]} onDone={onDone} />;
+}
+
+/** Every chat app is switched off: say so, and let setup carry on with the web chat. */
+function NothingToLink({ onDone }: { onDone: () => void }) {
+  return (
+    <div className="flex max-w-[620px] flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">No chat app to link right now</h1>
+        <p className="max-w-[520px] text-[15px] text-muted">
+          Chat apps are switched off at the moment. You can talk to Tex here in the web app, and link a chat later from Settings.
+        </p>
+      </div>
+      <Button variant="primary" size="lg" className="self-start" onClick={onDone}>
+        Continue
+      </Button>
+    </div>
+  );
+}
+
+function LinkChat({ options, initial, onDone }: { options: LinkableChannel[]; initial: LinkableChannel; onDone: () => void }) {
+  const [picked, setPicked] = useState<LinkableChannel>(initial);
+  // The list can change under an open page; never ask for a code for a channel that has gone.
+  const channel = options.includes(picked) ? picked : options[0];
   const [code, setCode] = useState<LinkCode | null>(null);
   // Links that existed before this code was made, so an old link doesn't count as "it worked".
   const [known, setKnown] = useState<string[]>([]);
@@ -74,6 +112,7 @@ export function StepLink({ initialChannel, onDone }: { initialChannel: LinkableC
   const secondsLeft = useSecondsLeft(code?.expiresAt);
 
   const name = CHANNEL_LABEL[channel];
+  const several = options.length > 1;
   const live = code !== null && secondsLeft > 0;
   const expired = code !== null && secondsLeft === 0;
   const existing = channels.data?.find((link) => link.channel === channel);
@@ -97,14 +136,20 @@ export function StepLink({ initialChannel, onDone }: { initialChannel: LinkableC
 
   const pick = (next: LinkableChannel) => {
     if (next === channel) return;
-    setChannel(next);
+    setPicked(next);
     setCode(null);
     create.reset();
   };
 
   const getCode = () => {
     setKnown((channels.data ?? []).map((link) => link.id));
-    create.mutate(channel, { onSuccess: setCode });
+    create.mutate(channel, {
+      onSuccess: setCode,
+      // Refused because the channel was just switched off: fetch the list again so it stops being offered.
+      onError: (error) => {
+        if (error instanceof ApiError && error.code === "channel_disabled") void refetch();
+      },
+    });
   };
 
   return (
@@ -112,30 +157,37 @@ export function StepLink({ initialChannel, onDone }: { initialChannel: LinkableC
       <div className="grid grid-cols-1 items-start gap-8 min-[940px]:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Link the chat you already use</h1>
-            <p className="max-w-[520px] text-[15px] text-muted">Send a one-time code from your chat app. From then on, that chat is your agent.</p>
+            <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">
+              {several ? "Link the chat you already use" : `Link your ${name}`}
+            </h1>
+            <p className="max-w-[520px] text-[15px] text-muted">
+              Send a one-time code from {several ? "your chat app" : name}. From then on, that chat is your agent.
+            </p>
           </div>
 
-          <div role="group" aria-label="Chat app" className="flex flex-wrap gap-2">
-            {LINKABLE.map((option) => {
-              const on = option === channel;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => pick(option)}
-                  className={cn(
-                    "flex h-11 items-center gap-2.5 rounded-full border bg-surface pr-4 pl-3 text-[14px] font-medium transition-colors",
-                    on ? "border-fg-2 shadow-[0_0_0_1px_var(--fg-2)]" : "border-line hover:border-fg/40",
-                  )}
-                >
-                  <BrandIcon name={option} size={18} />
-                  {CHANNEL_LABEL[option]}
-                </button>
-              );
-            })}
-          </div>
+          {/* With one chat app on offer there is nothing to choose between. */}
+          {several && (
+            <div role="group" aria-label="Chat app" className="flex flex-wrap gap-2">
+              {options.map((option) => {
+                const on = option === channel;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => pick(option)}
+                    className={cn(
+                      "flex h-11 items-center gap-2.5 rounded-full border bg-surface pr-4 pl-3 text-[14px] font-medium transition-colors",
+                      on ? "border-fg-2 shadow-[0_0_0_1px_var(--fg-2)]" : "border-line hover:border-fg/40",
+                    )}
+                  >
+                    <BrandIcon name={option} size={18} />
+                    {CHANNEL_LABEL[option]}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <Card className="flex flex-col gap-4 p-5">
             {fresh ? (
@@ -232,7 +284,7 @@ export function StepLink({ initialChannel, onDone }: { initialChannel: LinkableC
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
         <p className="flex items-start gap-2.5 text-[13px] text-muted">
           <LockIcon size={16} className="mt-px shrink-0" />
-          <span>Unknown numbers only ever get a “link your account” reply. Nothing reaches an agent until a chat is linked.</span>
+          <span>A chat we don’t know only ever gets a “link your account” reply. Nothing reaches an agent until a chat is linked.</span>
         </p>
         {!fresh && (
           <Button variant="ghost" size="sm" onClick={onDone}>

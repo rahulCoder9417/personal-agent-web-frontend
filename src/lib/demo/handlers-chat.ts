@@ -4,6 +4,7 @@ import type { Approval, ApprovalStatus, Attachment, ChannelType, Message } from 
 import { lowerFirst, nowIso, truncate, upperFirst, type Handler } from "./context";
 import {
   badRequest,
+  channelDisabled,
   conflict,
   HttpError,
   json,
@@ -132,6 +133,7 @@ export const sendMessage: Handler = async ({ state, request }) => {
   const sent = state.messages.find((message) => message.id === state.sentIds[clientMessageId]);
   if (sent) return json(sent, 202);
 
+  if (!state.availableChannels.includes("web")) throw channelDisabled("web", "Web chat is switched off right now");
   if (balanceOf(state) <= 0) throw outOfCredits();
 
   const message: Message = {

@@ -10,13 +10,9 @@ import { cn } from "@/lib/format";
 import { StepApps } from "./step-apps";
 import { StepHi } from "./step-hi";
 import { StepKey } from "./step-key";
-import { LINKABLE, StepLink, type LinkableChannel } from "./step-link";
+import { StepLink } from "./step-link";
 
 const STEPS = ["Link a chat app", "Connect your apps", "Add your AI key", "Say hi"] as const;
-
-function isLinkable(value: string | null): value is LinkableChannel {
-  return LINKABLE.some((c) => c === value);
-}
 
 function StepIndicator({ current, onPick }: { current: number; onPick: (step: number) => void }) {
   return (
@@ -75,7 +71,7 @@ export function OnboardingFlow() {
           <SectionLabel as="p">
             Step {step + 1} of {STEPS.length}
           </SectionLabel>
-          {step === 0 && <StepLink initialChannel={isLinkable(channelParam) ? channelParam : "whatsapp"} onDone={next} />}
+          {step === 0 && <StepLink preferred={channelParam} onDone={next} />}
           {step === 1 && <StepApps onDone={next} />}
           {step === 2 && <StepKey onDone={next} />}
           {step === 3 && <StepHi />}

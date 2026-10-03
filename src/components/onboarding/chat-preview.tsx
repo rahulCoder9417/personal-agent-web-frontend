@@ -1,7 +1,7 @@
 import { BrandIcon } from "@/components/brand-icon";
 import { AgentFigure } from "@/components/tex";
 import { CHANNEL_LABEL, cn } from "@/lib/format";
-import type { LinkableChannel } from "./step-link";
+import type { LinkableChannel } from "@/lib/channels";
 
 /** What linking looks like from inside the chat app: the code goes out, Tex answers. A picture, not a control. */
 export function ChatPreview({ channel, code, linked }: { channel: LinkableChannel; code: string | null; linked: boolean }) {

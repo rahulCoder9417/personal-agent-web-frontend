@@ -8,11 +8,13 @@ import {
   useAgentStatus,
   useApprovals,
   useAutomations,
+  useAvailableChannels,
   useChannels,
 } from "@/lib/api/hooks";
 import { describeAgent } from "@/lib/agent-state";
 import { approvalReason } from "@/lib/approvals";
-import { cn, describeAutomationNext, describeAutomationSchedule, formatCredits, formatTime } from "@/lib/format";
+import { linkableChannels, listNames } from "@/lib/channels";
+import { CHANNEL_LABEL, cn, describeAutomationNext, describeAutomationSchedule, formatCredits, formatTime } from "@/lib/format";
 import { AppIcon } from "../brand-icon";
 import { CheckIcon, ChevronRightIcon, ClockIcon } from "../icons";
 import { AgentFigure } from "../tex";
@@ -81,6 +83,7 @@ export function SidePanel() {
   const activity = useActivity();
   const automations = useAutomations();
   const channels = useChannels();
+  const available = useAvailableChannels();
   const settings = useAgentSettings();
 
   const pending = approvals.data ?? [];
@@ -95,7 +98,9 @@ export function SidePanel() {
     .sort((a, b) => (a.nextRunAt ?? "9999").localeCompare(b.nextRunAt ?? "9999"))
     .slice(0, 3);
 
-  const needsChat = channels.data !== undefined && channels.data.filter((c) => c.channel !== "web").length === 0;
+  // Only nag about linking a chat when there is a chat app that can be linked.
+  const linkable = linkableChannels(available.data ?? []);
+  const needsChat = channels.data !== undefined && linkable.length > 0 && !channels.data.some((c) => c.channel !== "web");
   const needsAi = settings.data?.aiAccess === "none";
 
   return (
@@ -111,7 +116,9 @@ export function SidePanel() {
         <div className="flex flex-col gap-2 rounded-xl px-3.5 py-3 shadow-[0_0_0_1px_var(--line-strong)]">
           <p className="text-[13.5px] font-semibold">Finish setting up</p>
           <p className="text-[13px] text-muted">
-            {needsAi ? "Tex needs an AI key or a Claude plan before it can start a job." : "Link WhatsApp, Telegram or iMessage to text Tex from your phone."}
+            {needsAi
+              ? "Tex needs an AI key or a Claude plan before it can start a job."
+              : `Link ${listNames(linkable.map((channel) => CHANNEL_LABEL[channel]))} to text Tex from your phone.`}
           </p>
           <ButtonLink href={needsAi ? "/settings/agent" : "/onboarding"} variant="primary" size="sm" className="self-start">
             {needsAi ? "Add your AI" : "Link a chat app"}

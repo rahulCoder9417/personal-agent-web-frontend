@@ -20,6 +20,8 @@ export const badRequest = (message: string, details?: JsonObject) => new HttpErr
 export const notFound = (message = "Not found") => new HttpError(404, "not_found", message);
 export const conflict = (message: string) => new HttpError(409, "conflict", message);
 export const planLimit = (message: string) => new HttpError(403, "plan_limit", message);
+/** The channel isn't in `available` (GET /v1/channels). `details.channel` names it, as the backend does. */
+export const channelDisabled = (channel: string, message: string) => new HttpError(403, "channel_disabled", message, { channel });
 export const outOfCredits = () =>
   new HttpError(402, "out_of_credits", "You're out of credits. Upgrade, buy a top-up or redeem a code to carry on.");
 

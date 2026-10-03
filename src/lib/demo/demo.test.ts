@@ -182,7 +182,7 @@ describe("approvals", () => {
     expect(second.body.error.code).toBe("conflict");
 
     vi.advanceTimersByTime(1000);
-    const thread = (await call<Page<Message>>("GET", "messages?channel=whatsapp")).body.items;
+    const thread = (await call<Page<Message>>("GET", "messages?channel=telegram")).body.items;
     expect(thread[0].text).toBe("Done. Moved to tomorrow at 3pm and Maya has the note.");
     // One credit, for the action that changed something.
     expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1883);
@@ -295,14 +295,40 @@ describe("setup", () => {
     expect(saved.body.last4).toBe("abcd");
   });
 
+  it("lists the channels that are switched on next to the linked chats", async () => {
+    const channels = await call<{ items: ChannelLink[]; available: string[] }>("GET", "channels");
+    expect(channels.body.available).toEqual(["telegram", "web"]);
+    expect(channels.body.items.map((link) => link.channel)).toEqual(["telegram"]);
+  });
+
+  it("refuses a link code for a chat app that is switched off", async () => {
+    const off = await call<ErrorBody & { error: { details?: { channel?: string } } }>("POST", "channels/link-codes", { channel: "imessage" });
+    expect(off.status).toBe(403);
+    expect(off.body.error).toMatchObject({ code: "channel_disabled", details: { channel: "imessage" } });
+    expect((await call("POST", "channels/link-codes", { channel: "web" })).status).toBe(400);
+  });
+
   it("links a chat a few seconds after a code is made", async () => {
-    const code = await call<{ code: string; deepLink: string | null }>("POST", "channels/link-codes", { channel: "imessage" });
+    expect((await call("DELETE", "channels/ch_telegram")).status).toBe(204);
+    const code = await call<{ code: string; deepLink: string | null }>("POST", "channels/link-codes", { channel: "telegram" });
     expect(code.status).toBe(201);
     expect(code.body.code).toMatch(/^LINK-\d{4}-[A-Z]{2}$/);
-    expect(code.body.deepLink).toBeNull();
-    expect((await call<{ items: ChannelLink[] }>("GET", "channels")).body.items).toHaveLength(2);
+    expect(code.body.deepLink).toContain(encodeURIComponent(code.body.code));
+    expect((await call<{ items: ChannelLink[] }>("GET", "channels")).body.items).toHaveLength(0);
     vi.advanceTimersByTime(6000);
-    expect((await call<{ items: ChannelLink[] }>("GET", "channels")).body.items.map((link) => link.channel)).toContain("imessage");
+    expect((await call<{ items: ChannelLink[] }>("GET", "channels")).body.items.map((link) => link.channel)).toEqual(["telegram"]);
+  });
+
+  it("keeps a chat that was linked before its channel was switched off, and refuses web chat when that is off", async () => {
+    const store = getStore();
+    store.availableChannels = ["web"];
+    const channels = await call<{ items: ChannelLink[]; available: string[] }>("GET", "channels");
+    expect(channels.body).toMatchObject({ available: ["web"], items: [{ channel: "telegram" }] });
+
+    store.availableChannels = ["telegram"];
+    const sent = await call<ErrorBody>("POST", "messages", { text: "hello", clientMessageId: uuid(9) });
+    expect(sent.status).toBe(403);
+    expect(sent.body.error.code).toBe("channel_disabled");
   });
 });
 

@@ -11,6 +11,7 @@ import type {
   Automation,
   ByokKey,
   ChannelLink,
+  ChannelType,
   CreditGrant,
   LedgerEntry,
   McpServer,
@@ -25,7 +26,7 @@ import type {
 const MINUTE = 60_000;
 const DAY = 86_400_000;
 
-/** The account signed up, linked WhatsApp and redeemed its beta coupon this many days ago. */
+/** The account signed up, linked Telegram and redeemed its beta coupon this many days ago. */
 export const SIGNUP_DAYS_AGO = 19;
 const PRO_SINCE_DAYS_AGO = 10;
 const CREDIT_LIFETIME_DAYS = 90;
@@ -35,6 +36,8 @@ export type DayUsage = { ai: number; awake: number; actions: number };
 
 export type DemoData = {
   user: Omit<Me, "credits">;
+  /** The channels that are switched on, like the backend's ENABLED_CHANNELS: Telegram and the web chat at launch. */
+  availableChannels: ChannelType[];
   channels: ChannelLink[];
   /** Newest first, like the API returns them. */
   messages: Message[];
@@ -330,20 +333,20 @@ function seedMessages(now: Date): Message[] {
       text: "Filed. Tidy notes are on your “Acme kickoff” page in Notion.",
     }),
     message("msg_3", 17, {
-      channel: "whatsapp", direction: "in", status: "read", approvalId: null,
+      channel: "telegram", direction: "in", status: "read", approvalId: null,
       text: "Move my 3pm with Maya to tomorrow and let her know",
     }),
     message("msg_4", 16, {
-      channel: "whatsapp", direction: "out", status: "delivered", approvalId: null,
+      channel: "telegram", direction: "out", status: "delivered", approvalId: null,
       text: "On it. Your 3pm is “Roadmap sync”. Moving it to tomorrow, same time.",
     }),
     // As the backend does it: the ask is its own message carrying the approval, then Tex's words.
     message("msg_5", 15, {
-      channel: "whatsapp", direction: "out", status: "delivered", approvalId: "ap_email",
+      channel: "telegram", direction: "out", status: "delivered", approvalId: "ap_email",
       text: "Approval needed: Send this email to Maya",
     }),
     message("msg_6", 15, {
-      channel: "whatsapp", direction: "out", status: "delivered", approvalId: null,
+      channel: "telegram", direction: "out", status: "delivered", approvalId: null,
       text: "The meeting is moved. I’ve drafted a note to Maya; it needs your OK before I send it.",
     }),
   ];
@@ -367,9 +370,9 @@ function seedMoney(now: Date) {
     { id: "led_g3", delta: 1500, reason: "grant", grantId: "grant_monthly", description: "Pro monthly credits", createdAt: proSince },
   ];
   const activity: ActivityEntry[] = [
-    { id: "act_s1", actor: "user", action: "channel_linked", summary: "Linked WhatsApp", creditsCharged: null, createdAt: iso(Date.parse(signedUp) + 5 * MINUTE) },
+    { id: "act_s1", actor: "user", action: "channel_linked", summary: "Linked Telegram", creditsCharged: null, createdAt: iso(Date.parse(signedUp) + 5 * MINUTE) },
     { id: "act_s2", actor: "user", action: "coupon_redeemed", summary: "Redeemed a coupon for 800 credits", creditsCharged: null, createdAt: grants[1].createdAt },
-    { id: "act_s3", actor: "user", action: "channel_linked", summary: "Linked Telegram", creditsCharged: null, createdAt: atDay(now, SIGNUP_DAYS_AGO - 2, 10, 15) },
+    { id: "act_s3", actor: "user", action: "app_connected", summary: "Connected Gmail", creditsCharged: null, createdAt: atDay(now, SIGNUP_DAYS_AGO - 2, 10, 15) },
     { id: "act_s4", actor: "system", action: "approval_expired", summary: "“Renew your Notion plan ($10)” expired with no answer", creditsCharged: null, createdAt: atDay(now, 3, 9, 12) },
     { id: "act_s5", actor: "user", action: "approval_decided", summary: "Approved “Post yesterday’s update in #team”", creditsCharged: null, createdAt: atDay(now, 1, 17, 31) },
     { id: "act_s6", actor: "agent", action: "approval_requested", summary: "Asked to delete 12 old drafts", creditsCharged: null, createdAt: earlierToday(now, 230) },
@@ -423,10 +426,8 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
       id: "user_demo", email: "aarav@northwind.studio", emailVerified: true, name: "Aarav Shah",
       timezone: "Asia/Kolkata", plan, role: "user", createdAt: signedUp,
     },
-    channels: [
-      { id: "ch_whatsapp", channel: "whatsapp", displayId: "+91 •••• ••42 10", linkedAt: iso(Date.parse(signedUp) + 5 * MINUTE), within24hWindow: true },
-      { id: "ch_telegram", channel: "telegram", displayId: "@aarav_s", linkedAt: atDay(now, SIGNUP_DAYS_AGO - 2, 10, 15) },
-    ],
+    availableChannels: ["telegram", "web"],
+    channels: [{ id: "ch_telegram", channel: "telegram", displayId: "@aarav_s", linkedAt: iso(Date.parse(signedUp) + 5 * MINUTE) }],
     messages: seedMessages(now),
     sentIds: {},
     attachments: {},

@@ -64,12 +64,17 @@ export function useUpdateMe() {
 
 // ---------------------------------------------------------------- channels
 
+// One request answers both: which chats are linked, and which channels can be offered.
+const channelsQuery = { queryKey: qk.channels, queryFn: () => unwrap(api.GET("/v1/channels")) };
+
+/** The chats this person has linked. */
 export function useChannels() {
-  return useQuery({
-    queryKey: qk.channels,
-    queryFn: () => unwrap(api.GET("/v1/channels")),
-    select: (data) => data.items,
-  });
+  return useQuery({ ...channelsQuery, select: (data) => data.items });
+}
+
+/** The channels that are switched on, in the backend's order (`web` is the web chat). Offer only these. */
+export function useAvailableChannels() {
+  return useQuery({ ...channelsQuery, select: (data) => data.available });
 }
 
 export function useCreateLinkCode() {

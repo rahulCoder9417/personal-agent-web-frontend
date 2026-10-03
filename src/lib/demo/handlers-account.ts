@@ -4,6 +4,7 @@ import type { ChannelLink, ChannelType, LinkCode, Me, PlanId, UsagePeriod, Usage
 import { nowIso, type Handler } from "./context";
 import {
   badRequest,
+  channelDisabled,
   conflict,
   HttpError,
   isRecord,
@@ -72,7 +73,8 @@ const LINK_CODE_MINUTES = 10;
 /** The demo "sends the code" for you after this long, so linking can be watched finishing. */
 const AUTO_LINK_MS = 6000;
 
-export const listChannels: Handler = ({ state }) => json({ items: state.channels });
+/** A chat linked before its channel was switched off stays in `items`, so it can still be unlinked. */
+export const listChannels: Handler = ({ state }) => json({ items: state.channels, available: state.availableChannels });
 
 function makeLinkCode(): string {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -99,6 +101,7 @@ export const createLinkCode: Handler = async ({ state, request }) => {
   if (channel === "web") throw badRequest("The web app doesn't need linking");
 
   const target = LINK_TARGETS[channel];
+  if (!state.availableChannels.includes(channel)) throw channelDisabled(channel, `${target.label} is switched off right now`);
   const code = makeLinkCode();
   const linkCode: LinkCode = {
     code,
