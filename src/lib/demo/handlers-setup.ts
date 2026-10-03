@@ -1,6 +1,6 @@
 // Apps, own MCP servers, API keys, automations and agent settings for the demo account.
 
-import type { AgentRuntime, ByokKey, ByokProvider, McpServer } from "@/lib/api/client";
+import type { AgentRuntime, AgentSettings, ByokKey, ByokProvider, McpServer } from "@/lib/api/client";
 import { nowIso, type Handler } from "./context";
 import {
   badRequest,
@@ -109,21 +109,27 @@ const RUNTIMES: readonly AgentRuntime[] = ["hermes", "claude_code"];
 const CLAUDE_LOGIN_MINUTES = 10;
 
 /**
- * Works out what runs and what pays for the AI: a connected Claude plan runs Claude Code when chosen,
- * an own API key runs Hermes, and with neither there is nothing to run on.
+ * Works out what runs and what pays for the AI, by the backend's rule, in order:
+ * 1. a connected Claude plan and Claude Code chosen → Claude Code, on the plan
+ * 2. an own API key → Hermes, on the key
+ * 3. Textcrew AI on offer → Hermes, paid in credits
+ * 4. it isn't, but a Claude plan is connected → Claude Code, because the plan is the only AI there is
+ * 5. otherwise nothing runs
  */
 function syncAgentSettings(state: DemoState): void {
   const settings = state.agentSettings;
   const ownKeyProviders = state.byok.filter((key) => key.set).map((key) => key.provider);
-  const runtime = settings.claude.connected ? settings.runtime : "hermes";
-  const onClaude = settings.claude.connected && runtime === "claude_code";
-  state.agentSettings = {
-    ...settings,
-    runtime,
-    ownKeyProviders,
-    effectiveRuntime: onClaude ? "claude_code" : ownKeyProviders.length > 0 ? "hermes" : null,
-    aiAccess: onClaude ? "claude_plan" : ownKeyProviders.length > 0 ? "own_key" : "none",
-  };
+  const connected = settings.claude.connected;
+  const runtime = connected ? settings.runtime : "hermes";
+
+  let access: Pick<AgentSettings, "effectiveRuntime" | "aiAccess">;
+  if (connected && runtime === "claude_code") access = { effectiveRuntime: "claude_code", aiAccess: "claude_plan" };
+  else if (ownKeyProviders.length > 0) access = { effectiveRuntime: "hermes", aiAccess: "own_key" };
+  else if (state.aiMode === "platform") access = { effectiveRuntime: "hermes", aiAccess: "platform" };
+  else if (connected) access = { effectiveRuntime: "claude_code", aiAccess: "claude_plan" };
+  else access = { effectiveRuntime: null, aiAccess: "none" };
+
+  state.agentSettings = { ...settings, runtime, ownKeyProviders, ...access };
 }
 
 export const listByokKeys: Handler = ({ state }) => json({ items: state.byok });

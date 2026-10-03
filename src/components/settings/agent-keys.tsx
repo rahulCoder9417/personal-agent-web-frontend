@@ -1,12 +1,13 @@
 "use client";
 
 import { useId, useState, type FormEvent } from "react";
-import { AppIcon } from "@/components/brand-icon";
-import { Button, Card, ErrorState, Field, InlineError, inputClass, Meta, Pill, SectionLabel, SkeletonRows } from "@/components/ui";
+import { KeyIcon } from "@/components/icons";
+import { Button, Card, ErrorState, Field, IconTile, InlineError, inputClass, Meta, Pill, SkeletonRows } from "@/components/ui";
 import type { ByokKey, ByokProvider } from "@/lib/api/client";
 import { useByokKeys, useDeleteByokKey, useSetByokKey } from "@/lib/api/hooks";
-import { cn, formatDate } from "@/lib/format";
-import { PROVIDER_LABEL, PROVIDERS } from "./agent-summary";
+import { cn, formatDate, listNames } from "@/lib/format";
+import { CHOICE_TAG, ChoiceHeading } from "./agent-choice";
+import { PROVIDER_LABEL, PROVIDERS, type AiChoiceState } from "./agent-summary";
 import { ConfirmButton } from "@/components/confirm-button";
 
 const KEY_MIN = 10;
@@ -104,7 +105,10 @@ function KeyRow({ entry }: { entry: ByokKey }) {
   return (
     <li className="flex flex-col gap-3 border-b border-line px-5 py-3.5 last:border-b-0">
       <div className="flex items-center gap-3">
-        <AppIcon name={entry.provider} size={36} />
+        {/* Providers are named in plain text; no logos. */}
+        <IconTile size={36} className="text-nav">
+          <KeyIcon size={17} />
+        </IconTile>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-[14px] font-semibold">{name}</span>
           <Meta className="truncate">{keyMeta(entry)}</Meta>
@@ -139,16 +143,16 @@ function KeyRow({ entry }: { entry: ByokKey }) {
   );
 }
 
-/** Bring-your-own-key: one row per provider. Keys are write-only; only the last four characters come back. */
-export function ApiKeysSection() {
+/** The first way to get AI: your own key, one row per provider. Keys are write-only; only the last four characters come back. */
+export function ApiKeysSection({ state }: { state: AiChoiceState }) {
   const keys = useByokKeys();
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <SectionLabel>Your API keys</SectionLabel>
-        <span className="text-[12.5px] text-muted">Encrypted. Only the last 4 characters are ever shown.</span>
-      </div>
+      <ChoiceHeading title="Your own API key" tag={CHOICE_TAG.own_key} state={state}>
+        From {listNames(PROVIDERS.map((provider) => PROVIDER_LABEL[provider]))}. Your provider bills the AI directly, so the AI isn’t charged in
+        credits. Keys are encrypted, and only the last 4 characters are ever shown.
+      </ChoiceHeading>
       {keys.isPending ? (
         <Card>
           <SkeletonRows rows={3} />

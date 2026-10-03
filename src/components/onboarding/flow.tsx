@@ -12,7 +12,7 @@ import { StepHi } from "./step-hi";
 import { StepKey } from "./step-key";
 import { StepLink } from "./step-link";
 
-const STEPS = ["Link a chat app", "Connect your apps", "Add your AI key", "Say hi"] as const;
+const STEPS = ["Link a chat app", "Connect your apps", "Choose your AI", "Say hi"] as const;
 
 function StepIndicator({ current, onPick }: { current: number; onPick: (step: number) => void }) {
   return (
@@ -48,7 +48,7 @@ function StepIndicator({ current, onPick }: { current: number; onPick: (step: nu
   );
 }
 
-/** First-run setup: link a chat, connect apps, add an AI key, send the first message. Every step can be skipped. */
+/** First-run setup: link a chat, connect apps, choose where the AI comes from, send the first message. Every step can be skipped. */
 export function OnboardingFlow() {
   const params = useSearchParams();
   const channelParam = params.get("channel");

@@ -22,9 +22,9 @@ function Row({ href, icon, title, detail }: { href: string; icon: ReactNode; tit
 const glyph = (text: string) => <span className="text-[12px] font-semibold">{text}</span>;
 
 const AI_SOURCE: Record<string, string> = {
-  claude_plan: "Claude plan",
+  claude_plan: "Your Claude plan",
   own_key: "Your own key",
-  platform: "Textcrew credits",
+  platform: "Textcrew AI",
   none: "Not set up",
 };
 

@@ -112,6 +112,13 @@ export const SearchIcon = (p: IconProps) => (
   </Base>
 );
 
+export const KeyIcon = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="8" cy="15.5" r="4.5" />
+    <path d="M11.2 12.3 20 3.5M16.5 7l3 3" />
+  </Base>
+);
+
 export const LockIcon = (p: IconProps) => (
   <Base {...p}>
     <rect x="5" y="10.5" width="14" height="9.5" rx="2" />

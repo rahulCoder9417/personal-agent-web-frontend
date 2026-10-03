@@ -22,9 +22,3 @@ export function channelsToShow(available: readonly ChannelType[], seen: Iterable
   }
   return shown;
 }
-
-/** ["Telegram"] → "Telegram"; two → "A or B"; three → "A, B or C". */
-export function listNames(names: readonly string[], joiner = "or"): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} ${joiner} ${names[names.length - 1]}`;
-}

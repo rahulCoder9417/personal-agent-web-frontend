@@ -1,36 +1,74 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import type { ByokProvider } from "@/lib/api/client";
 import { useAgentSettings, useSetByokKey } from "@/lib/api/hooks";
 import { CheckIcon, LockIcon } from "@/components/icons";
-import { Button, Card, ErrorState, Field, InlineError, inputClass } from "@/components/ui";
-import { cn } from "@/lib/format";
+import { CHOICE_TAG, ChoiceStatePill } from "@/components/settings/agent-choice";
+import { CLAUDE_SIGN_IN_NOTE, ClaudeConnectSteps } from "@/components/settings/agent-claude";
+import { describeAiChoices, PROVIDER_LABEL, PROVIDERS, type AiChoice, type AiChoiceState } from "@/components/settings/agent-summary";
+import { Button, Card, ErrorState, Field, InlineError, inputClass, SkeletonRows } from "@/components/ui";
+import { cn, listNames } from "@/lib/format";
 
-const PROVIDERS: { id: ByokProvider; label: string; placeholder: string }[] = [
-  { id: "anthropic", label: "Anthropic", placeholder: "sk-ant-…" },
-  { id: "openai", label: "OpenAI", placeholder: "sk-…" },
-  { id: "openrouter", label: "OpenRouter", placeholder: "sk-or-…" },
+const KEY_PLACEHOLDER: Record<ByokProvider, string> = { anthropic: "sk-ant-…", openai: "sk-…", openrouter: "sk-or-…" };
+
+const CHOICES: { id: AiChoice; title: string; body: string }[] = [
+  {
+    id: "own_key",
+    title: "Your own API key",
+    body: `From ${listNames(PROVIDERS.map((provider) => PROVIDER_LABEL[provider]))}. Your provider bills the AI, so it isn’t charged in credits.`,
+  },
+  { id: "claude_plan", title: "Your Claude plan", body: "Runs Claude Code in your private workspace, on the plan you already pay for." },
+  { id: "textcrew", title: "Textcrew AI", body: "Nothing to set up. The AI is paid in credits." },
 ];
 
-const PROVIDER_LABEL: Record<ByokProvider, string> = { anthropic: "Anthropic", openai: "OpenAI", openrouter: "OpenRouter" };
+function ChoiceOption({
+  title,
+  body,
+  tag,
+  state,
+  checked,
+  onPick,
+}: {
+  title: string;
+  body: string;
+  tag: ReactNode;
+  state: AiChoiceState;
+  checked: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      onClick={onPick}
+      className={cn(
+        "flex items-start gap-3.5 rounded-xl border bg-surface px-4 py-3.5 text-left transition-colors",
+        checked ? "border-fg-2 shadow-[0_0_0_1px_var(--fg-2)]" : "border-line hover:border-fg/40",
+      )}
+    >
+      <span aria-hidden className={cn("mt-0.5 grid size-[18px] shrink-0 place-items-center rounded-full border-[1.5px]", checked ? "border-fg" : "border-line-strong")}>
+        <span className={cn("size-2 rounded-full", checked ? "bg-fg" : "bg-transparent")} />
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="flex flex-wrap items-center gap-2 text-[14.5px] font-semibold">
+          {title}
+          {tag}
+          <ChoiceStatePill state={state} />
+        </span>
+        <span className="text-[13px] text-muted">{body}</span>
+      </span>
+    </button>
+  );
+}
 
-/** Step 3: Tex runs on the user's own AI key, so the provider bills the AI and credits don't. */
-export function StepKey({ onDone }: { onDone: () => void }) {
+function KeyForm({ onDone }: { onDone: () => void }) {
   const id = useId();
-  const settings = useAgentSettings();
   const save = useSetByokKey();
-  const [provider, setProvider] = useState<ByokProvider>("anthropic");
+  const [provider, setProvider] = useState<ByokProvider>(PROVIDERS[0]);
   const [apiKey, setApiKey] = useState("");
-
-  const current = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0];
   const tooShort = apiKey.trim().length > 0 && apiKey.trim().length < 10;
-  const existing = settings.data
-    ? [
-        ...(settings.data.claude.connected ? ["your Claude plan"] : []),
-        ...settings.data.ownKeyProviders.map((p) => `your ${PROVIDER_LABEL[p]} key`),
-      ]
-    : [];
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -48,84 +86,194 @@ export function StepKey({ onDone }: { onDone: () => void }) {
   };
 
   return (
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <Field label="Provider" htmlFor={`${id}-provider`}>
+        <select
+          id={`${id}-provider`}
+          value={provider}
+          onChange={(event) => {
+            setProvider(event.target.value as ByokProvider);
+            save.reset();
+          }}
+          className={cn(inputClass, "appearance-auto pr-2")}
+        >
+          {PROVIDERS.map((option) => (
+            <option key={option} value={option}>
+              {PROVIDER_LABEL[option]}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field
+        label="API key"
+        htmlFor={`${id}-key`}
+        error={tooShort ? "That looks too short to be a key." : null}
+        hint="We make one test call before saving. The key is encrypted and never shown again; only its last 4 characters appear in settings."
+      >
+        <input
+          id={`${id}-key`}
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={KEY_PLACEHOLDER[provider]}
+          value={apiKey}
+          onChange={(event) => {
+            setApiKey(event.target.value);
+            if (save.isError) save.reset();
+          }}
+          className={cn(inputClass, "text-[13px]")}
+        />
+      </Field>
+
+      <InlineError error={save.error} />
+
+      <Button type="submit" variant="primary" size="lg" className="self-start" pending={save.isPending} disabled={apiKey.trim().length < 10}>
+        Test and save
+      </Button>
+    </form>
+  );
+}
+
+function ClaudePanel({ connected, onDone }: { connected: boolean; onDone: () => void }) {
+  if (connected) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="min-w-[200px] flex-1 text-[14px]">Your Claude plan is connected.</p>
+        <Button variant="primary" size="lg" onClick={onDone}>
+          Continue
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <ClaudeConnectSteps />
+      <p className="border-t border-line pt-4 text-[13px] text-muted">{CLAUDE_SIGN_IN_NOTE}</p>
+    </div>
+  );
+}
+
+function TextcrewPanel({ state, onDone }: { state: AiChoiceState; onDone: () => void }) {
+  if (state === "unavailable") {
+    return (
+      <p className="text-[14px] text-muted">
+        Textcrew AI isn’t available on this account right now. Tex needs your own API key or your Claude plan to work.
+      </p>
+    );
+  }
+  const inUse = state === "in_use";
+  return (
+    <div className="flex flex-col items-start gap-3.5">
+      <p className="text-[14px]">
+        {inUse
+          ? "Tex is ready. The AI it uses comes out of your credits, along with running time and app actions."
+          : "Tex is on your own AI now, so the AI isn’t charged in credits. Textcrew AI is what it uses when no key or plan is connected."}
+      </p>
+      <Button variant="primary" size="lg" onClick={onDone}>
+        {inUse ? "Continue with Textcrew AI" : "Continue"}
+      </Button>
+    </div>
+  );
+}
+
+/** What Tex already runs on, so someone with an AI in place can simply carry on. */
+function AlreadySet({ choices, ownKeys, onDone }: { choices: Record<AiChoice, AiChoiceState>; ownKeys: ByokProvider[]; onDone: () => void }) {
+  const own = [
+    ...(choices.claude_plan !== "not_set_up" ? ["your Claude plan"] : []),
+    ...ownKeys.map((provider) => `your ${PROVIDER_LABEL[provider]} key`),
+  ];
+  const message =
+    own.length > 0
+      ? `Tex can already run on ${listNames(own, "and")}. Change it below, or carry on.`
+      : choices.textcrew === "in_use"
+        ? "Tex already works: it runs on Textcrew AI, paid in credits. Add your own AI below so the AI isn’t charged, or carry on."
+        : null;
+  if (!message) return null;
+  return (
+    <div role="status" className="flex items-center gap-3 rounded-xl bg-success-soft px-4 py-3 text-[13.5px] text-success">
+      <CheckIcon size={16} className="shrink-0" />
+      <span className="flex-1">{message}</span>
+      <Button size="sm" onClick={onDone}>
+        Continue
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Step 3: the three ways Tex can get its AI. Nothing here is required to finish setup:
+ * where Textcrew AI is on offer, Tex already works without a key.
+ */
+export function StepKey({ onDone }: { onDone: () => void }) {
+  const settings = useAgentSettings();
+  const [picked, setPicked] = useState<AiChoice>("own_key");
+
+  if (settings.isPending) {
+    return (
+      <Card className="max-w-[620px]">
+        <SkeletonRows rows={3} />
+      </Card>
+    );
+  }
+  if (settings.isError) {
+    return (
+      <div className="flex max-w-[620px] flex-col items-center gap-3">
+        <ErrorState error={settings.error} onRetry={() => void settings.refetch()} className="py-6" />
+        <Button variant="ghost" onClick={onDone}>
+          Skip for now
+        </Button>
+      </div>
+    );
+  }
+
+  const choices = describeAiChoices(settings.data);
+  const noAi = settings.data.aiAccess === "none";
+
+  return (
     <div className="flex max-w-[620px] flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Add your AI key</h1>
+        <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Choose how Tex gets its AI</h1>
         <p className="max-w-[540px] text-[15px] text-muted">
-          Tex thinks with your own Anthropic, OpenAI or OpenRouter key. Your provider bills the AI directly, so it isn’t charged in credits.
+          There are three ways. With your own key or plan, the AI isn’t charged in credits. You can change this later under Agent &amp; AI.
         </p>
       </div>
 
-      {settings.isError && <ErrorState error={settings.error} onRetry={() => settings.refetch()} className="py-6" />}
+      <AlreadySet choices={choices} ownKeys={settings.data.ownKeyProviders} onDone={onDone} />
 
-      {existing.length > 0 && (
-        <div role="status" className="flex items-center gap-3 rounded-xl bg-success-soft px-4 py-3 text-[13.5px] text-success">
-          <CheckIcon size={16} className="shrink-0" />
-          <span className="flex-1">Tex can already run on {existing.join(" and ")}. Add another key, or carry on.</span>
-          <Button size="sm" onClick={onDone}>
-            Continue
-          </Button>
-        </div>
-      )}
+      <div role="radiogroup" aria-label="How Tex gets its AI" className="flex flex-col gap-2.5">
+        {CHOICES.map((choice) => (
+          <ChoiceOption
+            key={choice.id}
+            title={choice.title}
+            body={choice.body}
+            tag={CHOICE_TAG[choice.id]}
+            state={choices[choice.id]}
+            checked={picked === choice.id}
+            onPick={() => setPicked(choice.id)}
+          />
+        ))}
+      </div>
 
       <Card className="p-5">
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          <Field label="Provider" htmlFor={`${id}-provider`}>
-            <select
-              id={`${id}-provider`}
-              value={provider}
-              onChange={(event) => {
-                setProvider(event.target.value as ByokProvider);
-                save.reset();
-              }}
-              className={cn(inputClass, "appearance-auto pr-2")}
-            >
-              {PROVIDERS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field
-            label="API key"
-            htmlFor={`${id}-key`}
-            error={tooShort ? "That looks too short to be a key." : null}
-            hint="We make one test call before saving."
-          >
-            <input
-              id={`${id}-key`}
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={current.placeholder}
-              value={apiKey}
-              onChange={(event) => {
-                setApiKey(event.target.value);
-                if (save.isError) save.reset();
-              }}
-              className={cn(inputClass, "text-[13px]")}
-            />
-          </Field>
-
-          <InlineError error={save.error} />
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Button type="submit" variant="primary" size="lg" pending={save.isPending} disabled={apiKey.trim().length < 10}>
-              Test and save
-            </Button>
-            <Button size="lg" variant="ghost" onClick={onDone} disabled={save.isPending}>
-              Skip for now
-            </Button>
-          </div>
-        </form>
+        {picked === "own_key" && <KeyForm onDone={onDone} />}
+        {picked === "claude_plan" && <ClaudePanel connected={settings.data.claude.connected} onDone={onDone} />}
+        {picked === "textcrew" && <TextcrewPanel state={choices.textcrew} onDone={onDone} />}
       </Card>
 
-      <p className="flex items-start gap-2.5 text-[13px] text-muted">
-        <LockIcon size={16} className="mt-px shrink-0" />
-        <span>Your key is encrypted and never shown again; only the last 4 characters appear in settings. You can also connect a Claude plan later under Agent &amp; AI.</span>
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
+        <p className="flex min-w-[240px] flex-1 items-start gap-2.5 text-[13px] text-muted">
+          <LockIcon size={16} className="mt-px shrink-0" />
+          <span>
+            {noAi
+              ? "Tex can’t start a job until you add a key or connect a plan. You can also do it later under Agent & AI."
+              : "Your key is encrypted, and a Claude plan is signed in on Anthropic’s own page: we never see those credentials."}
+          </span>
+        </p>
+        <Button variant="ghost" size="sm" onClick={onDone}>
+          {noAi ? "I’ll do this later" : "Skip for now"}
+        </Button>
+      </div>
     </div>
   );
 }

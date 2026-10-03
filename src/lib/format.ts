@@ -176,6 +176,12 @@ export function titleCase(value: string): string {
     .join(" ");
 }
 
+/** Names as they read in a sentence: "Telegram"; "A or B"; "A, B or C". */
+export function listNames(names: readonly string[], joiner: "or" | "and" = "or"): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} ${joiner} ${names[names.length - 1]}`;
+}
+
 /** "AS" from "Aarav Shah" */
 export function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);

@@ -34,7 +34,7 @@ export function RunningNowCard({ settings }: { settings: AgentSettings }) {
       <div className="flex flex-wrap gap-x-7 gap-y-3">
         <Fact label="Agent">{summary.agent}</Fact>
         <Fact label="AI paid by">{summary.paidBy}</Fact>
-        <Fact label="Credits cover">Working time and paid tools</Fact>
+        <Fact label="Credits cover">{summary.creditsCover}</Fact>
       </div>
     </Card>
   );
@@ -98,15 +98,15 @@ export function RuntimeSection({ settings }: { settings: AgentSettings }) {
       <div role="radiogroup" aria-label="Agent" className="flex flex-col gap-2.5">
         <RuntimeOption
           title="Hermes"
-          description="Our agent. Runs on your own API key from Anthropic, OpenAI or OpenRouter."
+          description="Our agent. Runs on your own API key, or on Textcrew AI when you haven’t added one."
           checked={settings.runtime === "hermes"}
           pending={moving("hermes")}
           onPick={() => pick("hermes")}
         />
         <RuntimeOption
           title="Claude Code"
-          description="The official Claude Code, running in your private workspace on your Claude plan."
-          note={settings.claude.connected ? undefined : "Needs a Claude plan"}
+          description="Runs Claude Code in your private workspace, on your Claude plan."
+          note={settings.claude.connected ? "Beta" : "Needs a Claude plan"}
           checked={settings.runtime === "claude_code"}
           disabled={!settings.claude.connected}
           pending={moving("claude_code")}
@@ -121,7 +121,7 @@ export function RuntimeSection({ settings }: { settings: AgentSettings }) {
 const RULES: { when: string; then: string }[] = [
   { when: "Claude plan connected", then: "Claude Code runs, when you choose it. Your plan covers the AI." },
   { when: "Your own API key", then: "Hermes runs. Your provider bills the AI, not your credits." },
-  { when: "Neither", then: "Tex can’t start a job. Add a key or connect a plan to wake it." },
+  { when: "Neither", then: "Hermes runs on Textcrew AI, and the AI is paid in credits. Where Textcrew AI isn’t available, Tex can’t start a job until you add a key or connect a plan." },
 ];
 
 export function HowItsDecided() {

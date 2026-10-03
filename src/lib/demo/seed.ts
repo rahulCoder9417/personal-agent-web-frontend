@@ -53,6 +53,8 @@ export type DemoData = {
   automations: Automation[];
   agentStatus: AgentStatus;
   agentSettings: AgentSettings;
+  /** Like the backend's AI_ACCESS_MODE: `platform` offers Textcrew AI, `own_only` requires the user's own AI. */
+  aiMode: AiMode;
   /** loginId → expiresAt */
   claudeLogins: Record<string, string>;
   plans: Plan[];
@@ -211,8 +213,15 @@ export function demoPlan(): PlanId {
   return PLAN_IDS.includes(wanted as PlanId) ? (wanted as PlanId) : "pro";
 }
 
+export type AiMode = "platform" | "own_only";
+
+/** `TEXTCREW_DEMO_AI_ACCESS_MODE=own_only` shows the screens as they are when Textcrew AI isn't on offer. */
+export function demoAiMode(): AiMode {
+  return process.env.TEXTCREW_DEMO_AI_ACCESS_MODE === "own_only" ? "own_only" : "platform";
+}
+
 function seedPlans(): Plan[] {
-  const ownKey = "Runs on your own AI key";
+  const ownKey = "Your own AI, or Textcrew AI paid in credits";
   const topUp = "Top-ups: $10 for 800 credits";
   return [
     {
@@ -228,7 +237,7 @@ function seedPlans(): Plan[] {
     {
       id: "max", name: "Max", priceCents: 3000, interval: "month", monthlyCredits: 4500, signupCredits: 0,
       limits: { apps: 25, automations: 50, ownMcpServers: true, topUps: true, models: "all" },
-      features: ["4,500 credits every month", "Priority when things get busy", "All 25 apps plus your own MCP servers", "50 automations", topUp, ownKey],
+      features: ["4,500 credits every month", "Priority when things get busy", "All 25 apps plus your own MCP servers", "50 automations", "Browser use", topUp, ownKey],
     },
   ];
 }
@@ -453,6 +462,7 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
       runtime: "hermes", effectiveRuntime: "hermes", aiAccess: "own_key",
       claude: { connected: false, connectedAt: null }, ownKeyProviders: ["anthropic"],
     },
+    aiMode: demoAiMode(),
     claudeLogins: {},
     plans: seedPlans(),
     topUps: [{ id: "topup_10", priceCents: 1000, credits: 800, expiresInDays: CREDIT_LIFETIME_DAYS }],

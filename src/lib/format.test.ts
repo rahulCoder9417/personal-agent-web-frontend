@@ -8,6 +8,7 @@ import {
   formatMoney,
   formatTimeLeft,
   initials,
+  listNames,
   titleCase,
 } from "./format";
 import type { Automation } from "./api/client";
@@ -92,5 +93,15 @@ describe("describeAutomationNext", () => {
 
   it("says what a trigger is watching", () => {
     expect(describeAutomationNext({ ...base, kind: "event", trigger: { app: "gmail", event: "NEW_EMAIL" } })).toBe("Watching Gmail");
+  });
+});
+
+describe("listNames", () => {
+  it("reads like a sentence for one, two or three names", () => {
+    expect(listNames(["Telegram"])).toBe("Telegram");
+    expect(listNames(["WhatsApp", "Telegram"])).toBe("WhatsApp or Telegram");
+    expect(listNames(["WhatsApp", "Telegram", "iMessage"])).toBe("WhatsApp, Telegram or iMessage");
+    expect(listNames(["Anthropic", "OpenAI"], "and")).toBe("Anthropic and OpenAI");
+    expect(listNames([])).toBe("");
   });
 });

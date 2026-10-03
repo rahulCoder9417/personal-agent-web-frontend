@@ -1,9 +1,7 @@
 import {
   siAirtable,
-  siAnthropic,
   siAsana,
   siCalendly,
-  siClaude,
   siClickup,
   siDropbox,
   siGithub,
@@ -17,7 +15,6 @@ import {
   siJira,
   siLinear,
   siNotion,
-  siOpenrouter,
   siTelegram,
   siTodoist,
   siTrello,
@@ -27,7 +24,8 @@ import {
 } from "simple-icons";
 import { cn } from "@/lib/format";
 
-// Brand marks from simple-icons (CC0). Slack and OpenAI aren't in the set, so they get neutral glyphs.
+// Brand marks from simple-icons (CC0). Slack isn't in the set, so it gets a neutral glyph.
+// AI providers are left out on purpose: they are named in plain text only, never shown as a logo.
 const ICONS: Record<string, SimpleIcon> = {
   gmail: siGmail,
   googlecalendar: siGooglecalendar,
@@ -44,9 +42,6 @@ const ICONS: Record<string, SimpleIcon> = {
   asana: siAsana,
   todoist: siTodoist,
   airtable: siAirtable,
-  anthropic: siAnthropic,
-  claude: siClaude,
-  openrouter: siOpenrouter,
   googledocs: siGoogledocs,
   dropbox: siDropbox,
   jira: siJira,
@@ -65,7 +60,6 @@ const ALIASES: Record<string, string> = {
   sheets: "googlesheets",
   google_sheets: "googlesheets",
   "google-sheets": "googlesheets",
-  claude_code: "claude",
 };
 
 function resolve(name: string): string {
@@ -74,7 +68,7 @@ function resolve(name: string): string {
 }
 
 /**
- * The logo for an app, chat app or AI provider, looked up by slug.
+ * The logo for an app or chat app, looked up by slug.
  * Falls back to the API's own icon URL, then to the slug's first letter.
  */
 export function BrandIcon({

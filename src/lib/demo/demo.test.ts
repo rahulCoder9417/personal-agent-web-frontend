@@ -287,12 +287,35 @@ describe("setup", () => {
     expect((await call<AgentSettings>("GET", "agent/settings")).body).toMatchObject({ runtime: "hermes", aiAccess: "own_key" });
   });
 
-  it("has nothing to run on once the last API key is removed", async () => {
+  it("falls back to Textcrew AI once the last API key is removed, and charges the AI in credits", async () => {
     expect((await call("PUT", "byok/openai", { apiKey: "short" })).status).toBe(400);
     expect((await call("DELETE", "byok/anthropic")).status).toBe(204);
-    expect((await call<AgentSettings>("GET", "agent/settings")).body).toMatchObject({ effectiveRuntime: null, aiAccess: "none" });
+    expect((await call<AgentSettings>("GET", "agent/settings")).body).toMatchObject({ effectiveRuntime: "hermes", aiAccess: "platform", ownKeyProviders: [] });
+
+    await call<Message>("POST", "messages", { text: "What's on my calendar today?", clientMessageId: uuid(4) });
+    vi.advanceTimersByTime(2000);
+    expect(getStore().ledger[0]).toMatchObject({ delta: -3, description: "Usage: AI 2, awake time 1" });
+    const today = (await call<{ items: UsagePeriod[] }>("GET", `usage?from=${encodeURIComponent(new Date("2026-10-01T00:00:00").toISOString())}&to=${encodeURIComponent(new Date("2026-10-01T23:00:00").toISOString())}`)).body.items[0];
+    expect(today).toMatchObject({ aiCredits: 2, awakeCredits: 5, appActionCredits: 2, totalCredits: 9 });
+
     const saved = await call<{ last4: string }>("PUT", "byok/openrouter", { apiKey: "sk-or-0123456789abcd" });
     expect(saved.body.last4).toBe("abcd");
+    expect((await call<AgentSettings>("GET", "agent/settings")).body.aiAccess).toBe("own_key");
+  });
+
+  it("has nothing to run on without a key when your own AI is required", async () => {
+    getStore().aiMode = "own_only";
+    expect((await call("DELETE", "byok/anthropic")).status).toBe(204);
+    expect((await call<AgentSettings>("GET", "agent/settings")).body).toMatchObject({ effectiveRuntime: null, aiAccess: "none" });
+  });
+
+  it("runs Claude Code on a connected plan when Hermes has no AI of its own", async () => {
+    getStore().aiMode = "own_only";
+    const login = await call<{ loginId: string }>("POST", "agent/claude/login");
+    await call("POST", `agent/claude/login/${login.body.loginId}/complete`, { code: "abcd-1234" });
+    await call("DELETE", "byok/anthropic");
+    const settings = await call<AgentSettings>("PATCH", "agent/settings", { runtime: "hermes" });
+    expect(settings.body).toMatchObject({ runtime: "hermes", effectiveRuntime: "claude_code", aiAccess: "claude_plan" });
   });
 
   it("lists the channels that are switched on next to the linked chats", async () => {

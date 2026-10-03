@@ -13,8 +13,8 @@ import {
 } from "@/lib/api/hooks";
 import { describeAgent } from "@/lib/agent-state";
 import { approvalReason } from "@/lib/approvals";
-import { linkableChannels, listNames } from "@/lib/channels";
-import { CHANNEL_LABEL, cn, describeAutomationNext, describeAutomationSchedule, formatCredits, formatTime } from "@/lib/format";
+import { linkableChannels } from "@/lib/channels";
+import { CHANNEL_LABEL, cn, describeAutomationNext, describeAutomationSchedule, formatCredits, formatTime, listNames } from "@/lib/format";
 import { AppIcon } from "../brand-icon";
 import { CheckIcon, ChevronRightIcon, ClockIcon } from "../icons";
 import { AgentFigure } from "../tex";
@@ -117,7 +117,7 @@ export function SidePanel() {
           <p className="text-[13.5px] font-semibold">Finish setting up</p>
           <p className="text-[13px] text-muted">
             {needsAi
-              ? "Tex needs an AI key or a Claude plan before it can start a job."
+              ? "Textcrew AI isn’t available on this account, so Tex needs your own API key or your Claude plan before it can start a job."
               : `Link ${listNames(linkable.map((channel) => CHANNEL_LABEL[channel]))} to text Tex from your phone.`}
           </p>
           <ButtonLink href={needsAi ? "/settings/agent" : "/onboarding"} variant="primary" size="sm" className="self-start">

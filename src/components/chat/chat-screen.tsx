@@ -3,8 +3,8 @@
 import { Suspense, useMemo, useRef, useState } from "react";
 import type { ChannelType } from "@/lib/api/client";
 import { useAvailableChannels, useChannels, useMessages } from "@/lib/api/hooks";
-import { channelsToShow, linkableChannels, listNames } from "@/lib/channels";
-import { CHANNEL_LABEL, cn } from "@/lib/format";
+import { channelsToShow, linkableChannels } from "@/lib/channels";
+import { CHANNEL_LABEL, cn, listNames } from "@/lib/format";
 import { BrandIcon } from "../brand-icon";
 import { Page, PageHeader } from "../page";
 import { FilterPills, type FilterOption } from "../ui";

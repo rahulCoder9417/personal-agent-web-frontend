@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { channelsToShow, linkableChannels, listNames } from "./channels";
+import { channelsToShow, linkableChannels } from "./channels";
 
 describe("linkableChannels", () => {
   it("offers what the backend has switched on, in its order, without the web chat", () => {
@@ -20,15 +20,5 @@ describe("channelsToShow", () => {
 
   it("is just the available channels when nothing else has been seen", () => {
     expect(channelsToShow(["telegram", "web"], [])).toEqual(["telegram", "web"]);
-  });
-});
-
-describe("listNames", () => {
-  it("reads like a sentence for one, two or three names", () => {
-    expect(listNames(["Telegram"])).toBe("Telegram");
-    expect(listNames(["WhatsApp", "Telegram"])).toBe("WhatsApp or Telegram");
-    expect(listNames(["WhatsApp", "Telegram", "iMessage"])).toBe("WhatsApp, Telegram or iMessage");
-    expect(listNames(["Anthropic", "OpenAI"], "and")).toBe("Anthropic and OpenAI");
-    expect(listNames([])).toBe("");
   });
 });
