@@ -172,26 +172,29 @@ export const getUsage: Handler = ({ state, url }) => {
   if (to.getTime() - from.getTime() > MAX_USAGE_DAYS * 86_400_000) throw badRequest("Ask for a year at most");
 
   const items: UsagePeriod[] = [];
-  const totals: UsageTotals = { aiCredits: 0, awakeCredits: 0, toolCredits: 0, totalCredits: 0 };
+  const totals: UsageTotals = { aiCredits: 0, awakeCredits: 0, appActionCredits: 0, toolCredits: 0, totalCredits: 0 };
   const day = new Date(from);
   day.setHours(0, 0, 0, 0);
   while (day < to) {
     const next = new Date(day);
     next.setDate(next.getDate() + 1);
-    // The AI runs on the user's own key, so it never costs credits.
-    const { awake, tools } = state.usage[dayKey(day)] ?? { awake: 0, tools: 0 };
+    const { ai, awake, actions } = state.usage[dayKey(day)] ?? { ai: 0, awake: 0, actions: 0 };
     items.push({
       periodStart: day.toISOString(),
       periodEnd: next.toISOString(),
-      aiCredits: 0,
-      awakeSeconds: awake * 90,
+      aiCredits: ai,
+      // One credit per 10 minutes the agent ran.
+      awakeSeconds: awake * 600,
       awakeCredits: awake,
-      toolCredits: tools,
-      totalCredits: awake + tools,
+      appActionCredits: actions,
+      // Browser use and paid tools aren't on yet.
+      toolCredits: 0,
+      totalCredits: ai + awake + actions,
     });
+    totals.aiCredits += ai;
     totals.awakeCredits += awake;
-    totals.toolCredits += tools;
-    totals.totalCredits += awake + tools;
+    totals.appActionCredits += actions;
+    totals.totalCredits += ai + awake + actions;
     day.setTime(next.getTime());
   }
   return json({ items, totals });

@@ -30,7 +30,8 @@ export const SIGNUP_DAYS_AGO = 19;
 const PRO_SINCE_DAYS_AGO = 10;
 const CREDIT_LIFETIME_DAYS = 90;
 
-export type DayUsage = { awake: number; tools: number };
+/** Credits used in a day, by what they paid for. Browser use and paid tools aren't on yet, so there is no fourth part. */
+export type DayUsage = { ai: number; awake: number; actions: number };
 
 export type DemoData = {
   user: Omit<Me, "credits">;
@@ -124,47 +125,77 @@ function dailyCredits(): number[] {
   return [today, yesterday, ...scaled];
 }
 
-function splitDay(total: number, daysAgo: number): DayUsage {
-  if (daysAgo === 0) return { awake: 4, tools: 2 };
-  if (daysAgo === 1) return { awake: 2, tools: 0 };
-  const tools = Math.round(total * 0.3);
-  return { awake: total - tools, tools };
-}
+/**
+ * Something Tex did: a charge in the ledger, a line in the activity log, or both.
+ * As in the backend, the time the agent ran is charged as "Usage: awake time N" and each app
+ * action that changed something as its own one-credit "App action: NAME"; reading is free.
+ */
+type Happened = {
+  at: string;
+  charge?: { amount: number; description: string; part: keyof DayUsage };
+  did?: { action: string; summary: string; creditsCharged: number | null };
+};
 
-type Charge = { at: string; amount: number; description: string; summary: string; action: string };
+const ranFor = (at: string, credits: number): Happened => ({
+  at,
+  charge: { amount: credits, description: `Usage: awake time ${credits}`, part: "awake" },
+});
 
-const PAST_TASKS: readonly { description: string; summary: string }[] = [
-  { description: "Task: drafted replies to 3 emails", summary: "Drafted replies to 3 emails" },
-  { description: "Task: found a free slot and sent the invite", summary: "Found a free slot and sent the invite" },
-  { description: "Task: filed meeting notes", summary: "Filed meeting notes in Notion" },
-  { description: "Task: summarised the #team thread", summary: "Summarised the #team thread" },
-  { description: "Task: pulled this week’s invoices", summary: "Pulled this week’s invoices from Gmail" },
-  { description: "Task: updated the Acme kickoff page", summary: "Updated the “Acme kickoff” page" },
-  { description: "Task: rescheduled the design review", summary: "Rescheduled the design review" },
+const changed = (at: string, action: string, summary: string): Happened => ({
+  at,
+  charge: { amount: 1, description: `App action: ${action}`, part: "actions" },
+  did: { action: "app_action", summary, creditsCharged: 1 },
+});
+
+const read = (at: string, summary: string): Happened => ({ at, did: { action: "app_action", summary, creditsCharged: 0 } });
+
+const automationRan = (at: string, title: string): Happened => ({
+  ...ranFor(at, 1),
+  did: { action: "automation_run", summary: `Ran “${title}”`, creditsCharged: null },
+});
+
+const PAST_CHANGES: readonly { action: string; summary: string }[] = [
+  { action: "GMAIL_CREATE_EMAIL_DRAFT", summary: "Drafted a reply to Dana" },
+  { action: "GOOGLECALENDAR_CREATE_EVENT", summary: "Found a free slot and sent the invite" },
+  { action: "NOTION_CREATE_PAGE", summary: "Filed meeting notes in Notion" },
+  { action: "SLACK_SEND_MESSAGE", summary: "Posted the stand-up summary in #team" },
+  { action: "NOTION_UPDATE_PAGE", summary: "Updated the “Acme kickoff” page" },
+  { action: "GOOGLECALENDAR_UPDATE_EVENT", summary: "Rescheduled the design review" },
+  { action: "GMAIL_SEND_EMAIL", summary: "Sent this week’s invoice to Acme" },
 ];
 
-/** Every charge since sign-up, oldest first. */
-function seedCharges(now: Date): Charge[] {
+const PAST_READS: readonly string[] = [
+  "Read the #team thread",
+  "Searched Gmail for this week’s invoices",
+  "Checked your calendar for the week",
+  "Looked up the “Acme kickoff” notes",
+];
+
+/** Everything Tex did since sign-up, oldest first. Each day's charges add up to `dailyCredits()`. */
+function seedHappened(now: Date): Happened[] {
   const perDay = dailyCredits();
-  const charges: Charge[] = [];
+  const happened: Happened[] = [];
   for (let d = SIGNUP_DAYS_AGO; d >= 2; d--) {
     const total = perDay[d];
-    const second = Math.floor(total * 0.4);
-    const task = PAST_TASKS[d % PAST_TASKS.length];
-    charges.push({ at: atDay(now, d, 10, (d * 7) % 60), amount: total - second, ...task, action: "app_action" });
-    if (second > 0) {
-      const next = PAST_TASKS[(d + 3) % PAST_TASKS.length];
-      charges.push({ at: atDay(now, d, 15, (d * 11) % 60), amount: second, ...next, action: "app_action" });
+    const changes = Math.min(1 + (d % 3), total - 1);
+    const minute = (d * 7) % 50;
+    happened.push(read(atDay(now, d, 10, minute), PAST_READS[d % PAST_READS.length]));
+    for (let i = 0; i < changes; i++) {
+      const change = PAST_CHANGES[(d + i * 3) % PAST_CHANGES.length];
+      happened.push(changed(atDay(now, d, 10 + i * 2, minute + 2), change.action, change.summary));
     }
+    happened.push(ranFor(atDay(now, d, 15, minute), total - changes));
   }
-  charges.push(
-    { at: atDay(now, 1, 8), amount: 1, description: "Automation: Today’s meetings", summary: "Ran “Today’s meetings”", action: "automation_run" },
-    { at: atDay(now, 1, 17, 32), amount: 1, description: "Task: posted update in #team", summary: "Posted yesterday’s update in #team", action: "app_action" },
-    { at: earlierToday(now, 390), amount: 1, description: "Automation: Today’s meetings", summary: "Ran “Today’s meetings”", action: "automation_run" },
-    { at: earlierToday(now, 207), amount: 3, description: "Task: filed voice note in Notion", summary: "Filed notes from your voice note", action: "app_action" },
-    { at: earlierToday(now, 16), amount: 2, description: "Task: moved “Roadmap sync” to tomorrow", summary: "Moved “Roadmap sync” to tomorrow, 3:00 PM", action: "app_action" },
+  happened.push(
+    automationRan(atDay(now, 1, 8), "Today’s meetings"),
+    changed(atDay(now, 1, 17, 32), "SLACK_SEND_MESSAGE", "Posted yesterday’s update in #team"),
+    automationRan(earlierToday(now, 390), "Today’s meetings"),
+    changed(earlierToday(now, 207), "NOTION_CREATE_PAGE", "Filed notes from your voice note"),
+    ranFor(earlierToday(now, 206), 2),
+    changed(earlierToday(now, 16), "GOOGLECALENDAR_UPDATE_EVENT", "Moved “Roadmap sync” to tomorrow, 3:00 PM"),
+    ranFor(earlierToday(now, 15), 1),
   );
-  return charges;
+  return happened;
 }
 
 // ---------------------------------------------------------------- the seed
@@ -348,24 +379,23 @@ function seedMoney(now: Date) {
 
   // Spend the oldest-expiring credits first, exactly as the real ledger does.
   const usage: Record<string, DayUsage> = {};
-  seedCharges(now).forEach((charge, index) => {
-    let left = charge.amount;
-    let firstGrant: string | null = null;
-    for (const grant of grants) {
-      if (left === 0) break;
-      const take = Math.min(left, grant.remaining);
-      if (take === 0) continue;
-      grant.remaining -= take;
-      left -= take;
-      firstGrant ??= grant.id;
+  seedHappened(now).forEach(({ at, charge, did }, index) => {
+    if (charge) {
+      let left = charge.amount;
+      let firstGrant: string | null = null;
+      for (const grant of grants) {
+        if (left === 0) break;
+        const take = Math.min(left, grant.remaining);
+        if (take === 0) continue;
+        grant.remaining -= take;
+        left -= take;
+        firstGrant ??= grant.id;
+      }
+      ledger.push({ id: `led_c${index}`, delta: -charge.amount, reason: "charge", grantId: firstGrant, description: charge.description, createdAt: at });
+      const day = (usage[dayKey(new Date(at))] ??= { ai: 0, awake: 0, actions: 0 });
+      day[charge.part] += charge.amount;
     }
-    ledger.push({ id: `led_c${index}`, delta: -charge.amount, reason: "charge", grantId: firstGrant, description: charge.description, createdAt: charge.at });
-    activity.push({ id: `act_c${index}`, actor: "agent", action: charge.action, summary: charge.summary, creditsCharged: charge.amount, createdAt: charge.at });
-  });
-  dailyCredits().forEach((total, daysAgo) => {
-    const date = startOfDay(now);
-    date.setDate(date.getDate() - daysAgo);
-    usage[dayKey(date)] = splitDay(total, daysAgo);
+    if (did) activity.push({ id: `act_c${index}`, actor: "agent", ...did, createdAt: at });
   });
 
   const newestFirst = (a: { createdAt: string }, b: { createdAt: string }) => Date.parse(b.createdAt) - Date.parse(a.createdAt);

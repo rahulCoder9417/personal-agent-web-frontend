@@ -11,6 +11,8 @@ info:
 
     Not covered here:
     - `/mcp`: the Platform MCP, which speaks the MCP protocol (streamable HTTP), not REST.
+    - `/git`: the git gateway, which speaks git smart HTTP.
+      Both are for user containers only and answer 404 from the internet.
     - Backend ↔ vm-manager: gRPC, defined in `vm-manager/proto/vm/v1/vm.proto`.
 
     Conventions:
@@ -99,7 +101,12 @@ paths:
     get:
       operationId: listChannels
       tags: [channels]
-      summary: Linked chat apps
+      summary: Linked chat apps, and which channels are switched on
+      description: |
+        `available` lists the channels that are switched on for this deployment (the
+        `ENABLED_CHANNELS` setting; at launch `telegram` and `web`). Offer only these: a link code
+        for any other channel is refused with 403 `channel_disabled`. `web` means web chat.
+        `items` can still hold a link to a channel that was switched off later, so it can be unlinked.
       responses:
         "200":
           description: OK
@@ -107,11 +114,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, available]
                 properties:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/ChannelLink" }
+                  available:
+                    type: array
+                    description: Channels that are switched on, in the order they are configured.
+                    items: { $ref: "#/components/schemas/ChannelType" }
+                    examples: [[telegram, web]]
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /v1/channels/link-codes:
@@ -120,8 +132,10 @@ paths:
       tags: [channels]
       summary: Create a one-time code to link a chat app
       description: |
-        The user sends the returned code to our WhatsApp number / Telegram bot / iMessage number.
+        The user sends the returned code to our Telegram bot (or WhatsApp / iMessage number).
         Single use, expires after 10 minutes. Rate limited.
+        Only for a channel that is switched on (`available` in `GET /v1/channels`); otherwise
+        403 `channel_disabled`. `web` needs no linking (400).
       requestBody:
         required: true
         content:
@@ -139,6 +153,7 @@ paths:
               schema: { $ref: "#/components/schemas/LinkCode" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ChannelDisabled" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /v1/channels/{channelLinkId}:
@@ -187,7 +202,8 @@ paths:
       summary: Send a message to the agent from the web app
       description: |
         Queued like any other channel message. The reply arrives on the SSE stream.
-        Returns 402 when the balance is zero.
+        Returns 402 when the balance is zero, and 403 `channel_disabled` when web chat is switched
+        off (`web` is not in `available`, see `GET /v1/channels`).
       requestBody:
         required: true
         content:
@@ -214,6 +230,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "402": { $ref: "#/components/responses/OutOfCredits" }
+        "403": { $ref: "#/components/responses/ChannelDisabled" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /v1/attachments:
@@ -861,7 +878,7 @@ paths:
     get:
       operationId: getUsage
       tags: [credits]
-      summary: Usage per period (AI, awake time, tools) between two dates
+      summary: Usage per period (AI, awake time, app actions, tools) between two dates
       parameters:
         - name: from
           in: query
@@ -931,6 +948,9 @@ paths:
       operationId: listActivity
       tags: [activity]
       summary: Audit log of everything the agent did for this user
+      description: |
+        An `app_action` entry (`run_app_action`) carries `creditsCharged`: 1 for a successful
+        action that changed something, 0 for one that only read.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -1231,6 +1251,7 @@ paths:
       operationId: webhookWhatsappVerify
       tags: [webhooks]
       summary: Meta verification handshake
+      description: Answers 403 while WhatsApp is switched off (`ENABLED_CHANNELS`).
       security: []
       parameters:
         - { name: hub.mode, in: query, required: true, schema: { type: string } }
@@ -1242,11 +1263,12 @@ paths:
           content:
             text/plain:
               schema: { type: string }
-        "403": { description: Wrong verify token }
+        "403": { description: "Wrong verify token, or WhatsApp is switched off" }
     post:
       operationId: webhookWhatsapp
       tags: [webhooks]
       summary: WhatsApp messages, button replies and status updates
+      description: While WhatsApp is switched off (`ENABLED_CHANNELS`) this answers 200 and saves nothing.
       security: []
       parameters:
         - { name: X-Hub-Signature-256, in: header, required: true, schema: { type: string } }
@@ -1260,6 +1282,7 @@ paths:
       operationId: webhookTelegram
       tags: [webhooks]
       summary: Telegram updates
+      description: While Telegram is switched off (`ENABLED_CHANNELS`) this answers 200 and saves nothing.
       security: []
       parameters:
         - { name: X-Telegram-Bot-Api-Secret-Token, in: header, required: true, schema: { type: string } }
@@ -1273,6 +1296,7 @@ paths:
       operationId: webhookSendblue
       tags: [webhooks]
       summary: iMessage events via Sendblue
+      description: While iMessage is switched off (`ENABLED_CHANNELS`) this answers 200 and saves nothing.
       security: []
       parameters:
         - { name: sb-signing-secret, in: header, required: true, schema: { type: string } }
@@ -1395,11 +1419,20 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     WebhookAccepted:
-      description: Accepted (event saved and queued, or a duplicate ignored)
+      description: |
+        Accepted (event saved and queued, or a duplicate ignored). A chat webhook whose channel is
+        switched off also answers 200, with nothing saved.
     WebhookUnauthorized:
       description: Signature or secret invalid
     PlanLimit:
       description: The current plan doesn't allow this (e.g. app limit, own MCP servers, top-ups on Free)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ChannelDisabled:
+      description: |
+        `channel_disabled`: this channel is switched off for the deployment (it is not in
+        `available`, see `GET /v1/channels`). `details.channel` names it.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -1417,7 +1450,8 @@ components:
             code:
               type: string
               examples: [invalid_request, unauthorized, forbidden, not_found, rate_limited,
-                         out_of_credits, plan_limit, invalid_or_expired_code, conflict, internal]
+                         out_of_credits, plan_limit, channel_disabled, invalid_or_expired_code,
+                         conflict, internal]
             message: { type: string }
             details: { type: object, additionalProperties: true }
 
@@ -1694,27 +1728,33 @@ components:
         delta: { type: integer }
         reason: { type: string, enum: [grant, charge, expire, refund, adjust, reversal] }
         grantId: { type: [string, "null"] }
-        description: { type: string, examples: ["Task: moved meeting + emailed Priya"] }
+        description: { type: string, examples: ["Usage: AI 3, awake time 1", "App action: GMAIL_SEND_EMAIL"] }
         createdAt: { type: string, format: date-time }
 
     UsagePeriod:
       type: object
-      required: [periodStart, periodEnd, aiCredits, awakeCredits, toolCredits, totalCredits]
+      required: [periodStart, periodEnd, aiCredits, awakeCredits, appActionCredits, toolCredits, totalCredits]
       properties:
         periodStart: { type: string, format: date-time }
         periodEnd: { type: string, format: date-time }
         aiCredits: { type: integer }
         awakeSeconds: { type: integer }
         awakeCredits: { type: integer }
-        toolCredits: { type: integer }
-        totalCredits: { type: integer }
+        appActionCredits:
+          type: integer
+          description: |
+            Credits for app actions that changed something in this period (1 credit per successful
+            send, create, update or delete; reading and searching are free).
+        toolCredits: { type: integer, description: Browser minutes and paid tools }
+        totalCredits: { type: integer, description: aiCredits + awakeCredits + appActionCredits + toolCredits }
 
     UsageTotals:
       type: object
-      required: [aiCredits, awakeCredits, toolCredits, totalCredits]
+      required: [aiCredits, awakeCredits, appActionCredits, toolCredits, totalCredits]
       properties:
         aiCredits: { type: integer }
         awakeCredits: { type: integer }
+        appActionCredits: { type: integer }
         toolCredits: { type: integer }
         totalCredits: { type: integer }
 
@@ -1895,7 +1935,9 @@ components:
         actor: { type: string, enum: [user, agent, admin, system] }
         action: { type: string, examples: [app_action, approval_requested, approval_decided, automation_run, coupon_redeemed, channel_linked] }
         summary: { type: string }
-        creditsCharged: { type: [integer, "null"] }
+        creditsCharged:
+          type: [integer, "null"]
+          description: "Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Null when nothing is charged per entry."
         createdAt: { type: string, format: date-time }
 
     StreamEvent:

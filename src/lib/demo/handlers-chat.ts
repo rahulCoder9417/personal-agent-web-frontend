@@ -15,7 +15,7 @@ import {
   requiredString,
   type JsonObject,
 } from "./http";
-import { balanceOf, charge, emit, logActivity, nextId, schedule, setAgentState, type DemoState } from "./store";
+import { balanceOf, chargeAppAction, chargeUsage, emit, logActivity, nextId, schedule, setAgentState, type DemoState } from "./store";
 import { streamResponse } from "./stream";
 
 const CHANNELS: readonly ChannelType[] = ["whatsapp", "telegram", "imessage", "web"];
@@ -29,6 +29,8 @@ const DAY_MS = 86_400_000;
 const PICKUP_MS = 300;
 const ANSWER_MS = 1500;
 const FOLLOW_UP_MS = 900;
+/** What a demo answer costs in AI when Tex runs on Textcrew AI. */
+const TEXTCREW_AI_CREDITS = 2;
 
 // ---------------------------------------------------------------- messages
 
@@ -112,9 +114,9 @@ function answer(state: DemoState, request: Message): void {
   } else {
     const quote = truncate(request.text, 80);
     postFromTex(state, request.channel, `Got it. In the demo account nothing is really done, but this is where I’d tell you how “${quote}” went.`);
-    const cost = 1 + (request.text.length % 3);
-    const charged = charge(state, cost, `Task: ${lowerFirst(truncate(request.text, 60))}`, cost === 3 ? 1 : 0);
-    logActivity(state, { actor: "agent", action: "app_action", summary: upperFirst(truncate(request.text, 70)), creditsCharged: charged });
+    // The time Tex ran is charged, and the AI too when it ran on Textcrew AI. Nothing was changed in an app.
+    chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
+    logActivity(state, { actor: "agent", action: "app_action", summary: upperFirst(truncate(request.text, 70)), creditsCharged: 0 });
   }
   setAgentState(state, "awake");
 }
@@ -206,7 +208,7 @@ function followUp(state: DemoState, approval: Approval): void {
   const channel = state.messages.find((message) => message.approvalId === approval.id)?.channel ?? "web";
   if (approval.status === "approved") {
     postFromTex(state, channel, replies.approved);
-    const charged = charge(state, 1, `Task: ${lowerFirst(approval.summary)}`);
+    const charged = chargeAppAction(state, approval.action ?? "APP_ACTION");
     logActivity(state, { actor: "agent", action: "app_action", summary: approval.summary, creditsCharged: charged });
   } else {
     postFromTex(state, channel, replies.rejected);

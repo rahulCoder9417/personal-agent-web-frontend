@@ -46,7 +46,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Linked chat apps */
+        /**
+         * Linked chat apps, and which channels are switched on
+         * @description `available` lists the channels that are switched on for this deployment (the
+         *     `ENABLED_CHANNELS` setting; at launch `telegram` and `web`). Offer only these: a link code
+         *     for any other channel is refused with 403 `channel_disabled`. `web` means web chat.
+         *     `items` can still hold a link to a channel that was switched off later, so it can be unlinked.
+         */
         get: operations["listChannels"];
         put?: never;
         post?: never;
@@ -67,8 +73,10 @@ export interface paths {
         put?: never;
         /**
          * Create a one-time code to link a chat app
-         * @description The user sends the returned code to our WhatsApp number / Telegram bot / iMessage number.
+         * @description The user sends the returned code to our Telegram bot (or WhatsApp / iMessage number).
          *     Single use, expires after 10 minutes. Rate limited.
+         *     Only for a channel that is switched on (`available` in `GET /v1/channels`); otherwise
+         *     403 `channel_disabled`. `web` needs no linking (400).
          */
         post: operations["createLinkCode"];
         delete?: never;
@@ -107,7 +115,8 @@ export interface paths {
         /**
          * Send a message to the agent from the web app
          * @description Queued like any other channel message. The reply arrives on the SSE stream.
-         *     Returns 402 when the balance is zero.
+         *     Returns 402 when the balance is zero, and 403 `channel_disabled` when web chat is switched
+         *     off (`web` is not in `available`, see `GET /v1/channels`).
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -565,7 +574,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Usage per period (AI, awake time, tools) between two dates */
+        /** Usage per period (AI, awake time, app actions, tools) between two dates */
         get: operations["getUsage"];
         put?: never;
         post?: never;
@@ -605,7 +614,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Audit log of everything the agent did for this user */
+        /**
+         * Audit log of everything the agent did for this user
+         * @description An `app_action` entry (`run_app_action`) carries `creditsCharged`: 1 for a successful
+         *     action that changed something, 0 for one that only read.
+         */
         get: operations["listActivity"];
         put?: never;
         post?: never;
@@ -786,10 +799,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Meta verification handshake */
+        /**
+         * Meta verification handshake
+         * @description Answers 403 while WhatsApp is switched off (`ENABLED_CHANNELS`).
+         */
         get: operations["webhookWhatsappVerify"];
         put?: never;
-        /** WhatsApp messages, button replies and status updates */
+        /**
+         * WhatsApp messages, button replies and status updates
+         * @description While WhatsApp is switched off (`ENABLED_CHANNELS`) this answers 200 and saves nothing.
+         */
         post: operations["webhookWhatsapp"];
         delete?: never;
         options?: never;
@@ -806,7 +825,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Telegram updates */
+        /**
+         * Telegram updates
+         * @description While Telegram is switched off (`ENABLED_CHANNELS`) this answers 200 and saves nothing.
+         */
         post: operations["webhookTelegram"];
         delete?: never;
         options?: never;
@@ -823,7 +845,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** iMessage events via Sendblue */
+        /**
+         * iMessage events via Sendblue
+         * @description While iMessage is switched off (`ENABLED_CHANNELS`) this answers 200 and saves nothing.
+         */
         post: operations["webhookSendblue"];
         delete?: never;
         options?: never;
@@ -883,6 +908,7 @@ export interface components {
                  * @example rate_limited
                  * @example out_of_credits
                  * @example plan_limit
+                 * @example channel_disabled
                  * @example invalid_or_expired_code
                  * @example conflict
                  * @example internal
@@ -1171,7 +1197,10 @@ export interface components {
             /** @enum {string} */
             reason: "grant" | "charge" | "expire" | "refund" | "adjust" | "reversal";
             grantId?: string | null;
-            /** @example Task: moved meeting + emailed Priya */
+            /**
+             * @example Usage: AI 3, awake time 1
+             * @example App action: GMAIL_SEND_EMAIL
+             */
             description?: string;
             /** Format: date-time */
             createdAt: string;
@@ -1184,12 +1213,20 @@ export interface components {
             aiCredits: number;
             awakeSeconds?: number;
             awakeCredits: number;
+            /**
+             * @description Credits for app actions that changed something in this period (1 credit per successful
+             *     send, create, update or delete; reading and searching are free).
+             */
+            appActionCredits: number;
+            /** @description Browser minutes and paid tools */
             toolCredits: number;
+            /** @description aiCredits + awakeCredits + appActionCredits + toolCredits */
             totalCredits: number;
         };
         UsageTotals: {
             aiCredits: number;
             awakeCredits: number;
+            appActionCredits: number;
             toolCredits: number;
             totalCredits: number;
         };
@@ -1357,6 +1394,7 @@ export interface components {
              */
             action: string;
             summary: string;
+            /** @description Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Null when nothing is charged per entry. */
             creditsCharged?: number | null;
             /** Format: date-time */
             createdAt: string;
@@ -1423,7 +1461,10 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Accepted (event saved and queued, or a duplicate ignored) */
+        /**
+         * @description Accepted (event saved and queued, or a duplicate ignored). A chat webhook whose channel is
+         *     switched off also answers 200, with nothing saved.
+         */
         WebhookAccepted: {
             headers: {
                 [name: string]: unknown;
@@ -1439,6 +1480,18 @@ export interface components {
         };
         /** @description The current plan doesn't allow this (e.g. app limit, own MCP servers, top-ups on Free) */
         PlanLimit: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description `channel_disabled`: this channel is switched off for the deployment (it is not in
+         *     `available`, see `GET /v1/channels`). `details.channel` names it.
+         */
+        ChannelDisabled: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1557,6 +1610,14 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: components["schemas"]["ChannelLink"][];
+                        /**
+                         * @description Channels that are switched on, in the order they are configured.
+                         * @example [
+                         *       "telegram",
+                         *       "web"
+                         *     ]
+                         */
+                        available: components["schemas"]["ChannelType"][];
                     };
                 };
             };
@@ -1589,6 +1650,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["ChannelDisabled"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -1676,6 +1738,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             402: components["responses"]["OutOfCredits"];
+            403: components["responses"]["ChannelDisabled"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -2901,7 +2964,7 @@ export interface operations {
                     "text/plain": string;
                 };
             };
-            /** @description Wrong verify token */
+            /** @description Wrong verify token, or WhatsApp is switched off */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -2,7 +2,7 @@
 // more than one endpoint needs (events, credits, the activity log).
 
 import type { ActivityEntry, AgentStatus, CreditBalance, StreamEvent } from "@/lib/api/client";
-import { createSeed, dayKey, type DemoData } from "./seed";
+import { createSeed, dayKey, type DayUsage, type DemoData } from "./seed";
 
 export type Listener = (event: StreamEvent) => void;
 
@@ -94,11 +94,10 @@ export function creditBalance(state: DemoState): CreditBalance {
 }
 
 /**
- * Takes credits from the oldest-expiring grants, writes the ledger line and tells the stream.
+ * Takes credits from the oldest-expiring grants and writes the ledger line.
  * Never goes below zero; returns what was actually charged.
  */
-export function charge(state: DemoState, amount: number, description: string, toolCredits = 0): number {
-  const now = Date.now();
+function spend(state: DemoState, amount: number, description: string, now: number): number {
   let left = amount;
   let firstGrant: string | null = null;
   for (const grant of spendable(state, now)) {
@@ -119,10 +118,39 @@ export function charge(state: DemoState, amount: number, description: string, to
     description,
     createdAt: new Date(now).toISOString(),
   });
-  const key = dayKey(new Date(now));
-  const day = state.usage[key] ?? { awake: 0, tools: 0 };
-  const tools = Math.min(toolCredits, charged);
-  state.usage[key] = { awake: day.awake + charged - tools, tools: day.tools + tools };
+  return charged;
+}
+
+function usageToday(state: DemoState, now: number): DayUsage {
+  return (state.usage[dayKey(new Date(now))] ??= { ai: 0, awake: 0, actions: 0 });
+}
+
+/**
+ * Charges for a turn the way the backend does: the time the agent ran, plus the AI when it ran
+ * on Textcrew AI. With the user's own AI there is no AI part. Returns what was charged.
+ */
+export function chargeUsage(state: DemoState, credits: { ai?: number; awake: number }): number {
+  const now = Date.now();
+  const ai = credits.ai ?? 0;
+  const parts = [ai > 0 ? `AI ${ai}` : null, credits.awake > 0 ? `awake time ${credits.awake}` : null].filter(Boolean);
+  const charged = spend(state, ai + credits.awake, `Usage: ${parts.join(", ") || "none"}`, now);
+  if (charged === 0) return 0;
+
+  const day = usageToday(state, now);
+  const aiCharged = Math.min(ai, charged);
+  day.ai += aiCharged;
+  day.awake += charged - aiCharged;
+  emit(state, "credits.updated", creditBalance(state));
+  return charged;
+}
+
+/** One credit for an app action that changed something (sending, creating, updating, deleting). */
+export function chargeAppAction(state: DemoState, action: string): number {
+  const now = Date.now();
+  const charged = spend(state, 1, `App action: ${action}`, now);
+  if (charged === 0) return 0;
+
+  usageToday(state, now).actions += charged;
   emit(state, "credits.updated", creditBalance(state));
   return charged;
 }

@@ -2,16 +2,29 @@
 
 import type { UsagePeriod, UsageTotals } from "@/lib/api/client";
 
-export type SeriesId = "awake" | "tools" | "ai";
+export type SeriesId = "awake" | "actions" | "tools" | "ai";
 
 export type Series = { id: SeriesId; label: string; color: string };
 
-/** Fixed order and colours (validated together); a series keeps its colour whatever else is on screen. */
+/**
+ * Fixed order and colours; a series keeps its colour whatever else is on screen. The four were
+ * validated as a set, every pair against every other, because a day's column leaves out what it
+ * didn't use, so any two can end up touching.
+ */
 export const SERIES: readonly Series[] = [
-  { id: "awake", label: "Awake time", color: "#3355F5" },
-  { id: "tools", label: "Tools", color: "#FF6B2C" },
-  { id: "ai", label: "AI", color: "#11A39B" },
+  { id: "awake", label: "Running time", color: "#3355F5" },
+  { id: "actions", label: "App actions", color: "#C22866" },
+  // One number in the API: minutes in the browser (Max plan) and tools that cost money.
+  { id: "tools", label: "Browser use and paid tools", color: "#FF6B2C" },
+  { id: "ai", label: "Textcrew AI", color: "#11A39B" },
 ];
+
+const FIELD = {
+  awake: "awakeCredits",
+  actions: "appActionCredits",
+  tools: "toolCredits",
+  ai: "aiCredits",
+} as const satisfies Record<SeriesId, keyof UsageTotals>;
 
 const STEPS = [1, 2, 2.5, 5, 10];
 
@@ -35,15 +48,11 @@ export function niceScale(dataMax: number, targetTicks = 4): { max: number; step
 }
 
 export function seriesValue(period: UsagePeriod, id: SeriesId): number {
-  if (id === "awake") return period.awakeCredits;
-  if (id === "tools") return period.toolCredits;
-  return period.aiCredits;
+  return period[FIELD[id]];
 }
 
 export function seriesTotal(totals: UsageTotals, id: SeriesId): number {
-  if (id === "awake") return totals.awakeCredits;
-  if (id === "tools") return totals.toolCredits;
-  return totals.aiCredits;
+  return totals[FIELD[id]];
 }
 
 /** Series worth drawing: one that is zero on every day is left out of the stack (it stays in the totals). */

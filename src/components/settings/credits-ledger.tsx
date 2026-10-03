@@ -1,18 +1,9 @@
 "use client";
 
-import type { LedgerEntry } from "@/lib/api/client";
 import { useLedger } from "@/lib/api/hooks";
 import { Button, Card, ErrorState, InlineError, SkeletonRows } from "@/components/ui";
 import { cn, formatDateTime, formatNumber } from "@/lib/format";
-
-const REASON_LABEL: Record<LedgerEntry["reason"], string> = {
-  grant: "added",
-  charge: "used",
-  expire: "expired",
-  refund: "refund",
-  adjust: "adjusted",
-  reversal: "reversed",
-};
+import { describeLedgerEntry } from "./credits-ledger-text";
 
 function signed(delta: number): string {
   if (delta === 0) return "0";
@@ -50,18 +41,21 @@ export function LedgerCard() {
             </tr>
           </thead>
           <tbody>
-            {entries.map((entry) => (
-              <tr key={entry.id} className="border-b border-line last:border-b-0">
-                <td className="py-3 pr-3 pl-6 text-[12px] whitespace-nowrap text-muted">{formatDateTime(entry.createdAt)}</td>
-                <td className="truncate py-3 pr-3" title={entry.description}>
-                  {entry.description || "Credits"}
-                </td>
-                <td className="py-3 pr-3 text-[12px] text-muted">{REASON_LABEL[entry.reason]}</td>
-                <td className={cn("py-3 pr-6 text-right text-[12.5px] font-medium", entry.delta > 0 ? "text-success" : "text-fg")}>
-                  {signed(entry.delta)}
-                </td>
-              </tr>
-            ))}
+            {entries.map((entry) => {
+              const line = describeLedgerEntry(entry);
+              return (
+                <tr key={entry.id} className="border-b border-line last:border-b-0">
+                  <td className="py-3 pr-3 pl-6 text-[12px] whitespace-nowrap text-muted">{formatDateTime(entry.createdAt)}</td>
+                  <td className="truncate py-3 pr-3" title={line.what}>
+                    {line.what}
+                  </td>
+                  <td className="py-3 pr-3 text-[12px] text-muted">{line.reason}</td>
+                  <td className={cn("py-3 pr-6 text-right text-[12.5px] font-medium", entry.delta > 0 ? "text-success" : "text-fg")}>
+                    {signed(entry.delta)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         </div>

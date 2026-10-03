@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { UsagePeriod } from "@/lib/api/client";
-import { niceScale, SERIES, stackColumn, visibleSeries } from "./credits-chart-scale";
+import { niceScale, SERIES, seriesTotal, seriesValue, stackColumn, visibleSeries } from "./credits-chart-scale";
 
-function day(awake: number, tools: number, ai = 0): UsagePeriod {
+function day(awake: number, tools: number, ai = 0, actions = 0): UsagePeriod {
   return {
     periodStart: "2026-10-01T00:00:00Z",
     periodEnd: "2026-10-02T00:00:00Z",
     awakeCredits: awake,
+    appActionCredits: actions,
     toolCredits: tools,
     aiCredits: ai,
-    totalCredits: awake + tools + ai,
+    totalCredits: awake + actions + tools + ai,
   };
 }
 
@@ -44,6 +45,18 @@ describe("visibleSeries", () => {
     expect(visibleSeries([day(10, 4), day(0, 0)]).map((s) => s.id)).toEqual(["awake", "tools"]);
     expect(visibleSeries([day(0, 2, 5)]).map((s) => s.id)).toEqual(["tools", "ai"]);
     expect(visibleSeries([])).toEqual([]);
+  });
+
+  it("stacks app actions on top of running time", () => {
+    expect(visibleSeries([day(3, 0, 2, 4)]).map((s) => s.id)).toEqual(["awake", "actions", "ai"]);
+  });
+});
+
+describe("seriesValue and seriesTotal", () => {
+  it("read each series from its own field", () => {
+    const period = day(1, 2, 3, 4);
+    expect(SERIES.map((s) => seriesValue(period, s.id))).toEqual([1, 4, 2, 3]);
+    expect(SERIES.map((s) => seriesTotal(period, s.id))).toEqual([1, 4, 2, 3]);
   });
 });
 

@@ -82,8 +82,25 @@ describe("account", () => {
     );
     const today = usage.body.items.at(-1);
     expect(usage.body.items).toHaveLength(7);
-    expect(today).toMatchObject({ aiCredits: 0, awakeCredits: 4, toolCredits: 2, totalCredits: 6 });
+    expect(today).toMatchObject({ aiCredits: 0, awakeCredits: 4, appActionCredits: 2, toolCredits: 0, totalCredits: 6 });
     expect(usage.body.totals.totalCredits).toBe(usage.body.items.reduce((sum, day) => sum + day.totalCredits, 0));
+  });
+
+  it("charges running time and app actions as separate ledger lines, and reading for nothing", async () => {
+    const store = getStore();
+    const charges = store.ledger.filter((entry) => entry.reason === "charge");
+    const actions = charges.filter((entry) => entry.description?.startsWith("App action: "));
+    const usage = charges.filter((entry) => entry.description?.startsWith("Usage: awake time "));
+    expect(actions.length + usage.length).toBe(charges.length);
+    expect(actions.every((entry) => entry.delta === -1)).toBe(true);
+
+    const days = Object.values(store.usage);
+    expect(days.reduce((sum, day) => sum + day.actions, 0)).toBe(actions.length);
+    expect(days.reduce((sum, day) => sum + day.awake, 0)).toBe(usage.reduce((sum, entry) => sum - entry.delta, 0));
+
+    const done = store.activity.filter((entry) => entry.action === "app_action");
+    expect(done.filter((entry) => entry.creditsCharged === 1)).toHaveLength(actions.length);
+    expect(done.some((entry) => entry.creditsCharged === 0)).toBe(true);
   });
 });
 
@@ -103,7 +120,9 @@ describe("chat", () => {
     expect(after).toHaveLength(before + 2);
     expect(after[0]).toMatchObject({ direction: "out", channel: "web" });
     expect(after[1]).toMatchObject({ id: first.body.id, status: "read" });
-    expect((await call<Me>("GET", "me")).body.credits.balance).toBeLessThan(1884);
+    // With the user's own AI key only the time Tex ran is charged.
+    expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1883);
+    expect(getStore().ledger[0]).toMatchObject({ delta: -1, reason: "charge", description: "Usage: awake time 1" });
   });
 
   it("asks for an OK instead of acting when the request is risky", async () => {
@@ -165,7 +184,10 @@ describe("approvals", () => {
     vi.advanceTimersByTime(1000);
     const thread = (await call<Page<Message>>("GET", "messages?channel=whatsapp")).body.items;
     expect(thread[0].text).toBe("Done. Moved to tomorrow at 3pm and Maya has the note.");
+    // One credit, for the action that changed something.
     expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1883);
+    expect(getStore().ledger[0]).toMatchObject({ delta: -1, description: "App action: GMAIL_SEND_EMAIL" });
+    expect(getStore().activity[0]).toMatchObject({ action: "app_action", creditsCharged: 1 });
     expect((await call<Page<Approval>>("GET", "approvals")).body.items).toHaveLength(2);
   });
 
