@@ -28,7 +28,7 @@ export function LedgerCard() {
       ) : ledger.isError && entries.length === 0 ? (
         <ErrorState error={ledger.error} onRetry={() => ledger.refetch()} className="m-4 border-0" />
       ) : entries.length === 0 ? (
-        <p className="px-6 pb-6 text-[13.5px] text-muted">Nothing here yet. Each task Tex does shows up with what it cost.</p>
+        <p className="px-6 pb-6 text-[13.5px] text-muted">Nothing here yet. Every charge shows up here: running time, app actions and, if you use it, Textcrew AI.</p>
       ) : (
         <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] table-fixed border-collapse text-left text-[13.5px]">

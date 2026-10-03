@@ -52,7 +52,7 @@ export default function ActivityPage() {
           </Card>
         ) : loaded.length === 0 ? (
           <EmptyState mood="asleep" title="Nothing logged yet">
-            Once Tex does something for you, every action shows up here with the credits it used.
+            Once Tex does something for you, every action shows up here. One that changes something costs 1 credit; reading and searching are free.
           </EmptyState>
         ) : days.length === 0 ? (
           <Card className="px-5 py-7 text-muted">

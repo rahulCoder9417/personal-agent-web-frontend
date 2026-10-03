@@ -18,6 +18,9 @@ describe("describeLedgerEntry", () => {
       reason: "used",
     });
     expect(describeLedgerEntry({ reason: "charge", description: "Usage: awake time 2, browser 6" }).what).toBe("Running time 2, browser use 6");
+    // One thing charged: its name is enough, the amount has its own column.
+    expect(describeLedgerEntry({ reason: "charge", description: "Usage: awake time 43" }).what).toBe("Running time");
+    expect(describeLedgerEntry({ reason: "charge", description: "Usage: browser 6" }).what).toBe("Browser use");
     expect(describeLedgerEntry({ reason: "charge", description: "Usage: none" }).what).toBe("Usage");
   });
 

@@ -25,13 +25,20 @@ function describeAction(name: string): string {
   return what ? `${titleCase(app.toLowerCase())}: ${what}` : titleCase(app.toLowerCase());
 }
 
-/** "AI 3, awake time 1, browser 2" → "Textcrew AI 3, running time 1, browser use 2": the words the rest of the app uses. */
+const USAGE_PART: Record<string, string> = { AI: "Textcrew AI", "awake time": "running time", browser: "browser use" };
+
+/**
+ * "AI 3, awake time 1, browser 2" → "Textcrew AI 3, running time 1, browser use 2": the words the
+ * rest of the app uses. A charge for one thing only needs its name; the amount is in its own column.
+ */
 function describeUsage(parts: string): string {
   if (!parts || parts === "none") return "Usage";
-  const words = parts
-    .replace(/\bAI\b/, "Textcrew AI")
-    .replace(/\bawake time\b/, "running time")
-    .replace(/\bbrowser\b/, "browser use");
+  const named = parts.split(/,\s*/).map((part) => {
+    const match = /^(.*?)\s+(\d+)$/.exec(part);
+    const name = match ? match[1] : part;
+    return { name: USAGE_PART[name] ?? name, amount: match ? match[2] : null };
+  });
+  const words = named.length === 1 ? named[0].name : named.map((part) => (part.amount ? `${part.name} ${part.amount}` : part.name)).join(", ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 

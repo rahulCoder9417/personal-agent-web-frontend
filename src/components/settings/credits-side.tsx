@@ -7,6 +7,7 @@ import { useCreateCheckout, useRedeemCoupon } from "@/lib/api/hooks";
 import { Button, ButtonLink, Card, inputClass, SectionLabel } from "@/components/ui";
 import { usePendingCheckout } from "@/components/checkout-watcher";
 import { startPendingCheckout } from "@/lib/checkout";
+import { CREDIT_COSTS } from "@/lib/credit-costs";
 import { leaveTo } from "@/lib/navigate";
 import { cn, formatDate, formatMoney, formatNumber } from "@/lib/format";
 
@@ -161,9 +162,23 @@ export function RedeemCard() {
 export function CreditsExplainer() {
   return (
     <Card role="group" aria-label="How credits work" className="flex flex-col gap-3 bg-chrome p-5 text-[13px] text-fg-2">
-      <p>
-        <strong className="font-semibold text-fg">1 credit ≈ 1 cent.</strong> Credits pay for the time Tex spends working and for paid tools. Every task shows what it cost.
-      </p>
+      <div className="flex flex-col gap-1.5">
+        <p>
+          <strong className="font-semibold text-fg">1 credit ≈ 1 cent.</strong> Credits pay for:
+        </p>
+        <ul className="flex flex-col gap-1.5">
+          {CREDIT_COSTS.map((cost) => (
+            <li key={cost.id} className="flex gap-2">
+              <span aria-hidden className="mt-[7px] size-1 shrink-0 rounded-full bg-muted" />
+              <span>
+                <strong className="font-semibold text-fg">{cost.name}</strong>
+                {cost.id === "ai" ? ", " : ": "}
+                {cost.detail}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
       <p>
         <strong className="font-semibold text-fg">Every credit lasts 90 days</strong> from the day you get it, whether it came from your plan, a top-up or a code. The oldest are used first.
       </p>

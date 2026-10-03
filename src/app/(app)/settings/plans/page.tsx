@@ -10,12 +10,10 @@ import { PlanColumns } from "@/components/settings/plans-columns";
 import { SubscriptionCard } from "@/components/settings/plans-subscription";
 import { ErrorState, Spinner } from "@/components/ui";
 import { qk, usePlans, useSubscription } from "@/lib/api/hooks";
+import { CREDITS_PAY_FOR } from "@/lib/credit-costs";
 
 const NOTES = [
-  {
-    label: "1 credit ≈ 1 cent",
-    body: "Credits cover the time Tex spends working and paid tools, and the AI too unless it runs on your own key or Claude plan.",
-  },
+  { label: "What credits pay for", body: CREDITS_PAY_FOR },
   {
     label: "Credits last 90 days",
     body: "From the day you get them, whether from your plan, a top-up or a code. The oldest are used first.",

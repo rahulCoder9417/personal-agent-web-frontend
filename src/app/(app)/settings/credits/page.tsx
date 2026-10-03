@@ -8,6 +8,7 @@ import { CreditsExplainer, RedeemCard, TopUpCard } from "@/components/settings/c
 import { UsageChart } from "@/components/settings/credits-usage-chart";
 import { Card, ErrorState, SkeletonRows } from "@/components/ui";
 import { useCredits, useMe, usePlans, useUsage } from "@/lib/api/hooks";
+import { USAGE_RATES } from "@/lib/credit-costs";
 import { formatDate } from "@/lib/format";
 
 const USAGE_DAYS = 14;
@@ -46,8 +47,9 @@ function UsageCard() {
           <UsageChart periods={usage.data.items} totals={usage.data.totals} />
           <p className="border-t border-line pt-3.5 text-[13px] text-muted">
             {usage.data.totals.aiCredits === 0
-              ? "The AI runs on your own key or plan, so it uses no credits here. Credits pay for the time Tex spends working and for paid tools."
-              : "Credits pay for the AI, the time Tex spends working, and paid tools."}
+              ? "No credits went on AI in these days: with your own AI, the AI part isn’t charged."
+              : "Textcrew AI is charged for the days Tex ran on it. With your own AI, the AI part isn’t charged."}{" "}
+            {USAGE_RATES}
           </p>
         </>
       )}
