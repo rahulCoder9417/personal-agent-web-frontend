@@ -9,7 +9,10 @@ export const metadata: Metadata = { title: "Crew" };
 const CREW: { id: AgentId; name: string; role: string; body: string; tint: string }[] = [
   { id: "byte", name: "Byte", role: "Coder", tint: "#F1ECFF", body: "Writes and fixes code, and can hand work to your own Claude Code." },
   { id: "patch", name: "Patch", role: "Code review", tint: "#FEF4E3", body: "Runs several reviewers on a pull request, leaves comments on GitHub and flags risky changes." },
-  { id: "scout", name: "Scout", role: "Research", tint: "#E6F5F4", body: "Searches the web and reads the pages it finds, then tells you what it learned." },
+  {
+    id: "scout", name: "Scout", role: "Research", tint: "#E6F5F4",
+    body: "Searches the web and reads pages. On the Max plan it drives a real browser for sites that need a login, clicks or forms, or that have no API.",
+  },
 ];
 
 export default function CrewPage() {
