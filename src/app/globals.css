@@ -73,6 +73,9 @@ body {
   /* An app, not a document: the panes scroll, the page doesn't. */
   overflow: hidden;
   overscroll-behavior: none;
+  /* A phone on its side: keep clear of the notch (the page is laid out edge to edge). */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 @layer base {
