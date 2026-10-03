@@ -949,8 +949,8 @@ paths:
       tags: [activity]
       summary: Audit log of everything the agent did for this user
       description: |
-        An `app_action` entry (`run_app_action`) carries `creditsCharged`: 1 for a successful
-        action that changed something, 0 for one that only read.
+        A `run_app_action` entry carries `creditsCharged`: 1 for a successful action that changed
+        something, 0 for one that only read.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -1933,7 +1933,7 @@ components:
       properties:
         id: { type: string }
         actor: { type: string, enum: [user, agent, admin, system] }
-        action: { type: string, examples: [app_action, approval_requested, approval_decided, automation_run, coupon_redeemed, channel_linked] }
+        action: { type: string, examples: [run_app_action, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked] }
         summary: { type: string }
         creditsCharged:
           type: [integer, "null"]

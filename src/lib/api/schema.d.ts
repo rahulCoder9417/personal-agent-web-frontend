@@ -616,8 +616,8 @@ export interface paths {
         };
         /**
          * Audit log of everything the agent did for this user
-         * @description An `app_action` entry (`run_app_action`) carries `creditsCharged`: 1 for a successful
-         *     action that changed something, 0 for one that only read.
+         * @description A `run_app_action` entry carries `creditsCharged`: 1 for a successful action that changed
+         *     something, 0 for one that only read.
          */
         get: operations["listActivity"];
         put?: never;
@@ -1385,10 +1385,10 @@ export interface components {
             /** @enum {string} */
             actor: "user" | "agent" | "admin" | "system";
             /**
-             * @example app_action
+             * @example run_app_action
+             * @example send_message
              * @example approval_requested
              * @example approval_decided
-             * @example automation_run
              * @example coupon_redeemed
              * @example channel_linked
              */

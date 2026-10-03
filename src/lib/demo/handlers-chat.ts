@@ -117,7 +117,7 @@ function answer(state: DemoState, request: Message): void {
     postFromTex(state, request.channel, `Got it. In the demo account nothing is really done, but this is where I’d tell you how “${quote}” went.`);
     // The time Tex ran is charged, and the AI too when it ran on Textcrew AI. Nothing was changed in an app.
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
-    logActivity(state, { actor: "agent", action: "app_action", summary: upperFirst(truncate(request.text, 70)), creditsCharged: 0 });
+    logActivity(state, { actor: "agent", action: "run_app_action", summary: upperFirst(truncate(request.text, 70)), creditsCharged: 0 });
   }
   setAgentState(state, "awake");
 }
@@ -211,7 +211,7 @@ function followUp(state: DemoState, approval: Approval): void {
   if (approval.status === "approved") {
     postFromTex(state, channel, replies.approved);
     const charged = chargeAppAction(state, approval.action ?? "APP_ACTION");
-    logActivity(state, { actor: "agent", action: "app_action", summary: approval.summary, creditsCharged: charged });
+    logActivity(state, { actor: "agent", action: "run_app_action", summary: approval.summary, creditsCharged: charged });
   } else {
     postFromTex(state, channel, replies.rejected);
   }

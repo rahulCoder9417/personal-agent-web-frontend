@@ -98,7 +98,7 @@ describe("account", () => {
     expect(days.reduce((sum, day) => sum + day.actions, 0)).toBe(actions.length);
     expect(days.reduce((sum, day) => sum + day.awake, 0)).toBe(usage.reduce((sum, entry) => sum - entry.delta, 0));
 
-    const done = store.activity.filter((entry) => entry.action === "app_action");
+    const done = store.activity.filter((entry) => entry.action === "run_app_action");
     expect(done.filter((entry) => entry.creditsCharged === 1)).toHaveLength(actions.length);
     expect(done.some((entry) => entry.creditsCharged === 0)).toBe(true);
   });
@@ -187,7 +187,7 @@ describe("approvals", () => {
     // One credit, for the action that changed something.
     expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1883);
     expect(getStore().ledger[0]).toMatchObject({ delta: -1, description: "App action: GMAIL_SEND_EMAIL" });
-    expect(getStore().activity[0]).toMatchObject({ action: "app_action", creditsCharged: 1 });
+    expect(getStore().activity[0]).toMatchObject({ action: "run_app_action", creditsCharged: 1 });
     expect((await call<Page<Approval>>("GET", "approvals")).body.items).toHaveLength(2);
   });
 

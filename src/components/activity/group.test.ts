@@ -5,7 +5,7 @@ import { creditsToday, groupByDay, matchesFilter } from "./group";
 const NOW = new Date("2026-10-01T14:30:00");
 
 function entry(id: string, createdAt: string, extra: Partial<ActivityEntry> = {}): ActivityEntry {
-  return { id, actor: "agent", action: "app_action", summary: id, createdAt, ...extra };
+  return { id, actor: "agent", action: "run_app_action", summary: id, createdAt, ...extra };
 }
 
 const ENTRIES = [

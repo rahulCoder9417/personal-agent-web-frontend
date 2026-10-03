@@ -149,10 +149,10 @@ const ranFor = (at: string, credits: number): Happened => ({
 const changed = (at: string, action: string, summary: string): Happened => ({
   at,
   charge: { amount: 1, description: `App action: ${action}`, part: "actions" },
-  did: { action: "app_action", summary, creditsCharged: 1 },
+  did: { action: "run_app_action", summary, creditsCharged: 1 },
 });
 
-const read = (at: string, summary: string): Happened => ({ at, did: { action: "app_action", summary, creditsCharged: 0 } });
+const read = (at: string, summary: string): Happened => ({ at, did: { action: "run_app_action", summary, creditsCharged: 0 } });
 
 const automationRan = (at: string, title: string): Happened => ({
   ...ranFor(at, 1),
