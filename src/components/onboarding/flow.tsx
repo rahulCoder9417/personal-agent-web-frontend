@@ -16,13 +16,14 @@ const STEPS = ["Link a chat app", "Connect your apps", "Choose your AI", "Say hi
 
 function StepIndicator({ current, onPick }: { current: number; onPick: (step: number) => void }) {
   return (
-    <ol aria-label="Setup steps" className="flex items-center gap-2.5">
+    <ol aria-label="Setup steps" className="flex items-center gap-2.5 max-sm:gap-0">
       {STEPS.map((label, index) => {
         const on = index === current;
         const done = index < current;
         return (
           <li key={label} className="flex items-center gap-2.5">
-            {index > 0 && <span aria-hidden className="h-px w-5 bg-line-strong max-sm:w-2" />}
+            {/* A phone has room for the four numbers, not for the lines between them. */}
+            {index > 0 && <span aria-hidden className="h-px w-5 bg-line-strong max-sm:hidden" />}
             <button
               type="button"
               aria-current={on ? "step" : undefined}
@@ -62,7 +63,7 @@ export function OnboardingFlow() {
         <Brand />
         <StepIndicator current={step} onPick={setStep} />
         <Link href="/" className="text-[13px] font-medium whitespace-nowrap text-accent hover:text-accent-dark">
-          Skip for now
+          Skip<span className="max-sm:hidden"> for now</span>
         </Link>
       </header>
 

@@ -131,7 +131,7 @@ export function HowItsDecided() {
       <Card>
         <dl>
           {RULES.map((rule) => (
-            <div key={rule.when} className="flex gap-4 border-b border-line px-5 py-3.5 last:border-b-0">
+            <div key={rule.when} className="flex gap-4 border-b border-line px-5 py-3.5 last:border-b-0 max-sm:flex-col max-sm:gap-1">
               <dt className="w-[150px] shrink-0 text-[13.5px] font-medium max-sm:w-full">{rule.when}</dt>
               <dd className="text-[13px] text-muted">{rule.then}</dd>
             </div>
