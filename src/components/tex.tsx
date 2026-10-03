@@ -1,4 +1,4 @@
-export type AgentId = "tex" | "scout" | "byte" | "patch" | "echo" | "pitch" | "tock";
+export type AgentId = "tex" | "byte" | "patch" | "scout";
 
 export type Mood = "auto" | "ready" | "working" | "asking" | "done" | "asleep" | "paused";
 
@@ -16,13 +16,13 @@ type Look = {
 
 const LOOKS: Record<AgentId, Look> = {
   tex: { base: "#3355F5", shade: "#2440C4", deep: "#1B2F94", gx: 0, gy: 0, hL: 14, hR: 14, label: "Tex, the captain", icon: ["..X..", "X.X.X", ".XXX.", "X.X.X", "..X.."] },
-  scout: { base: "#11A39B", shade: "#0C7F79", deep: "#0C7F79", gx: 3, gy: -3, hL: 14, hR: 14, label: "Scout, research", icon: ["XXX..", "X.X..", "XXX..", "...X.", "....X"] },
   byte: { base: "#7B4DFF", shade: "#5F35D6", deep: "#5F35D6", gx: 0, gy: 3, hL: 12, hR: 12, label: "Byte, coder", icon: ["X....", ".X...", "X....", ".....", "..XXX"] },
   patch: { base: "#F5A623", shade: "#D08612", deep: "#D08612", gx: 0, gy: 0, hL: 14, hR: 9, label: "Patch, code review", icon: [".....", "....X", "...X.", "X.X..", ".X..."] },
-  echo: { base: "#E93D82", shade: "#C22866", deep: "#C22866", gx: 0, gy: -1, hL: 17, hR: 17, label: "Echo, marketing", icon: ["...X.", "X.X.X", "XXX.X", "X.X.X", "...X."] },
-  pitch: { base: "#22A45D", shade: "#178247", deep: "#178247", gx: 2, gy: 0, hL: 14, hR: 14, label: "Pitch, sales", icon: [".XXXX", "...XX", "..X.X", ".X...", "X...."] },
-  tock: { base: "#FF6B2C", shade: "#D9521A", deep: "#D9521A", gx: 4, gy: 0, hL: 14, hR: 14, label: "Tock, ops", icon: [".XXX.", "X.X.X", "X.XXX", "X...X", ".XXX."] },
+  scout: { base: "#11A39B", shade: "#0C7F79", deep: "#0C7F79", gx: 3, gy: -3, hL: 14, hR: 14, label: "Scout, research", icon: ["XXX..", "X.X..", "XXX..", "...X.", "....X"] },
 };
+
+/** One square on Tex's belt for each specialist, in their colours. */
+const CREW_COLOURS = [LOOKS.byte.base, LOOKS.patch.base, LOOKS.scout.base];
 
 const SCREEN = "#16151A";
 const PAPER = "#F6F5F1";
@@ -102,16 +102,9 @@ export function AgentFigure({
         {body && isTex && (
           <g>
             <rect x={108} y={212} width={84} height={11} rx={3} fill={SCREEN} />
-            {["#11A39B", "#7B4DFF", "#F5A623", "#E93D82", "#22A45D", "#FF6B2C"].map((fill, i) => (
-              <rect key={fill} x={117 + i * 12} y={214} width={7} height={7} fill={fill} />
+            {CREW_COLOURS.map((fill, i) => (
+              <rect key={fill} x={134.5 + i * 12} y={214} width={7} height={7} fill={fill} />
             ))}
-          </g>
-        )}
-        {body && who === "pitch" && (
-          <g>
-            <path d="M 136 150 L 150 164 L 164 150 Z" fill={PAPER} />
-            <path d="M 146 160 H 154 L 156 168 L 150 172 L 144 168 Z" fill={SCREEN} />
-            <path d="M 145 170 L 155 170 L 158 206 L 150 214 L 142 206 Z" fill={SCREEN} />
           </g>
         )}
         {body && who === "byte" && (
@@ -199,41 +192,6 @@ export function AgentFigure({
             <path d="M 196 210 L 200 214 L 207 206 M 196 224 L 200 228 L 207 220" fill="none" stroke="#22A45D" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
             <path d="M 211 210 H 219 M 211 224 H 219" stroke="#C9C5BA" strokeWidth={3} strokeLinecap="round" />
             <circle cx={195} cy={233} r={7} fill={c.shade} />
-          </g>
-        )}
-        {body && who === "echo" && (
-          <g>
-            <path d="M 198 214 L 230 198 L 234 238 L 200 228 Z" fill={PAPER} />
-            <path d="M 230 197 Q 238 218 234 239" fill="none" stroke={SCREEN} strokeWidth={5} strokeLinecap="round" />
-            <g fill="none" stroke={c.base} strokeWidth={4} strokeLinecap="round">
-              <path d="M 246 204 L 256 198" />
-              <path d="M 248 219 L 260 219" />
-              <path d="M 246 234 L 256 240" />
-            </g>
-            <circle cx={199} cy={222} r={7} fill={c.shade} />
-          </g>
-        )}
-        {body && who === "pitch" && (
-          <g>
-            <path d="M 204 226 V 220 H 218 V 226" fill="none" stroke={SCREEN} strokeWidth={3} />
-            <rect x={196} y={225} width={30} height={22} rx={4} fill="#3B2A1F" />
-            <rect x={196} y={233} width={30} height={3} fill="#2A1D15" />
-            <circle cx={202} cy={224} r={6.5} fill={c.shade} />
-          </g>
-        )}
-        {body && who === "tock" && (
-          <g>
-            <rect x={192} y={196} width={32} height={36} rx={4} fill={PAPER} />
-            <path d="M 192 206 V 200 A 4 4 0 0 1 196 196 H 220 A 4 4 0 0 1 224 200 V 206 Z" fill={c.base} />
-            <g fill="#D8D4C8">
-              <rect x={197} y={211} width={6} height={5} />
-              <rect x={205} y={211} width={6} height={5} />
-              <rect x={213} y={211} width={6} height={5} />
-              <rect x={197} y={219} width={6} height={5} />
-              <rect x={213} y={219} width={6} height={5} />
-            </g>
-            <rect x={205} y={219} width={6} height={5} fill={c.base} />
-            <circle cx={196} cy={229} r={7} fill={c.shade} />
           </g>
         )}
 

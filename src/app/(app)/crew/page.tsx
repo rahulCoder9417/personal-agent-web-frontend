@@ -7,19 +7,16 @@ export const metadata: Metadata = { title: "Crew" };
 
 // Names, roles and descriptions as on textcrew.in. Only Tex works today; there is no API for the rest yet.
 const CREW: { id: AgentId; name: string; role: string; body: string; tint: string }[] = [
-  { id: "scout", name: "Scout", role: "Research", tint: "#E6F5F4", body: "Deep research reports, competitor tracking and market scans." },
-  { id: "byte", name: "Byte", role: "Coder", tint: "#F1ECFF", body: "Writes and fixes code, and can hand work to your own Claude Code or Codex." },
-  { id: "patch", name: "Patch", role: "Code review", tint: "#FEF4E3", body: "Reviews pull requests on GitHub, leaves comments and flags risky changes." },
-  { id: "echo", name: "Echo", role: "Marketing", tint: "#FCE9F1", body: "Drafts LinkedIn and X posts, blogs and newsletters in your voice." },
-  { id: "pitch", name: "Pitch", role: "Sales", tint: "#E7F6EC", body: "Finds leads and writes outreach in your voice. Every send needs your OK." },
-  { id: "tock", name: "Tock", role: "Ops", tint: "#FFEFE8", body: "Meetings, follow-ups, CRM updates and invoices, handled on time." },
+  { id: "byte", name: "Byte", role: "Coder", tint: "#F1ECFF", body: "Writes and fixes code, and can hand work to your own Claude Code." },
+  { id: "patch", name: "Patch", role: "Code review", tint: "#FEF4E3", body: "Runs several reviewers on a pull request, leaves comments on GitHub and flags risky changes." },
+  { id: "scout", name: "Scout", role: "Research", tint: "#E6F5F4", body: "Searches the web and reads the pages it finds, then tells you what it learned." },
 ];
 
 export default function CrewPage() {
   return (
     <Page>
       <PageHeader title="Crew">
-        <span className="text-[13.5px] text-muted">Tex is on the job today. Six specialists are on their way.</span>
+        <span className="text-[13.5px] text-muted">Tex is on the job today. Three specialists are on their way.</span>
       </PageHeader>
       <PageBody>
         <section aria-label="Tex" className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-2xl bg-accent-soft px-6 py-3">
