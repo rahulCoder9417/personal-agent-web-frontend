@@ -8,7 +8,7 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
                                          token on the server)
 ```
 
-- **Screens**: chat, approvals, automations, activity, apps and your own MCP servers, crew, settings (general, agent and AI, credits, plans), onboarding, sign-in.
+- **Screens**: chat, approvals, automations and pull-request review, activity, apps and your own MCP servers, crew, settings (general, agent and AI, credits, plans), onboarding, sign-in.
 - **One layout, two shapes**: on a wide screen a sidebar sits beside the current screen; on a phone there is a top bar, the screen edge to edge and five tabs along the bottom (the rest is under More).
 - **Installable on a phone**: "Add to Home Screen" on Android and iPhone opens it in its own window. See [Installing on a phone](#installing-on-a-phone).
 - **The pages only talk to this app's own `/api/v1/*`.** `src/app/api/v1/[...path]/route.ts` forwards to the backend and adds the Clerk session token on the server, so the token never sits in page JavaScript or in an `EventSource` URL. Only user-facing paths are allowed through (no admin, waitlist or webhook routes).
@@ -26,12 +26,19 @@ pnpm dev          # http://localhost:3000
 
 With no environment set, the app runs in **demo mode**: the proxy answers from an in-memory account (`src/lib/demo/`) and sign-in is skipped. Messages get a canned reply, approvals can be decided, and the coupon `TEXTCREW-DEMO` adds credits, so every screen can be exercised.
 
-The demo account behaves like the backend at launch: Telegram and the web chat are switched on, Textcrew AI is on offer, and credits are charged for running time and for app actions that change something. Two settings show the other cases:
+The demo account behaves like the backend at launch: Telegram and the web chat are switched on, Textcrew AI is on offer, Byte, Patch and Scout are on the crew, and credits are charged for running time, for app actions that change something and for Scout's web searches. Three settings show the other cases:
 
 | | |
 |---|---|
 | `TEXTCREW_DEMO_PLAN=free` / `max` | The account on another plan (the default is Pro) |
 | `TEXTCREW_DEMO_AI_ACCESS_MODE=own_only` | Textcrew AI is not on offer: remove the demo's API key and Tex can't start a job |
+| `TEXTCREW_DEMO_CREW_AVAILABLE=byte` | Only the named specialists work; the rest show as coming soon (the default is all three, an empty value is none) |
+
+Things to try in the demo:
+
+- **The crew at work**: ask Tex in the web chat to research something ("research what other tools charge"), fix code ("fix the bug in…") or review ("review my pull request"). Scout, Byte or Patch reports three lines while it works, then Tex answers. Scout's search costs 1 credit.
+- **Pull-request review** (Automations → Pull-request review): two repos are seeded, one on and one paused after failures. Pro allows five automations and four are used, so one more repo can be given review and the next one hits the plan limit. A repo owned by `octocat` stands in for one the GitHub account can't administer. Disconnect GitHub under Apps to see the screen without it.
+- **Choosing Textcrew AI** (Settings → Agent & AI): the demo has an Anthropic key saved, so "Use Textcrew AI" and the way back are both there.
 
 ## Against the real backend
 
@@ -61,9 +68,32 @@ The screens don't know which chat apps or which AI are on offer. They ask.
 2. **Your Claude plan** (beta): runs Claude Code in the person's private workspace. Plain text only, no logos.
 3. **Textcrew AI**: nothing to set up, paid in credits. It is what Tex uses when no key or plan is connected.
 
-Which one is in use comes from `GET /v1/agent/settings` (`aiAccess`: `own_key`, `claude_plan`, `platform` or `none`). `none` means the backend requires your own AI (`AI_ACCESS_MODE=own_only`), so Textcrew AI is shown as "Not available" rather than hidden. The API has no field that says whether Textcrew AI could be used while a key or plan is running, so in that case the screen says "Not in use" and nothing more (`src/components/settings/agent-summary.ts`).
+`GET /v1/agent/settings` says all of it (`src/components/settings/agent-summary.ts` puts it into words):
 
-**Credits.** What credits pay for is written once, in `src/lib/credit-costs.ts`: Textcrew AI if you use it, the agent's running time (1 credit per 10 minutes), app actions that change something (1 credit each; reading and searching are free) and browser use on the Max plan (2 credits per minute). The usage chart and the credit history show the same four parts, from `GET /v1/usage` and `GET /v1/credits/ledger`.
+- `aiAccess` (`own_key`, `claude_plan`, `platform` or `none`) is what pays for the AI right now.
+- `platformAvailable` is whether Textcrew AI is on offer. When it is false (`AI_ACCESS_MODE=own_only` on the backend) the card says "Not available" rather than hiding.
+- `aiPreference` (`auto` or `platform`) is what the person chose. Someone with a key saved or a Claude plan connected can choose Textcrew AI anyway ("Use Textcrew AI" sends `{ aiPreference: "platform" }`) and go back ("Go back to your Anthropic key" sends `{ runtime: "hermes", aiPreference: "auto" }`; to the Claude plan, `{ runtime: "claude_code", aiPreference: "auto" }`). The key and the plan stay saved either way. With Textcrew AI chosen the agent shown as running is Hermes, and picking Claude Code goes back to the plan.
+
+**The crew.** `GET /v1/crew` lists Tex and the specialists with a name, role and description each, whether each one works on this deployment yet (`available`), and for Scout which plan the real browser needs and whether it is built yet (`browser`). The crew page, the "soon" note in the navigation and the browser note on the Plans screen are built from it (`src/lib/crew.ts`). The app keeps only the figures and their colours.
+
+**Credits.** What credits pay for is written once, in `src/lib/credit-costs.ts`: Textcrew AI if you use it, the agent's running time (1 credit per 10 minutes), app actions that change something (1 credit each; reading and searching are free), paid tools such as Scout's web search (about 1 credit per search) and browser use on the Max plan (2 credits per minute). The usage chart shows the same five parts from `GET /v1/usage`: browser use (`browserCredits`) and paid tools (`toolCredits`) are separate numbers. In the history (`GET /v1/credits/ledger`) browser use is part of a usage line and a paid tool is its own line, known by its name ("Web search"), because the ledger has no field for the kind of charge. Whether a plan includes browser use is `limits.browser`.
+
+## Pull-request review
+
+Automations → Pull-request review (`/automations/reviews`). The person turns review on per GitHub repo. When a pull request in that repo opens or gets new commits, Patch reviews it, comments on the pull request and Tex sends a short verdict to the person's chat. It never merges.
+
+- **Where it lives**: with the automations, because each repo with review on *is* an automation (`preset: pr_review`) and counts against the plan's limit. The two share a header and a plan meter. The crew page links there from Patch.
+- **The API**: `GET /v1/pr-reviews`, `PUT` and `DELETE /v1/pr-reviews/{owner}/{repo}`. A repo is paused and resumed as the automation it is (`PATCH /v1/automations/{id}`, the `id` of the review). "Turn off" deletes it.
+- **Typing a repo**: `owner/repo`, a GitHub link (also one to a pull request or a branch) or a clone address all work (`parseRepo` in `src/lib/pr-review.ts`).
+- **Refusals**, each with its own words (`describeEnableError`): 400 names the repo and says to check that it exists and that the connected GitHub account has admin access; 403 `plan_limit` names the plan's number of automations and links to Plans; 409 says GitHub isn't connected and links to Apps; 429 asks for patience. When the Apps list shows GitHub isn't connected, the screen says so before anything is typed.
+- **Each row** shows on or paused and why (by you, out of credits, after failures, each with its way out), where the verdict goes (`channel`) and when the last review ran.
+- **In the automations list** a repo with review on is labelled "Pull-request review" and shows its repo name; "Manage" leads to the review screen instead of a switch and a delete.
+- Turning review on is the person's standing OK for Patch to comment on pull requests in that repo; the form says so. Everything else risky still asks.
+
+## The crew at work
+
+- **Chat**: `agent.progress` events (`{ text, crew, at }`) arrive on the live stream while a turn runs. The bubble that says "Tex is working…" shows the latest line of each member at work, with its face and name ("Scout · reading 4 pages"). The lines are live only: they are kept in the query cache, emptied when the agent stops being busy and when the stream reconnects, and are not there after a reload.
+- **Activity**: an entry with `crew` is shown as that member's (face, name, and the name taken off the front of the line), and the "Crew" filter picks those out. `read_page_refused` reads "Blocked a page Scout wasn't given". On a phone an entry gets two lines.
 
 ## Installing on a phone
 
@@ -96,7 +126,13 @@ The plan buttons follow the backend's rules: a second plan can't be started whil
 | `pnpm build` / `pnpm start` | Production build and server |
 | `pnpm lint && pnpm typecheck && pnpm test` | Checks (ESLint, `tsc`, Vitest) |
 | `pnpm backend:local` | The real backend on this machine, with stand-ins for the agent, Composio and Polar checkout |
-| `pnpm openapi:sync` | Copy the contract from the backend and regenerate `src/lib/api/schema.d.ts` |
+| `pnpm openapi:sync` | Copy the contract from the backend's working tree and regenerate `src/lib/api/schema.d.ts` |
+
+When the backend is mid-change, take the contract as committed instead of from its working tree:
+
+```bash
+git -C ../beckend show origin/main:openapi/openapi.yaml > openapi/openapi.yaml && pnpm openapi:gen
+```
 
 ## Layout
 
@@ -114,6 +150,8 @@ src/lib/
   api/               generated types, typed client, TanStack Query hooks, SSE → cache
   demo/              the in-memory demo backend
   channels.ts        which chat apps to offer, from what the backend has switched on
+  crew.ts            who is on the crew and what they are doing, from what the backend says
+  pr-review.ts       reading a repo as typed, a repo's state and the API's refusals in words
   credit-costs.ts    what credits pay for, in the words every screen uses
   checkout.ts        what a Polar checkout is waiting for, and when it has arrived
 ```
@@ -124,7 +162,14 @@ src/lib/
 
 - Admin screens (`/v1/admin/*`).
 - Voice notes from the composer (files and text only).
-- The crew page is a preview: only Tex works today and there is no API for the specialists (Byte, Patch and Scout).
-- The API can't say whether Textcrew AI is on offer while a key or Claude plan is running, and has no way to choose Textcrew AI while a key is saved. Browser use on Max is not a plan limit in the contract either; the fallback feature list goes by the plan's id.
+- The memory screen (it follows the backend's shared memory, launch plan W3a).
+- Scout's browser: the contract says it isn't built (`browser.available: false`), so there is nothing to show but the note. `browserSeconds` is in the usage and not shown yet.
+- What the screens would like and the contract doesn't offer:
+  - A pull-request review repo has no history: which pull requests were reviewed, the verdicts, or why a review failed. The screen shows only when the last one ran.
+  - There is no way to list the repos of the connected GitHub account, or to check admin access before trying, so the repo is typed.
+  - An automation doesn't carry its repo; the automations list finds it in `/v1/pr-reviews` by id.
+  - The ledger has no field for the kind of charge, so a paid tool is known by its description.
+  - Only progress lines carry `crew`. A web search or a refused page is logged as Tex's, though it is Scout's tool.
+  - Progress lines are not replayed: after a reload in the middle of a turn the chat says "Tex is working…" until the next line.
 - Installed on a phone, the app has not been tried on a real Android phone or iPhone.
 - Not yet run with a real Clerk application, real Polar products or a real agent container.
