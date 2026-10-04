@@ -276,8 +276,13 @@ paths:
       description: |
         One long-lived SSE connection per browser tab. Event types:
         `message.created`, `message.status`, `approval.created`, `approval.resolved`,
-        `agent.status`, `credits.updated`, `automation.updated`.
+        `agent.status`, `agent.progress`, `credits.updated`, `automation.updated`.
         Each event's `data` is JSON matching the `StreamEvent` schema.
+
+        `agent.progress` is a short line about what the agent is doing in the current turn (for
+        example `Scout: reading 4 pages` or `using web_search`). It is live only: it isn't saved
+        as a message and isn't sent to Telegram. Lines that name a crew member are also in the
+        activity log.
         Browsers can't set headers on EventSource, so the token may be passed as `?token=`.
       parameters:
         - name: token
@@ -562,7 +567,10 @@ paths:
       operationId: listAutomations
       tags: [automations]
       summary: The user's automations and reminders
-      description: Automations are created by chatting with the agent; the web app can list, pause and delete them.
+      description: |
+        Automations are created by chatting with the agent; the web app can list, pause and delete
+        them. A repo with pull-request review on is an automation too (`preset: pr_review`); it is
+        turned on and off with `/v1/pr-reviews`.
       responses:
         "200":
           description: OK
@@ -613,6 +621,81 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/pr-reviews:
+    get:
+      operationId: listPrReviews
+      tags: [automations]
+      summary: The GitHub repos that have pull-request review on
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/PrReviewRepo" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/pr-reviews/{owner}/{repo}:
+    put:
+      operationId: enablePrReview
+      tags: [automations]
+      summary: Turn on pull-request review for one GitHub repo
+      description: |
+        When a pull request in this repo is opened or gets new commits, the agent has Patch review
+        it, posts one review on the pull request and sends a short verdict to the user's chat
+        (their linked Telegram chat if there is one, otherwise web chat).
+
+        Turning it on is the user's standing approval for one thing: posting a new review or
+        comment on a pull request **in this repo**. Those run without a per-comment approval.
+        Everything else risky (merging, approving, a comment on another repo) still asks.
+
+        GitHub must be connected (409 otherwise). Each repo counts as one automation of the plan's
+        limit (403 `plan_limit` when it is used up). Each review costs what a turn costs plus
+        1 credit for the posted review. Calling it again for a repo that is already on returns the
+        same repo (and resumes it if it was paused).
+      parameters:
+        - $ref: "#/components/parameters/RepoOwner"
+        - $ref: "#/components/parameters/RepoName"
+      responses:
+        "200":
+          description: Review is on for this repo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrReviewRepo" }
+        "400":
+          description: |
+            Not a GitHub repo name, or GitHub would not let us watch the repo (the connected
+            account needs admin access to it).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PlanLimit" }
+        "409":
+          description: GitHub is not connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      operationId: disablePrReview
+      tags: [automations]
+      summary: Turn off pull-request review for one GitHub repo
+      description: Removes the automation and its trigger. The standing approval for that repo ends.
+      parameters:
+        - $ref: "#/components/parameters/RepoOwner"
+        - $ref: "#/components/parameters/RepoName"
+      responses:
+        "204": { description: Review is off for this repo }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ---------------------------------------------------------------- agent
   /v1/agent/status:
     get:
@@ -636,6 +719,11 @@ paths:
         Rule: a connected Claude plan → Claude Code (when chosen); an own API key → Hermes;
         neither → Hermes on platform credits, or nothing when the platform requires your own AI
         (`aiAccess: none`).
+
+        `platformAvailable` says whether Textcrew AI (the platform's own AI, paid in credits) is on
+        offer. When it is, a user with their own key or Claude plan can still choose it with
+        `aiPreference: platform`, and go back with `aiPreference: auto`. `aiAccess` always says
+        what pays for the AI right now.
       responses:
         "200":
           description: OK
@@ -646,17 +734,22 @@ paths:
     patch:
       operationId: updateAgentSettings
       tags: [agent]
-      summary: Choose the agent runtime
+      summary: Choose the agent runtime, or choose Textcrew AI
+      description: |
+        Send `runtime`, `aiPreference` or both. A screen with three choices sends:
+        own API key → `{ runtime: hermes, aiPreference: auto }`; Claude plan →
+        `{ runtime: claude_code, aiPreference: auto }`; Textcrew AI → `{ aiPreference: platform }`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [runtime]
+              minProperties: 1
               additionalProperties: false
               properties:
                 runtime: { $ref: "#/components/schemas/AgentRuntime" }
+                aiPreference: { $ref: "#/components/schemas/AiPreference" }
       responses:
         "200":
           description: Updated
@@ -666,10 +759,36 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409":
-          description: Claude Code needs a connected Claude plan first
+          description: |
+            Claude Code needs a connected Claude plan first, or Textcrew AI was chosen while it
+            isn't on offer (`platformAvailable: false`)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/crew:
+    get:
+      operationId: listCrew
+      tags: [agent]
+      summary: The crew, the lead and its specialists
+      description: |
+        Tex is the lead (the agent the user texts). Byte, Patch and Scout are the specialists it
+        hands work to. The ids are fixed. `available` says whether a member works on this
+        deployment yet. Scout's `browser` says which plan the real browser needs and whether it is
+        built yet.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/CrewMember" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /v1/agent/claude/login:
     post:
@@ -878,7 +997,7 @@ paths:
     get:
       operationId: getUsage
       tags: [credits]
-      summary: Usage per period (AI, awake time, app actions, tools) between two dates
+      summary: Usage per period (AI, awake time, app actions, browser time, paid tools) between two dates
       parameters:
         - name: from
           in: query
@@ -950,7 +1069,9 @@ paths:
       summary: Audit log of everything the agent did for this user
       description: |
         A `run_app_action` entry carries `creditsCharged`: 1 for a successful action that changed
-        something, 0 for one that only read.
+        something, 0 for one that only read. A `web_search` entry carries what the search cost.
+        A `read_page_refused` entry is a web address the agent asked to read and was not allowed to.
+        A `crew_progress` entry is a progress line from a specialist; `crew` names it.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -1375,6 +1496,18 @@ components:
       in: path
       required: true
       schema: { $ref: "#/components/schemas/ByokProvider" }
+    RepoOwner:
+      name: owner
+      in: path
+      required: true
+      description: The GitHub user or organisation that owns the repo.
+      schema: { type: string, pattern: "^[A-Za-z0-9_.-]{1,100}$", examples: [acme] }
+    RepoName:
+      name: repo
+      in: path
+      required: true
+      description: The repo's name, without `.git`.
+      schema: { type: string, pattern: "^[A-Za-z0-9_.-]{1,100}$", examples: [website] }
 
   requestBodies:
     RawWebhook:
@@ -1641,11 +1774,67 @@ components:
           properties:
             app: { type: string }
             event: { type: string }
+        preset:
+          type: [string, "null"]
+          enum: [pr_review, null]
+          description: "`pr_review`: this automation is pull-request review for one repo (see `/v1/pr-reviews`)."
         enabled: { type: boolean }
         pausedReason: { type: [string, "null"], enum: [out_of_credits, failures, user, null] }
         nextRunAt: { type: [string, "null"], format: date-time }
         lastRunAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
+
+    PrReviewRepo:
+      type: object
+      required: [id, owner, repo, enabled, pausedReason, channel, lastReviewAt, createdAt]
+      properties:
+        id:
+          type: string
+          description: "The automation's id. Pause or resume it with `PATCH /v1/automations/{automationId}`."
+        owner: { type: string, examples: [acme] }
+        repo: { type: string, examples: [website] }
+        enabled:
+          type: boolean
+          description: False while paused. A paused repo gets no reviews and gives no standing approval.
+        pausedReason: { type: [string, "null"], enum: [out_of_credits, failures, user, null] }
+        channel:
+          $ref: "#/components/schemas/ChannelType"
+          description: Where the verdict is sent.
+        lastReviewAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    CrewMember:
+      type: object
+      required: [id, name, kind, role, description, available, browser]
+      properties:
+        id: { type: string, enum: [tex, byte, patch, scout] }
+        name: { type: string, examples: [Tex, Byte, Patch, Scout] }
+        kind: { type: string, enum: [lead, specialist] }
+        role: { type: string, examples: [Lead, Coding, Code review, Research] }
+        description: { type: string }
+        available:
+          type: boolean
+          description: Whether this member works on this deployment yet.
+        browser:
+          type: [object, "null"]
+          description: Scout only. The real browser Scout can drive.
+          required: [requiresPlan, available]
+          properties:
+            requiresPlan: { $ref: "#/components/schemas/PlanId" }
+            available:
+              type: boolean
+              description: Whether the browser is built yet (not the same as being on the plan).
+
+    AgentProgress:
+      type: object
+      required: [text, crew, at]
+      properties:
+        text: { type: string, examples: ["Scout: reading 4 pages", "using web_search"] }
+        crew:
+          type: [string, "null"]
+          enum: [byte, patch, scout, null]
+          description: The specialist the line names, when it names one.
+        at: { type: string, format: date-time }
 
     AgentStatus:
       type: object
@@ -1666,13 +1855,16 @@ components:
         signupCredits: { type: integer, examples: [100, 0, 0] }
         limits:
           type: object
-          required: [apps, automations, ownMcpServers, topUps, models]
+          required: [apps, automations, ownMcpServers, topUps, models, browser]
           properties:
             apps: { type: integer }
             automations: { type: integer }
             ownMcpServers: { type: boolean }
             topUps: { type: boolean }
             models: { type: string, enum: [cheap, all] }
+            browser:
+              type: boolean
+              description: Browser use is part of this plan (Max only).
         features:
           type: array
           items: { type: string }
@@ -1728,12 +1920,12 @@ components:
         delta: { type: integer }
         reason: { type: string, enum: [grant, charge, expire, refund, adjust, reversal] }
         grantId: { type: [string, "null"] }
-        description: { type: string, examples: ["Usage: AI 3, awake time 1", "App action: GMAIL_SEND_EMAIL"] }
+        description: { type: string, examples: ["Usage: AI 3, awake time 1", "App action: GMAIL_SEND_EMAIL", "Web search"] }
         createdAt: { type: string, format: date-time }
 
     UsagePeriod:
       type: object
-      required: [periodStart, periodEnd, aiCredits, awakeCredits, appActionCredits, toolCredits, totalCredits]
+      required: [periodStart, periodEnd, aiCredits, awakeCredits, appActionCredits, browserCredits, toolCredits, totalCredits]
       properties:
         periodStart: { type: string, format: date-time }
         periodEnd: { type: string, format: date-time }
@@ -1745,16 +1937,25 @@ components:
           description: |
             Credits for app actions that changed something in this period (1 credit per successful
             send, create, update or delete; reading and searching are free).
-        toolCredits: { type: integer, description: Browser minutes and paid tools }
-        totalCredits: { type: integer, description: aiCredits + awakeCredits + appActionCredits + toolCredits }
+        browserSeconds: { type: integer }
+        browserCredits: { type: integer, description: Browser time (2 credits per minute) }
+        toolCredits:
+          type: integer
+          description: |
+            Paid tools, such as web search (their cost × 2.5). Browser time is not in here: it has
+            its own number, `browserCredits`.
+        totalCredits:
+          type: integer
+          description: aiCredits + awakeCredits + appActionCredits + browserCredits + toolCredits
 
     UsageTotals:
       type: object
-      required: [aiCredits, awakeCredits, appActionCredits, toolCredits, totalCredits]
+      required: [aiCredits, awakeCredits, appActionCredits, browserCredits, toolCredits, totalCredits]
       properties:
         aiCredits: { type: integer }
         awakeCredits: { type: integer }
         appActionCredits: { type: integer }
+        browserCredits: { type: integer }
         toolCredits: { type: integer }
         totalCredits: { type: integer }
 
@@ -1895,9 +2096,17 @@ components:
       type: string
       enum: [hermes, claude_code]
 
+    AiPreference:
+      type: string
+      enum: [auto, platform]
+      description: |
+        `auto`: the user's own AI when they have one (Claude plan, then API key), Textcrew AI
+        otherwise. `platform`: Textcrew AI, paid in credits, even with a key saved or a Claude
+        plan connected.
+
     AgentSettings:
       type: object
-      required: [runtime, effectiveRuntime, aiAccess, claude, ownKeyProviders]
+      required: [runtime, effectiveRuntime, aiAccess, aiPreference, platformAvailable, claude, ownKeyProviders]
       properties:
         runtime:
           $ref: "#/components/schemas/AgentRuntime"
@@ -1908,7 +2117,13 @@ components:
         aiAccess:
           type: string
           enum: [claude_plan, own_key, platform, none]
-          description: What pays for the AI
+          description: What pays for the AI right now (`platform` is Textcrew AI, paid in credits)
+        aiPreference:
+          $ref: "#/components/schemas/AiPreference"
+          description: What the user chose. Ignored while `platformAvailable` is false.
+        platformAvailable:
+          type: boolean
+          description: Textcrew AI is on offer on this deployment (`AI_ACCESS_MODE=platform`).
         claude:
           type: object
           required: [connected]
@@ -1933,11 +2148,15 @@ components:
       properties:
         id: { type: string }
         actor: { type: string, enum: [user, agent, admin, system] }
-        action: { type: string, examples: [run_app_action, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked] }
+        action: { type: string, examples: [run_app_action, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked, web_search, read_page, read_page_refused, crew_progress, pr_review_requested] }
         summary: { type: string }
+        crew:
+          type: [string, "null"]
+          enum: [byte, patch, scout, null]
+          description: The specialist this entry belongs to, when the platform knows it (progress lines).
         creditsCharged:
           type: [integer, "null"]
-          description: "Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Null when nothing is charged per entry."
+          description: "Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Web search: what the search cost. Null when nothing is charged per entry."
         createdAt: { type: string, format: date-time }
 
     StreamEvent:
@@ -1947,11 +2166,12 @@ components:
         type:
           type: string
           enum: [message.created, message.status, approval.created, approval.resolved,
-                 agent.status, credits.updated, automation.updated]
+                 agent.status, agent.progress, credits.updated, automation.updated]
         data:
           oneOf:
             - { $ref: "#/components/schemas/Message" }
             - { $ref: "#/components/schemas/Approval" }
             - { $ref: "#/components/schemas/AgentStatus" }
+            - { $ref: "#/components/schemas/AgentProgress" }
             - { $ref: "#/components/schemas/CreditBalance" }
             - { $ref: "#/components/schemas/Automation" }

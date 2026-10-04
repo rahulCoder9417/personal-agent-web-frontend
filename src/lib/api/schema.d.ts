@@ -153,8 +153,13 @@ export interface paths {
          * Live updates (Server-Sent Events)
          * @description One long-lived SSE connection per browser tab. Event types:
          *     `message.created`, `message.status`, `approval.created`, `approval.resolved`,
-         *     `agent.status`, `credits.updated`, `automation.updated`.
+         *     `agent.status`, `agent.progress`, `credits.updated`, `automation.updated`.
          *     Each event's `data` is JSON matching the `StreamEvent` schema.
+         *
+         *     `agent.progress` is a short line about what the agent is doing in the current turn (for
+         *     example `Scout: reading 4 pages` or `using web_search`). It is live only: it isn't saved
+         *     as a message and isn't sent to Telegram. Lines that name a crew member are also in the
+         *     activity log.
          *     Browsers can't set headers on EventSource, so the token may be passed as `?token=`.
          */
         get: operations["streamEvents"];
@@ -334,7 +339,9 @@ export interface paths {
         };
         /**
          * The user's automations and reminders
-         * @description Automations are created by chatting with the agent; the web app can list, pause and delete them.
+         * @description Automations are created by chatting with the agent; the web app can list, pause and delete
+         *     them. A repo with pull-request review on is an automation too (`preset: pr_review`); it is
+         *     turned on and off with `/v1/pr-reviews`.
          */
         get: operations["listAutomations"];
         put?: never;
@@ -361,6 +368,58 @@ export interface paths {
         head?: never;
         /** Pause or resume */
         patch: operations["updateAutomation"];
+        trace?: never;
+    };
+    "/v1/pr-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The GitHub repos that have pull-request review on */
+        get: operations["listPrReviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pr-reviews/{owner}/{repo}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Turn on pull-request review for one GitHub repo
+         * @description When a pull request in this repo is opened or gets new commits, the agent has Patch review
+         *     it, posts one review on the pull request and sends a short verdict to the user's chat
+         *     (their linked Telegram chat if there is one, otherwise web chat).
+         *
+         *     Turning it on is the user's standing approval for one thing: posting a new review or
+         *     comment on a pull request **in this repo**. Those run without a per-comment approval.
+         *     Everything else risky (merging, approving, a comment on another repo) still asks.
+         *
+         *     GitHub must be connected (409 otherwise). Each repo counts as one automation of the plan's
+         *     limit (403 `plan_limit` when it is used up). Each review costs what a turn costs plus
+         *     1 credit for the posted review. Calling it again for a repo that is already on returns the
+         *     same repo (and resumes it if it was paused).
+         */
+        put: operations["enablePrReview"];
+        post?: never;
+        /**
+         * Turn off pull-request review for one GitHub repo
+         * @description Removes the automation and its trigger. The standing approval for that repo ends.
+         */
+        delete: operations["disablePrReview"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/agent/status": {
@@ -392,6 +451,11 @@ export interface paths {
          * @description Rule: a connected Claude plan → Claude Code (when chosen); an own API key → Hermes;
          *     neither → Hermes on platform credits, or nothing when the platform requires your own AI
          *     (`aiAccess: none`).
+         *
+         *     `platformAvailable` says whether Textcrew AI (the platform's own AI, paid in credits) is on
+         *     offer. When it is, a user with their own key or Claude plan can still choose it with
+         *     `aiPreference: platform`, and go back with `aiPreference: auto`. `aiAccess` always says
+         *     what pays for the AI right now.
          */
         get: operations["getAgentSettings"];
         put?: never;
@@ -399,8 +463,36 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Choose the agent runtime */
+        /**
+         * Choose the agent runtime, or choose Textcrew AI
+         * @description Send `runtime`, `aiPreference` or both. A screen with three choices sends:
+         *     own API key → `{ runtime: hermes, aiPreference: auto }`; Claude plan →
+         *     `{ runtime: claude_code, aiPreference: auto }`; Textcrew AI → `{ aiPreference: platform }`.
+         */
         patch: operations["updateAgentSettings"];
+        trace?: never;
+    };
+    "/v1/crew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The crew, the lead and its specialists
+         * @description Tex is the lead (the agent the user texts). Byte, Patch and Scout are the specialists it
+         *     hands work to. The ids are fixed. `available` says whether a member works on this
+         *     deployment yet. Scout's `browser` says which plan the real browser needs and whether it is
+         *     built yet.
+         */
+        get: operations["listCrew"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/agent/claude/login": {
@@ -574,7 +666,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Usage per period (AI, awake time, app actions, tools) between two dates */
+        /** Usage per period (AI, awake time, app actions, browser time, paid tools) between two dates */
         get: operations["getUsage"];
         put?: never;
         post?: never;
@@ -617,7 +709,9 @@ export interface paths {
         /**
          * Audit log of everything the agent did for this user
          * @description A `run_app_action` entry carries `creditsCharged`: 1 for a successful action that changed
-         *     something, 0 for one that only read.
+         *     something, 0 for one that only read. A `web_search` entry carries what the search cost.
+         *     A `read_page_refused` entry is a web address the agent asked to read and was not allowed to.
+         *     A `crew_progress` entry is a progress line from a specialist; `crew` names it.
          */
         get: operations["listActivity"];
         put?: never;
@@ -1105,6 +1199,11 @@ export interface components {
                 app?: string;
                 event?: string;
             } | null;
+            /**
+             * @description `pr_review`: this automation is pull-request review for one repo (see `/v1/pr-reviews`).
+             * @enum {string|null}
+             */
+            preset?: "pr_review" | null;
             enabled: boolean;
             /** @enum {string|null} */
             pausedReason?: "out_of_credits" | "failures" | "user" | null;
@@ -1114,6 +1213,67 @@ export interface components {
             lastRunAt?: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        PrReviewRepo: {
+            /** @description The automation's id. Pause or resume it with `PATCH /v1/automations/{automationId}`. */
+            id: string;
+            /** @example acme */
+            owner: string;
+            /** @example website */
+            repo: string;
+            /** @description False while paused. A paused repo gets no reviews and gives no standing approval. */
+            enabled: boolean;
+            /** @enum {string|null} */
+            pausedReason: "out_of_credits" | "failures" | "user" | null;
+            /** @description Where the verdict is sent. */
+            channel: components["schemas"]["ChannelType"];
+            /** Format: date-time */
+            lastReviewAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CrewMember: {
+            /** @enum {string} */
+            id: "tex" | "byte" | "patch" | "scout";
+            /**
+             * @example Tex
+             * @example Byte
+             * @example Patch
+             * @example Scout
+             */
+            name: string;
+            /** @enum {string} */
+            kind: "lead" | "specialist";
+            /**
+             * @example Lead
+             * @example Coding
+             * @example Code review
+             * @example Research
+             */
+            role: string;
+            description: string;
+            /** @description Whether this member works on this deployment yet. */
+            available: boolean;
+            /** @description Scout only. The real browser Scout can drive. */
+            browser: {
+                requiresPlan: components["schemas"]["PlanId"];
+                /** @description Whether the browser is built yet (not the same as being on the plan). */
+                available: boolean;
+            } | null;
+        };
+        AgentProgress: {
+            /**
+             * @example Scout: reading 4 pages
+             * @example using web_search
+             */
+            text: string;
+            /**
+             * @description The specialist the line names, when it names one.
+             * @enum {string|null}
+             */
+            crew: "byte" | "patch" | "scout" | null;
+            /** Format: date-time */
+            at: string;
         };
         AgentStatus: {
             /** @enum {string} */
@@ -1151,6 +1311,8 @@ export interface components {
                 topUps: boolean;
                 /** @enum {string} */
                 models: "cheap" | "all";
+                /** @description Browser use is part of this plan (Max only). */
+                browser: boolean;
             };
             features: string[];
         };
@@ -1200,6 +1362,7 @@ export interface components {
             /**
              * @example Usage: AI 3, awake time 1
              * @example App action: GMAIL_SEND_EMAIL
+             * @example Web search
              */
             description?: string;
             /** Format: date-time */
@@ -1218,15 +1381,22 @@ export interface components {
              *     send, create, update or delete; reading and searching are free).
              */
             appActionCredits: number;
-            /** @description Browser minutes and paid tools */
+            browserSeconds?: number;
+            /** @description Browser time (2 credits per minute) */
+            browserCredits: number;
+            /**
+             * @description Paid tools, such as web search (their cost × 2.5). Browser time is not in here: it has
+             *     its own number, `browserCredits`.
+             */
             toolCredits: number;
-            /** @description aiCredits + awakeCredits + appActionCredits + toolCredits */
+            /** @description aiCredits + awakeCredits + appActionCredits + browserCredits + toolCredits */
             totalCredits: number;
         };
         UsageTotals: {
             aiCredits: number;
             awakeCredits: number;
             appActionCredits: number;
+            browserCredits: number;
             toolCredits: number;
             totalCredits: number;
         };
@@ -1351,6 +1521,13 @@ export interface components {
         };
         /** @enum {string} */
         AgentRuntime: "hermes" | "claude_code";
+        /**
+         * @description `auto`: the user's own AI when they have one (Claude plan, then API key), Textcrew AI
+         *     otherwise. `platform`: Textcrew AI, paid in credits, even with a key saved or a Claude
+         *     plan connected.
+         * @enum {string}
+         */
+        AiPreference: "auto" | "platform";
         AgentSettings: {
             runtime: components["schemas"]["AgentRuntime"];
             /**
@@ -1359,10 +1536,14 @@ export interface components {
              */
             effectiveRuntime: "hermes" | "claude_code" | null;
             /**
-             * @description What pays for the AI
+             * @description What pays for the AI right now (`platform` is Textcrew AI, paid in credits)
              * @enum {string}
              */
             aiAccess: "claude_plan" | "own_key" | "platform" | "none";
+            /** @description What the user chose. Ignored while `platformAvailable` is false. */
+            aiPreference: components["schemas"]["AiPreference"];
+            /** @description Textcrew AI is on offer on this deployment (`AI_ACCESS_MODE=platform`). */
+            platformAvailable: boolean;
             claude: {
                 connected: boolean;
                 /** Format: date-time */
@@ -1391,18 +1572,28 @@ export interface components {
              * @example approval_decided
              * @example coupon_redeemed
              * @example channel_linked
+             * @example web_search
+             * @example read_page
+             * @example read_page_refused
+             * @example crew_progress
+             * @example pr_review_requested
              */
             action: string;
             summary: string;
-            /** @description Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Null when nothing is charged per entry. */
+            /**
+             * @description The specialist this entry belongs to, when the platform knows it (progress lines).
+             * @enum {string|null}
+             */
+            crew?: "byte" | "patch" | "scout" | null;
+            /** @description Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Web search: what the search cost. Null when nothing is charged per entry. */
             creditsCharged?: number | null;
             /** Format: date-time */
             createdAt: string;
         };
         StreamEvent: {
             /** @enum {string} */
-            type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "credits.updated" | "automation.updated";
-            data: components["schemas"]["Message"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"];
+            type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated";
+            data: components["schemas"]["Message"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"];
         };
     };
     responses: {
@@ -1507,6 +1698,10 @@ export interface components {
         McpServerId: string;
         AutomationId: string;
         Provider: components["schemas"]["ByokProvider"];
+        /** @description The GitHub user or organisation that owns the repo. */
+        RepoOwner: string;
+        /** @description The repo's name, without `.git`. */
+        RepoName: string;
     };
     requestBodies: {
         /** @description Provider-defined JSON. The signature is checked on the raw body before parsing. */
@@ -2218,6 +2413,104 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listPrReviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["PrReviewRepo"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    enablePrReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The GitHub user or organisation that owns the repo. */
+                owner: components["parameters"]["RepoOwner"];
+                /** @description The repo's name, without `.git`. */
+                repo: components["parameters"]["RepoName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Review is on for this repo */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrReviewRepo"];
+                };
+            };
+            /**
+             * @description Not a GitHub repo name, or GitHub would not let us watch the repo (the connected
+             *     account needs admin access to it).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlanLimit"];
+            /** @description GitHub is not connected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    disablePrReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The GitHub user or organisation that owns the repo. */
+                owner: components["parameters"]["RepoOwner"];
+                /** @description The repo's name, without `.git`. */
+                repo: components["parameters"]["RepoName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Review is off for this repo */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getAgentStatus: {
         parameters: {
             query?: never;
@@ -2270,7 +2563,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    runtime: components["schemas"]["AgentRuntime"];
+                    runtime?: components["schemas"]["AgentRuntime"];
+                    aiPreference?: components["schemas"]["AiPreference"];
                 };
             };
         };
@@ -2286,7 +2580,10 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            /** @description Claude Code needs a connected Claude plan first */
+            /**
+             * @description Claude Code needs a connected Claude plan first, or Textcrew AI was chosen while it
+             *     isn't on offer (`platformAvailable: false`)
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2295,6 +2592,29 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    listCrew: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["CrewMember"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     startClaudeLogin: {
