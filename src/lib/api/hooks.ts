@@ -25,6 +25,7 @@ import {
   type Message,
   type PlanId,
 } from "./client";
+import type { ProgressLine } from "../crew";
 
 // One place for every query key, so the event stream and mutations invalidate the same things.
 export const qk = {
@@ -39,6 +40,7 @@ export const qk = {
   prReviews: ["pr-reviews"] as const,
   agentStatus: ["agent", "status"] as const,
   agentSettings: ["agent", "settings"] as const,
+  agentProgress: ["agent", "progress"] as const,
   crew: ["crew"] as const,
   plans: ["billing", "plans"] as const,
   subscription: ["billing", "subscription"] as const,
@@ -402,6 +404,20 @@ export function useDisablePrReview() {
 
 export function useAgentStatus() {
   return useQuery({ queryKey: qk.agentStatus, queryFn: () => unwrap(api.GET("/v1/agent/status")) });
+}
+
+/**
+ * What the agent is doing in the turn that is running: the latest line of each crew member.
+ * Nothing is fetched: the event stream writes it (`agent.progress`) and empties it when the turn ends.
+ */
+export function useAgentProgress() {
+  return useQuery<ProgressLine[]>({
+    queryKey: qk.agentProgress,
+    queryFn: () => [],
+    enabled: false,
+    initialData: [],
+    staleTime: Infinity,
+  });
 }
 
 export function useAgentSettings() {

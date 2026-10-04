@@ -11,6 +11,7 @@ import { formatCredits, initials } from "@/lib/format";
 const FILTERS: FilterOption<ActivityFilter>[] = [
   { value: "all", label: "All" },
   { value: "tex", label: "Tex" },
+  { value: "crew", label: "Crew" },
   { value: "you", label: "You" },
   { value: "automations", label: "Automations" },
   { value: "approvals", label: "Approvals" },

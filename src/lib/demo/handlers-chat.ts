@@ -16,7 +16,8 @@ import {
   requiredString,
   type JsonObject,
 } from "./http";
-import { balanceOf, chargeAppAction, chargeUsage, emit, logActivity, nextId, schedule, setAgentState, type DemoState } from "./store";
+import type { SpecialistId } from "./seed";
+import { balanceOf, chargeAppAction, chargePaidTool, chargeUsage, emit, logActivity, nextId, schedule, setAgentState, type DemoState } from "./store";
 import { streamResponse } from "./stream";
 
 const CHANNELS: readonly ChannelType[] = ["whatsapp", "telegram", "imessage", "web"];
@@ -30,6 +31,8 @@ const DAY_MS = 86_400_000;
 const PICKUP_MS = 300;
 const ANSWER_MS = 1500;
 const FOLLOW_UP_MS = 900;
+/** How long a specialist takes over each step it reports. */
+const CREW_STEP_MS = 1300;
 /** What a demo answer costs in AI when Tex runs on Textcrew AI. */
 const TEXTCREW_AI_CREDITS = 2;
 
@@ -107,11 +110,55 @@ function askForApproval(state: DemoState, request: Message, risk: Risk): void {
   postFromTex(state, request.channel, "That one needs your OK before I do it.");
 }
 
-function answer(state: DemoState, request: Message): void {
+type CrewJob = { crew: SpecialistId; name: string; steps: string[]; reply: string };
+
+// What each specialist is handed in the demo, the lines it reports while it works, and how Tex answers.
+const CREW_JOBS: readonly (CrewJob & { when: RegExp })[] = [
+  {
+    crew: "scout", name: "Scout", when: /\b(research|look up|look into|find out|search|compare)\b/i,
+    steps: ["searching the web", "reading 3 pages", "done"],
+    reply: "Scout looked into it. In the demo account nothing is really searched, but this is where I’d tell you what it found.",
+  },
+  {
+    crew: "patch", name: "Patch", when: /\b(review|pull request|pr)\b/i,
+    steps: ["reading the diff", "running the tests", "done"],
+    reply: "Patch had a look. In the demo account no code is really reviewed, but this is where I’d give you its verdict.",
+  },
+  {
+    crew: "byte", name: "Byte", when: /\b(code|bug|fix|script|refactor)\b/i,
+    steps: ["reading the code", "writing the change", "done"],
+    reply: "Byte took that one. In the demo account no code is really written, but this is where I’d tell you what it changed.",
+  },
+];
+
+/** The specialist a request goes to, if one fits and it works on this deployment. */
+function crewJobOf(state: DemoState, text: string): CrewJob | null {
+  return CREW_JOBS.find((job) => job.when.test(text) && state.crewAvailable.includes(job.crew)) ?? null;
+}
+
+/**
+ * A progress line, as the backend passes it on: to the live stream for the web chat, and, because
+ * it names a crew member, to the activity log. Nothing is sent to a chat app for it.
+ */
+function reportProgress(state: DemoState, job: CrewJob, step: string): void {
+  const text = `${job.name}: ${step}`;
+  emit(state, "agent.progress", { text, crew: job.crew, at: nowIso() });
+  logActivity(state, { actor: "agent", action: "crew_progress", summary: text, crew: job.crew });
+}
+
+function answer(state: DemoState, request: Message, job: CrewJob | null = null): void {
   setMessageStatus(state, request.id, "read");
   const risk = riskOf(request.text);
   if (risk) {
     askForApproval(state, request, risk);
+  } else if (job) {
+    postFromTex(state, request.channel, job.reply);
+    if (job.crew === "scout") {
+      // Scout's search is a paid tool: charged when it runs, on top of the time the agent ran.
+      const charged = chargePaidTool(state, "Web search");
+      logActivity(state, { actor: "agent", action: "web_search", summary: `Searched the web: ${truncate(request.text, 80)}`, creditsCharged: charged });
+    }
+    chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
   } else {
     const quote = truncate(request.text, 80);
     postFromTex(state, request.channel, `Got it. In the demo account nothing is really done, but this is where I’d tell you how “${quote}” went.`);
@@ -154,7 +201,14 @@ export const sendMessage: Handler = async ({ state, request }) => {
     setAgentState(state, "busy");
     setMessageStatus(state, message.id, "processing");
   });
-  schedule(state, ANSWER_MS, () => answer(state, message));
+  // A job for a specialist takes longer, and says what it is doing on the way.
+  const job = riskOf(text) ? null : crewJobOf(state, text);
+  if (job) {
+    job.steps.forEach((step, index) => schedule(state, CREW_STEP_MS * (index + 1), () => reportProgress(state, job, step)));
+    schedule(state, CREW_STEP_MS * job.steps.length + FOLLOW_UP_MS, () => answer(state, message, job));
+  } else {
+    schedule(state, ANSWER_MS, () => answer(state, message));
+  }
   return json(message, 202);
 };
 

@@ -155,6 +155,17 @@ export function chargeAppAction(state: DemoState, action: string): number {
   return charged;
 }
 
+/** One credit for a paid tool that ran (Scout's web search), as its own line under the tool's name. */
+export function chargePaidTool(state: DemoState, description: string): number {
+  const now = Date.now();
+  const charged = spend(state, 1, description, now);
+  if (charged === 0) return 0;
+
+  usageToday(state, now).tools += charged;
+  emit(state, "credits.updated", creditBalance(state));
+  return charged;
+}
+
 /** Adds a grant with its ledger line, and tells the stream. */
 export function grantCredits(
   state: DemoState,

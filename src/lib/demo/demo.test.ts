@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ActivityEntry,
+  AgentProgress,
   AgentSettings,
   Approval,
   App,
@@ -12,11 +13,12 @@ import type {
   Me,
   Message,
   PrReviewRepo,
+  StreamEvent,
   UsagePeriod,
   UsageTotals,
 } from "@/lib/api/client";
 import { handleDemoRequest, resetDemoStore } from "./index";
-import { getStore } from "./store";
+import { getStore, subscribe } from "./store";
 
 const ORIGIN = "http://localhost:3100";
 const NOW = new Date("2026-10-01T14:30:00");
@@ -138,6 +140,56 @@ describe("chat", () => {
     // With the user's own AI key only the time Tex ran is charged.
     expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1883);
     expect(getStore().ledger[0]).toMatchObject({ delta: -1, reason: "charge", description: "Usage: awake time 1" });
+  });
+
+  it("has Scout report what it is doing, charges its search and then answers", async () => {
+    const events: StreamEvent[] = [];
+    subscribe(getStore(), (event) => events.push(event));
+    await call<Message>("POST", "messages", { text: "Research what other tools charge for seats", clientMessageId: uuid(20) });
+
+    // Still working after the time a plain answer takes: the lines come one by one.
+    vi.advanceTimersByTime(2000);
+    expect(events.filter((event) => event.type === "agent.progress")).toHaveLength(1);
+    expect(getStore().agentStatus.state).toBe("busy");
+
+    vi.advanceTimersByTime(3000);
+    const lines = events.filter((event) => event.type === "agent.progress").map((event) => event.data as AgentProgress);
+    expect(lines.map((line) => [line.text, line.crew])).toEqual([
+      ["Scout: searching the web", "scout"],
+      ["Scout: reading 3 pages", "scout"],
+      ["Scout: done", "scout"],
+    ]);
+    // A line that names a crew member is in the activity log too, under that member.
+    const log = getStore().activity.slice(0, 4);
+    expect(log.map((entry) => [entry.action, entry.crew])).toEqual([
+      ["web_search", null],
+      ["crew_progress", "scout"],
+      ["crew_progress", "scout"],
+      ["crew_progress", "scout"],
+    ]);
+    expect(log[0]).toMatchObject({ creditsCharged: 1 });
+    expect(getStore().ledger.slice(0, 2).map((entry) => entry.description)).toEqual(["Usage: awake time 1", "Web search"]);
+    expect((await call<Page<Message>>("GET", "messages?channel=web")).body.items[0].text).toContain("Scout looked into it");
+    expect(getStore().agentStatus.state).toBe("awake");
+    expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1882);
+  });
+
+  it("hands code to Byte and reviews to Patch, and to nobody who isn't on the crew yet", async () => {
+    const lines: string[] = [];
+    subscribe(getStore(), (event) => {
+      if (event.type === "agent.progress") lines.push((event.data as AgentProgress).text);
+    });
+    await call<Message>("POST", "messages", { text: "Fix the bug in the signup form", clientMessageId: uuid(21) });
+    vi.advanceTimersByTime(5000);
+    await call<Message>("POST", "messages", { text: "Review my last pull request", clientMessageId: uuid(22) });
+    vi.advanceTimersByTime(5000);
+    expect(lines).toEqual(["Byte: reading the code", "Byte: writing the change", "Byte: done", "Patch: reading the diff", "Patch: running the tests", "Patch: done"]);
+
+    getStore().crewAvailable = [];
+    await call<Message>("POST", "messages", { text: "Research what other tools charge for seats", clientMessageId: uuid(23) });
+    vi.advanceTimersByTime(2000);
+    expect(lines).toHaveLength(6);
+    expect((await call<Page<Message>>("GET", "messages?channel=web")).body.items[0].text).toContain("Got it.");
   });
 
   it("asks for an OK instead of acting when the request is risky", async () => {
@@ -527,6 +579,18 @@ describe("pull-request review", () => {
 
     vi.advanceTimersByTime(3_600_001);
     expect((await call("PUT", "pr-reviews/northwind/website")).status).toBe(200);
+  });
+
+  it("logs a page Scout asked for but had not been given, next to the ones it read", async () => {
+    const store = getStore();
+    expect(store.activity.filter((entry) => entry.action === "read_page_refused").map((entry) => entry.summary)).toEqual([
+      "Refused to read https://collect.example/save",
+    ]);
+    expect(store.activity.filter((entry) => entry.action === "read_page")).toHaveLength(2);
+    expect(store.activity.filter((entry) => entry.crew === "scout").map((entry) => entry.summary)).toEqual([
+      "Scout: done",
+      "Scout: find what other B2B tools send in week one",
+    ]);
   });
 
   it("has today's review in the activity log and the history: asked for, done by Patch, one credit for the posted review", async () => {

@@ -2,7 +2,8 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import type { AgentStatus, Approval, CreditBalance, Message, StreamEvent } from "./client";
+import { addProgress, progressLine, type ProgressLine } from "../crew";
+import type { AgentProgress, AgentStatus, Approval, CreditBalance, Message, StreamEvent } from "./client";
 import { invalidateAutomations, qk, upsertMessage } from "./hooks";
 
 const EVENT_TYPES: StreamEvent["type"][] = [
@@ -11,6 +12,7 @@ const EVENT_TYPES: StreamEvent["type"][] = [
   "approval.created",
   "approval.resolved",
   "agent.status",
+  "agent.progress",
   "credits.updated",
   "automation.updated",
 ];
@@ -39,6 +41,8 @@ export function useEventStream(onEvent?: StreamListener) {
         void qc.invalidateQueries({ queryKey: ["messages"] });
         void qc.invalidateQueries({ queryKey: ["approvals"] });
         void qc.invalidateQueries({ queryKey: qk.agentStatus });
+        // Progress is live only, so what was on screen may belong to a turn that has since ended.
+        qc.setQueryData<ProgressLine[]>(qk.agentProgress, []);
       }
       opened = true;
     };
@@ -62,8 +66,16 @@ export function useEventStream(onEvent?: StreamListener) {
           // Keep the freshest copy handy for the chat card.
           qc.setQueryData(["approval", (event.data as Approval).id], event.data);
           break;
-        case "agent.status":
-          qc.setQueryData(qk.agentStatus, event.data as AgentStatus);
+        case "agent.status": {
+          const status = event.data as AgentStatus;
+          qc.setQueryData(qk.agentStatus, status);
+          // The turn is over: its progress lines have nothing more to say.
+          if (status.state !== "busy") qc.setQueryData<ProgressLine[]>(qk.agentProgress, []);
+          break;
+        }
+        case "agent.progress":
+          // Live only: a short line about what the agent, or one of the crew, is doing right now.
+          qc.setQueryData<ProgressLine[]>(qk.agentProgress, (lines) => addProgress(lines ?? [], progressLine(event.data as AgentProgress)));
           break;
         case "credits.updated":
           qc.setQueryData(qk.credits, event.data as CreditBalance);

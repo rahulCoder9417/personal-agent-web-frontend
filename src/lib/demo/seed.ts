@@ -182,6 +182,15 @@ const automationRan = (at: string, title: string): Happened => ({
   did: { action: "automation_run", summary: `Ran “${title}”`, creditsCharged: null },
 });
 
+/** Scout read a page it was given (free). The address is logged without its query string, as in the backend. */
+const readPage = (at: string, address: string): Happened => ({ at, did: { action: "read_page", summary: `Read ${address}`, creditsCharged: null } });
+
+/** A page Scout asked for that it had not been given: not opened, and logged so it can be seen. */
+const refusedPage = (at: string, address: string): Happened => ({
+  at,
+  did: { action: "read_page_refused", summary: `Refused to read ${address}`, creditsCharged: null },
+});
+
 /** A progress line from a specialist, as the backend saves it: the text starts with the member's name. */
 const progress = (at: string, crew: NonNullable<ActivityEntry["crew"]>, text: string): Happened => ({
   at,
@@ -260,7 +269,13 @@ function seedHappened(now: Date): Happened[] {
     automationRan(earlierToday(now, 390), "Today’s meetings"),
     changed(earlierToday(now, 207), "NOTION_CREATE_PAGE", "Filed notes from your voice note"),
     ranFor(earlierToday(now, 206), 2),
+    // Scout looked something up: one paid search, two pages read for free, one address it had no business opening.
+    progress(earlierToday(now, 141), "scout", "Scout: find what other B2B tools send in week one"),
     searched(earlierToday(now, 140), "onboarding emails other B2B tools send in week one"),
+    readPage(earlierToday(now, 140), "https://saasletters.example/week-one-emails"),
+    readPage(earlierToday(now, 139), "https://growthnotes.example/onboarding-teardowns"),
+    refusedPage(earlierToday(now, 139), "https://collect.example/save"),
+    progress(earlierToday(now, 138), "scout", "Scout: done"),
     ...reviewedPullRequest(now),
     changed(earlierToday(now, 16), "GOOGLECALENDAR_UPDATE_EVENT", "Moved “Roadmap sync” to tomorrow, 3:00 PM"),
     ranFor(earlierToday(now, 15), 1),

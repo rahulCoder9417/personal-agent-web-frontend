@@ -2,7 +2,8 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { ChannelType, Message } from "@/lib/api/client";
-import { useAgentStatus, useMessages } from "@/lib/api/hooks";
+import { useAgentProgress, useAgentStatus, useMessages } from "@/lib/api/hooks";
+import type { ProgressLine } from "@/lib/crew";
 import { CHANNEL_LABEL, cn, formatDate, formatDay, formatTime } from "@/lib/format";
 import { BrandIcon } from "../brand-icon";
 import { FileIcon } from "../icons";
@@ -97,10 +98,35 @@ function Bubble({ message }: { message: Message }) {
   );
 }
 
+/**
+ * What Tex is doing while it works. Until a progress line arrives it just says so; then it shows
+ * the latest line of each crew member at work, so it is clear who is on what.
+ */
+function Working({ lines }: { lines: ProgressLine[] }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <TexAvatar working />
+      <div className="flex min-w-0 max-w-[560px] flex-col gap-1.5 rounded-[18px] rounded-bl-[6px] bg-surface-2 px-4 py-2.5 text-[13.5px] text-muted">
+        {lines.length === 0
+          ? "Tex is working…"
+          : lines.map((line) => (
+              <span key={line.who} className="flex min-w-0 items-center gap-2">
+                <AgentFigure who={line.who} mood="working" glyph size={18} label="" className="shrink-0" />
+                <span className="min-w-0 break-words">
+                  <span className="font-medium text-fg">{line.name}</span> · {line.text}
+                </span>
+              </span>
+            ))}
+      </div>
+    </div>
+  );
+}
+
 /** One thread for every chat app, oldest at the top. Follows new messages while you're at the bottom. */
 export function Thread({ channel }: { channel: ChannelType | "all" }) {
   const query = useMessages(channel);
   const busy = useAgentStatus().data?.state === "busy";
+  const progress = useAgentProgress().data;
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const heightBeforeOlder = useRef<number | null>(null);
@@ -195,12 +221,7 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
           </div>
         ))}
 
-        {busy && count > 0 && (
-          <div className="flex items-center gap-2.5">
-            <TexAvatar working />
-            <span className="rounded-[18px] rounded-bl-[6px] bg-surface-2 px-4 py-2.5 text-[13.5px] text-muted">Tex is working…</span>
-          </div>
-        )}
+        {busy && count > 0 && <Working lines={progress} />}
       </div>
     </div>
   );

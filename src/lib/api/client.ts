@@ -22,6 +22,7 @@ export type ByokKey = Schemas["ByokKey"];
 export type Automation = Schemas["Automation"];
 export type PrReviewRepo = Schemas["PrReviewRepo"];
 export type AgentStatus = Schemas["AgentStatus"];
+export type AgentProgress = Schemas["AgentProgress"];
 export type AgentSettings = Schemas["AgentSettings"];
 export type AgentRuntime = Schemas["AgentRuntime"];
 export type AiPreference = Schemas["AiPreference"];

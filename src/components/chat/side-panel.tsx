@@ -61,8 +61,20 @@ function Tile({ children, className }: { children: ReactNode; className?: string
   return <span className={cn("grid size-8 shrink-0 place-items-center rounded-[9px] bg-surface-2 text-nav", className)}>{children}</span>;
 }
 
-// Activity entries that record Tex talking or asking, rather than something it got done.
-const CHATTER = new Set(["send_message", "request_approval", "approval_requested", "get_profile", "list_app_actions", "list_automations"]);
+// Activity entries that record Tex talking, asking or reporting, rather than something it got done.
+const CHATTER = new Set([
+  "send_message",
+  "request_approval",
+  "approval_requested",
+  "get_profile",
+  "list_app_actions",
+  "list_automations",
+  // A specialist's progress line, a review being asked for, and a page that was refused are not things done.
+  "crew_progress",
+  "pr_review_requested",
+  "pr_review_skipped",
+  "read_page_refused",
+]);
 
 function isToday(iso: string): boolean {
   return new Date(iso).toDateString() === new Date().toDateString();

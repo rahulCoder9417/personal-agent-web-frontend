@@ -1,8 +1,9 @@
 // The crew, as the backend describes it (`GET /v1/crew`): Tex leads, and Byte, Patch and Scout are
-// the specialists it hands work to. Nothing here names a member or says who is available by itself.
+// the specialists it hands work to. Who they are and who is available comes from the backend;
+// the only name written here is the lead's, for a progress line that names nobody.
 
-import type { CrewMember } from "./api/client";
-import { listNames } from "./format";
+import type { AgentProgress, CrewMember } from "./api/client";
+import { listNames, titleCase } from "./format";
 
 /** The lead, the specialists that work on this deployment, and the ones still to come. */
 export function splitCrew(crew: readonly CrewMember[]): { lead: CrewMember | undefined; working: CrewMember[]; coming: CrewMember[] } {
@@ -55,4 +56,43 @@ export function describeBrowser(browser: CrewBrowser, planName: string, included
   return included
     ? { text: `A real browser is part of your ${planName} plan, at 2 credits per minute.`, upgrade: false }
     : { text: `A real browser needs the ${planName} plan.`, upgrade: true };
+}
+
+// ---------------------------------------------------------------- progress lines
+
+/** A specialist's id, as progress lines and activity entries carry it. */
+export type SpecialistId = NonNullable<AgentProgress["crew"]>;
+
+/** The lead's name, for a line that names nobody: it is the lead's own. */
+const LEAD = "Tex";
+/** "Scout: reading 4 pages": a line from a specialist starts with its name and a colon. */
+const NAMED = /^([A-Za-z][A-Za-z0-9 ]{0,30}):\s*([\s\S]*)$/;
+
+/**
+ * Who a progress line is about and what it says, with the name taken off the front:
+ * "Scout: reading 4 pages" → Scout, "reading 4 pages". The backend says which member it is
+ * (`crew`); the name is the one the line itself uses.
+ */
+export function splitCrewLine(text: string, crew: SpecialistId | null | undefined): { who: CrewMember["id"]; name: string; text: string } {
+  const line = text.trim();
+  if (!crew) return { who: "tex", name: LEAD, text: line };
+  const named = NAMED.exec(line);
+  // Only take a name off the front when it is this member's.
+  if (named && named[1].toLowerCase() === crew) return { who: crew, name: named[1], text: named[2] || "working" };
+  return { who: crew, name: titleCase(crew), text: line };
+}
+
+/** One line of the chat's live progress: who is working and on what. */
+export type ProgressLine = { who: CrewMember["id"]; name: string; text: string; at: string };
+
+export function progressLine(progress: AgentProgress): ProgressLine {
+  return { ...splitCrewLine(progress.text, progress.crew), at: progress.at };
+}
+
+/**
+ * Adds a line to the turn's progress, keeping one line per member (its latest) in the order they
+ * last spoke. Tex can have three specialists at work at once, so that is what there is room for.
+ */
+export function addProgress(lines: readonly ProgressLine[], next: ProgressLine, max = 4): ProgressLine[] {
+  return [...lines.filter((line) => line.who !== next.who), next].slice(-max);
 }
