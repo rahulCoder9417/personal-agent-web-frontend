@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ActivityRow } from "@/components/activity/activity-row";
 import { creditsToday, groupByDay, matchesFilter, type ActivityFilter } from "@/components/activity/group";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button, Card, EmptyState, ErrorState, FilterPills, InlineError, SkeletonRows, type FilterOption } from "@/components/ui";
-import { useActivity, useMe } from "@/lib/api/hooks";
+import { useActivity, useMe, useMemories } from "@/lib/api/hooks";
 import { formatCredits, initials } from "@/lib/format";
 
 const FILTERS: FilterOption<ActivityFilter>[] = [
@@ -13,6 +13,7 @@ const FILTERS: FilterOption<ActivityFilter>[] = [
   { value: "tex", label: "Tex" },
   { value: "crew", label: "Crew" },
   { value: "you", label: "You" },
+  { value: "memory", label: "Memory" },
   { value: "automations", label: "Automations" },
   { value: "approvals", label: "Approvals" },
 ];
@@ -21,6 +22,9 @@ export default function ActivityPage() {
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const activity = useActivity();
   const me = useMe();
+  // The memories that still exist: an entry about one of them links to it.
+  const memories = useMemories();
+  const memoryIds = useMemo(() => new Set((memories.data?.items ?? []).map((memory) => memory.id)), [memories.data]);
 
   const loaded = activity.data?.pages.flatMap((page) => page.items) ?? [];
   const shown = loaded.filter((entry) => matchesFilter(entry, filter));
@@ -70,7 +74,7 @@ export default function ActivityPage() {
                 </h2>
                 <ul>
                   {day.entries.map((entry) => (
-                    <ActivityRow key={entry.id} entry={entry} userInitials={userInitials} />
+                    <ActivityRow key={entry.id} entry={entry} userInitials={userInitials} memories={memoryIds} />
                   ))}
                 </ul>
               </section>

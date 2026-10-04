@@ -199,7 +199,7 @@ export function grantCredits(
 
 export function logActivity(
   state: DemoState,
-  entry: Pick<ActivityEntry, "actor" | "action" | "summary"> & { creditsCharged?: number | null; crew?: ActivityEntry["crew"] },
+  entry: Pick<ActivityEntry, "actor" | "action" | "summary"> & { creditsCharged?: number | null; crew?: ActivityEntry["crew"]; memoryId?: string | null },
 ): void {
   state.activity.unshift({
     id: nextId(state, "act"),
@@ -207,6 +207,7 @@ export function logActivity(
     action: entry.action,
     summary: entry.summary,
     crew: entry.crew ?? null,
+    memoryId: entry.memoryId ?? null,
     creditsCharged: entry.creditsCharged ?? null,
     createdAt: new Date().toISOString(),
   });

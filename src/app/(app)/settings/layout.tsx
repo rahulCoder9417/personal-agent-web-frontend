@@ -11,6 +11,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
           tabs={[
             { href: "/settings", label: "General", exact: true },
             { href: "/settings/agent", label: "Agent & AI" },
+            { href: "/settings/memory", label: "Memory" },
             { href: "/settings/credits", label: "Credits" },
             { href: "/settings/plans", label: "Plans" },
           ]}

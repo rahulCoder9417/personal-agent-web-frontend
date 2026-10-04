@@ -27,6 +27,7 @@ export type AgentSettings = Schemas["AgentSettings"];
 export type AgentRuntime = Schemas["AgentRuntime"];
 export type AiPreference = Schemas["AiPreference"];
 export type CrewMember = Schemas["CrewMember"];
+export type Memory = Schemas["Memory"];
 export type ClaudeLoginStart = Schemas["ClaudeLoginStart"];
 export type Plan = Schemas["Plan"];
 export type TopUpPack = Schemas["TopUpPack"];

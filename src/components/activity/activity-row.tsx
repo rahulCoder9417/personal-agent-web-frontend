@@ -1,9 +1,10 @@
+import Link from "next/link";
 import type { ActivityEntry } from "@/lib/api/client";
 import type { SpecialistId } from "@/lib/crew";
 import { cn, formatCredits, formatTime } from "@/lib/format";
 import { AutomationsIcon, LockIcon } from "../icons";
 import { AgentFigure } from "../tex";
-import { describeActivity } from "./group";
+import { describeActivity, memoryLink } from "./group";
 
 // The colour behind each specialist's face, as on the crew page.
 const CREW_TINT: Record<SpecialistId, string> = { byte: "#F1ECFF", patch: "#FEF4E3", scout: "#E6F5F4" };
@@ -42,10 +43,14 @@ function ActorMark({ actor, crew, who, userInitials }: { actor: ActivityEntry["a
   );
 }
 
-/** One line of the audit log: when, who, what, and what it cost. */
-export function ActivityRow({ entry, userInitials }: { entry: ActivityEntry; userInitials: string }) {
+/**
+ * One line of the audit log: when, who, what, and what it cost. An entry about a memory that still
+ * exists links to it (`memories` holds the ids of the ones that do).
+ */
+export function ActivityRow({ entry, userInitials, memories }: { entry: ActivityEntry; userInitials: string; memories: ReadonlySet<string> }) {
   const credits = entry.creditsCharged ?? 0;
   const line = describeActivity(entry);
+  const memory = memoryLink(entry, memories);
   return (
     // On a phone there is little room beside the time and the cost, so the words get two lines instead of one.
     <li className="flex min-h-[54px] items-center gap-4 border-t border-line px-5 py-2 max-sm:gap-2.5 max-sm:px-3.5">
@@ -59,6 +64,14 @@ export function ActivityRow({ entry, userInitials }: { entry: ActivityEntry; use
         </span>
         <span className="truncate text-[12px] text-muted max-sm:line-clamp-2 max-sm:whitespace-normal">
           {line.who} · {line.label}
+          {memory && (
+            <>
+              {" · "}
+              <Link href={memory} className="font-medium text-accent hover:text-accent-dark">
+                See the memory
+              </Link>
+            </>
+          )}
         </span>
       </div>
       <span className={cn("w-[88px] shrink-0 text-right text-[12px] max-sm:w-auto max-sm:min-w-4", credits > 0 ? "text-fg" : "text-muted")}>

@@ -1,8 +1,12 @@
 import type { ActivityEntry } from "@/lib/api/client";
 import { splitCrewLine, type SpecialistId } from "@/lib/crew";
 import { formatDate, formatDay, humanizeEvent } from "@/lib/format";
+import { memoryHref } from "@/lib/memory";
 
-export type ActivityFilter = "all" | "tex" | "crew" | "you" | "automations" | "approvals";
+export type ActivityFilter = "all" | "tex" | "crew" | "you" | "memory" | "automations" | "approvals";
+
+/** What Tex and the person did with the shared memory. */
+const MEMORY_ACTIONS: ReadonlySet<string> = new Set(["remember", "recall", "forget", "memory_refused", "memory_deleted", "memories_cleared"]);
 
 export function matchesFilter(entry: ActivityEntry, filter: ActivityFilter): boolean {
   switch (filter) {
@@ -13,6 +17,8 @@ export function matchesFilter(entry: ActivityEntry, filter: ActivityFilter): boo
       return Boolean(entry.crew);
     case "you":
       return entry.actor === "user";
+    case "memory":
+      return MEMORY_ACTIONS.has(entry.action);
     case "automations":
       return entry.action.toLowerCase().includes("automation");
     case "approvals":
@@ -75,11 +81,28 @@ const ACTION_LABEL: Record<string, string> = {
   pr_review_skipped: "pull-request review skipped",
   pr_review_enabled: "pull-request review turned on",
   pr_review_disabled: "pull-request review turned off",
+  // Memory. The row puts who did it in front: "Tex · remembered", "You · deleted a memory".
+  remember: "remembered",
+  recall: "looked up memory",
+  forget: "forgot",
+  memory_refused: "refused to save",
+  memory_deleted: "deleted a memory",
+  memories_cleared: "cleared memory",
 };
 
 /** What an action is called in the log: "read_page_refused" → "Blocked a page Scout wasn’t given". */
-export function actionLabel(action: string): string {
+export function actionLabel(action: string, summary = ""): string {
+  // `forget` covers both removing a memory and correcting one; the backend's summary says which.
+  if (action === "forget" && /^corrected\b/i.test(summary)) return "corrected a memory";
   return ACTION_LABEL[action] ?? humanizeEvent(action);
+}
+
+/**
+ * Where an entry's memory can be seen: the Memory screen, opened on it. Only for a memory that
+ * still exists. The log never holds a memory's text, so one that was deleted has nothing to show.
+ */
+export function memoryLink(entry: Pick<ActivityEntry, "memoryId">, existing: ReadonlySet<string>): string | null {
+  return entry.memoryId && existing.has(entry.memoryId) ? memoryHref(entry.memoryId) : null;
 }
 
 export type ActivityLine = {
@@ -101,7 +124,7 @@ const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1
  */
 export function describeActivity(entry: ActivityEntry): ActivityLine {
   // After "Tex · " the label is the middle of a line, so it starts small.
-  const label = lowerFirst(actionLabel(entry.action));
+  const label = lowerFirst(actionLabel(entry.action, entry.summary));
   if (!entry.crew) return { crew: null, who: ACTOR_NAME[entry.actor], label, summary: entry.summary };
   const line = splitCrewLine(entry.summary, entry.crew);
   return { crew: entry.crew, who: line.name, label, summary: upperFirst(line.text) };

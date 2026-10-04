@@ -4,6 +4,7 @@ import type { Handler } from "./context";
 import * as account from "./handlers-account";
 import * as chat from "./handlers-chat";
 import * as crew from "./handlers-crew";
+import * as memory from "./handlers-memory";
 import * as setup from "./handlers-setup";
 
 type Route = { method: string; parts: string[]; handler: Handler };
@@ -54,6 +55,10 @@ const ROUTES: Route[] = [
   route("POST", "agent/claude/login/:loginId/complete", setup.completeClaudeLogin),
   route("DELETE", "agent/claude", setup.disconnectClaude),
   route("GET", "crew", crew.listCrew),
+
+  route("GET", "memories", memory.listMemories),
+  route("DELETE", "memories", memory.deleteAllMemories),
+  route("DELETE", "memories/:memoryId", memory.deleteMemory),
 
   route("GET", "billing/plans", account.listPlans),
   route("GET", "billing/subscription", account.getSubscription),

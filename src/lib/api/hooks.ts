@@ -42,6 +42,7 @@ export const qk = {
   agentSettings: ["agent", "settings"] as const,
   agentProgress: ["agent", "progress"] as const,
   crew: ["crew"] as const,
+  memories: ["memories"] as const,
   plans: ["billing", "plans"] as const,
   subscription: ["billing", "subscription"] as const,
   credits: ["credits"] as const,
@@ -443,6 +444,39 @@ export function useCrew() {
     queryFn: () => unwrap(api.GET("/v1/crew")),
     select: (data) => data.items,
     staleTime: 5 * 60_000,
+  });
+}
+
+// ---------------------------------------------------------------- memory
+
+/**
+ * What Tex has saved about this person, newest first, and the most it can hold. All of it comes in
+ * one answer. There is no live event for it: the event stream asks again when a turn ends.
+ */
+export function useMemories() {
+  return useQuery({ queryKey: qk.memories, queryFn: () => unwrap(api.GET("/v1/memories")) });
+}
+
+/** A delete is in the activity log too (`memory_deleted`, `memories_cleared`). */
+function invalidateMemory(qc: QueryClient) {
+  return Promise.all([qc.invalidateQueries({ queryKey: qk.memories }), qc.invalidateQueries({ queryKey: qk.activity })]);
+}
+
+export function useDeleteMemory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (memoryId: string) => unwrap(api.DELETE("/v1/memories/{memoryId}", { params: { path: { memoryId } } })),
+    // Also after a failure: a 404 means it was already gone, and the list should say so.
+    onSettled: () => invalidateMemory(qc),
+  });
+}
+
+/** Deletes every memory. It can't be undone. */
+export function useDeleteAllMemories() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE("/v1/memories")),
+    onSettled: () => invalidateMemory(qc),
   });
 }
 

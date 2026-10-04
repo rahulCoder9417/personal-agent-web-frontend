@@ -16,6 +16,7 @@ import {
   requiredString,
   type JsonObject,
 } from "./http";
+import { memoryRequestOf, rememberFact } from "./handlers-memory";
 import type { SpecialistId } from "./seed";
 import { balanceOf, chargeAppAction, chargePaidTool, chargeUsage, emit, logActivity, nextId, schedule, setAgentState, type DemoState } from "./store";
 import { streamResponse } from "./stream";
@@ -148,8 +149,13 @@ function reportProgress(state: DemoState, job: CrewJob, step: string): void {
 
 function answer(state: DemoState, request: Message, job: CrewJob | null = null): void {
   setMessageStatus(state, request.id, "read");
-  const risk = riskOf(request.text);
-  if (risk) {
+  // "Remember that…" is a fact to keep, not a job: it comes first, so its words can't be taken for one.
+  const fact = memoryRequestOf(request.text);
+  const risk = fact ? null : riskOf(request.text);
+  if (fact) {
+    postFromTex(state, request.channel, rememberFact(state, fact));
+    chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
+  } else if (risk) {
     askForApproval(state, request, risk);
   } else if (job) {
     postFromTex(state, request.channel, job.reply);
@@ -202,7 +208,7 @@ export const sendMessage: Handler = async ({ state, request }) => {
     setMessageStatus(state, message.id, "processing");
   });
   // A job for a specialist takes longer, and says what it is doing on the way.
-  const job = riskOf(text) ? null : crewJobOf(state, text);
+  const job = memoryRequestOf(text) || riskOf(text) ? null : crewJobOf(state, text);
   if (job) {
     job.steps.forEach((step, index) => schedule(state, CREW_STEP_MS * (index + 1), () => reportProgress(state, job, step)));
     schedule(state, CREW_STEP_MS * job.steps.length + FOLLOW_UP_MS, () => answer(state, message, job));

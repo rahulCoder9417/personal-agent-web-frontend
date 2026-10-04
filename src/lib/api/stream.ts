@@ -69,8 +69,12 @@ export function useEventStream(onEvent?: StreamListener) {
         case "agent.status": {
           const status = event.data as AgentStatus;
           qc.setQueryData(qk.agentStatus, status);
-          // The turn is over: its progress lines have nothing more to say.
-          if (status.state !== "busy") qc.setQueryData<ProgressLine[]>(qk.agentProgress, []);
+          if (status.state !== "busy") {
+            // The turn is over: its progress lines have nothing more to say.
+            qc.setQueryData<ProgressLine[]>(qk.agentProgress, []);
+            // Memory has no event of its own; a turn is when Tex saves, corrects or forgets.
+            void qc.invalidateQueries({ queryKey: qk.memories });
+          }
           break;
         }
         case "agent.progress":

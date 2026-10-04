@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { ActivityIcon, ChevronRightIcon, CrewIcon, SettingsIcon } from "@/components/icons";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { AgentFigure } from "@/components/tex";
-import { useAgentSettings, useChannels, useCrew, useMe, usePlans } from "@/lib/api/hooks";
+import { useAgentSettings, useChannels, useCrew, useMe, useMemories, usePlans } from "@/lib/api/hooks";
 import { crewNavNote } from "@/lib/crew";
 import { CHANNEL_LABEL, formatNumber, initials } from "@/lib/format";
 
@@ -36,6 +36,7 @@ export default function MorePage() {
   const channels = useChannels();
   const agent = useAgentSettings();
   const crew = useCrew();
+  const memories = useMemories();
   const plan = plans.data?.plans.find((p) => p.id === me.data?.plan);
   const linked = (channels.data ?? []).filter((c) => c.channel !== "web").map((c) => CHANNEL_LABEL[c.channel]);
 
@@ -63,6 +64,12 @@ export default function MorePage() {
             icon={<AgentFigure who="tex" glyph size={20} label="" />}
             title="Agent and AI"
             detail={agent.data ? AI_SOURCE[agent.data.aiAccess] : undefined}
+          />
+          <Row
+            href="/settings/memory"
+            icon={glyph("M")}
+            title="Memory"
+            detail={memories.data ? `${formatNumber(memories.data.items.length)} saved` : undefined}
           />
           <Row href="/settings" icon={<SettingsIcon size={17} />} title="Settings" detail={linked.length ? linked.join(", ") : "No chat linked"} />
           <Row href="/crew" icon={<CrewIcon size={17} />} title="Crew" detail={crewNavNote(crew.data)} />

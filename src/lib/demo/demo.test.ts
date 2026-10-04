@@ -11,6 +11,7 @@ import type {
   CrewMember,
   LedgerEntry,
   Me,
+  Memory,
   Message,
   PrReviewRepo,
   StreamEvent,
@@ -600,6 +601,90 @@ describe("pull-request review", () => {
     expect(store.activity.filter((entry) => entry.crew === "patch").map((entry) => entry.action)).toEqual(["crew_progress", "crew_progress"]);
     expect(store.ledger.some((entry) => entry.description === "App action: GITHUB_CREATE_A_REVIEW_FOR_A_PULL_REQUEST" && entry.delta === -1)).toBe(true);
     expect(store.messages.some((message) => message.direction === "out" && message.text.startsWith("Patch reviewed pull request #128"))).toBe(true);
+  });
+});
+
+describe("memory", () => {
+  type Memories = { items: Memory[]; max: number };
+  const list = async () => (await call<Memories>("GET", "memories")).body;
+
+  it("lists what Tex has saved, newest first, with the most it can hold", async () => {
+    const memories = await list();
+    expect(memories.max).toBe(200);
+    expect(memories.items).toHaveLength(8);
+    expect(new Set(memories.items.map((memory) => memory.kind))).toEqual(new Set(["instruction", "preference", "person", "project", "fact"]));
+    const saved = memories.items.map((memory) => Date.parse(memory.createdAt));
+    expect(saved).toEqual([...saved].sort((a, b) => b - a));
+    // One was corrected since it was saved; one has never been looked up.
+    expect(memories.items.find((memory) => memory.id === "mem_maya")).toMatchObject({ kind: "person", useCount: 5 });
+    expect(memories.items.filter((memory) => memory.updatedAt !== memory.createdAt).map((memory) => memory.id)).toEqual(["mem_maya"]);
+    expect(memories.items.find((memory) => memory.id === "mem_city")).toMatchObject({ lastUsedAt: null, useCount: 0 });
+  });
+
+  it("deletes one memory, logs it without its text, and answers 404 the second time", async () => {
+    expect((await call("DELETE", "memories/mem_short")).status).toBe(204);
+    expect((await list()).items.some((memory) => memory.id === "mem_short")).toBe(false);
+    expect(getStore().activity[0]).toMatchObject({ actor: "user", action: "memory_deleted", summary: "Deleted a memory", memoryId: "mem_short" });
+
+    const twice = await call<ErrorBody>("DELETE", "memories/mem_short");
+    expect(twice.status).toBe(404);
+    expect(twice.body.error).toEqual({ code: "not_found", message: "Memory not found" });
+  });
+
+  it("deletes every memory and says how many went", async () => {
+    const cleared = await call<{ deleted: number }>("DELETE", "memories");
+    expect(cleared.status).toBe(200);
+    expect(cleared.body).toEqual({ deleted: 8 });
+    expect((await list()).items).toEqual([]);
+    expect(getStore().activity[0]).toMatchObject({ actor: "user", action: "memories_cleared", summary: "Deleted all memories (8)", memoryId: null });
+
+    // Nothing left to delete: nothing is logged.
+    const logged = getStore().activity.length;
+    expect((await call<{ deleted: number }>("DELETE", "memories")).body).toEqual({ deleted: 0 });
+    expect(getStore().activity).toHaveLength(logged);
+  });
+
+  it("has no way to add or edit a memory from the app", async () => {
+    expect((await call("POST", "memories", { content: "x" })).status).toBe(404);
+    expect((await call("PATCH", "memories/mem_short", { content: "x" })).status).toBe(404);
+  });
+
+  it("keeps the log free of memory text, and names memories that are gone too", async () => {
+    const store = getStore();
+    const contents = store.memories.map((memory) => memory.content);
+    const entries = store.activity.filter((entry) => ["remember", "recall", "forget", "memory_refused", "memory_deleted"].includes(entry.action));
+    expect(entries.length).toBeGreaterThan(10);
+    expect(entries.some((entry) => contents.some((content) => entry.summary.includes(content)))).toBe(false);
+
+    const ids = new Set(store.memories.map((memory) => memory.id));
+    const named = entries.filter((entry) => entry.memoryId).map((entry) => entry.memoryId as string);
+    // Every memory in the list was saved at some point, and one that was saved has since been deleted.
+    expect([...ids].every((id) => named.includes(id))).toBe(true);
+    expect(named.filter((id) => !ids.has(id))).toEqual(["mem_old_office", "mem_old_office"]);
+  });
+
+  it("has Tex save a fact when asked, once, and the list shows it", async () => {
+    await call<Message>("POST", "messages", { text: "Remember that I send invoices on the 1st", clientMessageId: uuid(30) });
+    vi.advanceTimersByTime(2000);
+    const memories = (await list()).items;
+    expect(memories).toHaveLength(9);
+    expect(memories[0]).toMatchObject({ kind: "fact", content: "I send invoices on the 1st", lastUsedAt: null, useCount: 0 });
+    expect(getStore().activity[0]).toMatchObject({ actor: "agent", action: "remember", summary: "Saved a memory (fact)", memoryId: memories[0].id });
+    // The words "send" and "invoices" did not turn it into an approval.
+    expect((await call<Page<Approval>>("GET", "approvals")).body.items).toHaveLength(3);
+
+    await call<Message>("POST", "messages", { text: "remember  I send invoices on the  1st", clientMessageId: uuid(31) });
+    vi.advanceTimersByTime(2000);
+    expect((await list()).items).toHaveLength(9);
+    expect(getStore().activity[0]).toMatchObject({ action: "remember", summary: "Confirmed a memory (fact)", memoryId: memories[0].id });
+  });
+
+  it("refuses to save what looks like a secret, and logs that without the text", async () => {
+    await call<Message>("POST", "messages", { text: "Remember that my Stripe password is hunter2-hunter2", clientMessageId: uuid(32) });
+    vi.advanceTimersByTime(2000);
+    expect((await list()).items).toHaveLength(8);
+    expect(getStore().activity[0]).toMatchObject({ action: "memory_refused", summary: "Refused to save a memory: it looked like a password", memoryId: null });
+    expect((await call<Page<Message>>("GET", "messages?channel=web")).body.items[0].text).toContain("I don’t save passwords");
   });
 });
 

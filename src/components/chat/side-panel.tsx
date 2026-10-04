@@ -74,6 +74,9 @@ const CHATTER = new Set([
   "pr_review_requested",
   "pr_review_skipped",
   "read_page_refused",
+  // Looking in its memory, or being refused a save, is not something done either.
+  "recall",
+  "memory_refused",
 ]);
 
 function isToday(iso: string): boolean {

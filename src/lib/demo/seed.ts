@@ -16,6 +16,7 @@ import type {
   LedgerEntry,
   McpServer,
   Me,
+  Memory,
   Message,
   Plan,
   PlanId,
@@ -69,6 +70,8 @@ export type DemoData = {
   aiMode: AiMode;
   /** Like the backend's CREW_AVAILABLE: the specialists that work yet. Tex always does. */
   crewAvailable: SpecialistId[];
+  /** What Tex has saved about the person, newest first. */
+  memories: Memory[];
   /** loginId → expiresAt */
   claudeLogins: Record<string, string>;
   plans: Plan[];
@@ -154,7 +157,15 @@ type Happened = {
   at: string;
   charge?: { amount: number; description: string; part: keyof DayUsage };
   /** `actor` is the agent unless it says otherwise; `crew` names the specialist a progress line belongs to. */
-  did?: { action: string; summary: string; creditsCharged: number | null; actor?: ActivityEntry["actor"]; crew?: ActivityEntry["crew"] };
+  did?: {
+    action: string;
+    summary: string;
+    creditsCharged: number | null;
+    actor?: ActivityEntry["actor"];
+    crew?: ActivityEntry["crew"];
+    /** The memory a memory entry is about. The log never holds its text. */
+    memoryId?: string;
+  };
 };
 
 const ranFor = (at: string, credits: number): Happened => ({
@@ -219,6 +230,60 @@ function reviewedPullRequest(now: Date): Happened[] {
   ];
 }
 
+// ---------------------------------------------------------------- memory
+
+/** The most memories an account can hold, as in the backend. */
+export const MEMORY_MAX = 200;
+
+/** A memory Tex saved and the person later deleted: the log still names it, the list no longer has it. */
+const DELETED_MEMORY = "mem_old_office";
+
+/** What Tex has saved about the person, newest first, a few of each kind. */
+function seedMemories(now: Date): Memory[] {
+  const memory = (
+    id: string, kind: Memory["kind"], content: string, savedDaysAgo: number,
+    rest: { corrected?: string; used?: [count: number, last: string] } = {},
+  ): Memory => {
+    const createdAt = atDay(now, savedDaysAgo, 10, 30);
+    return {
+      id, kind, content, createdAt, updatedAt: rest.corrected ?? createdAt,
+      lastUsedAt: rest.used?.[1] ?? null, useCount: rest.used?.[0] ?? 0,
+    };
+  };
+  return [
+    memory("mem_acme_launch", "project", "Acme is their biggest client; the launch is on the 20th and Dana owns the brief", 0, { used: [1, earlierToday(now, 16)] }),
+    memory("mem_meetings", "preference", "Likes meetings after 11am, and none on Fridays", 2, { used: [3, earlierToday(now, 17)] }),
+    memory("mem_maya", "person", "Maya is their main contact at Acme", 5, { corrected: atDay(now, 1, 17, 40), used: [5, earlierToday(now, 17)] }),
+    memory("mem_website", "project", "northwind/website is the marketing site, built with Next.js", 8, { used: [2, earlierToday(now, 95)] }),
+    memory("mem_cc_dana", "instruction", "Always cc Dana on emails to Acme", 12, { used: [4, atDay(now, 1, 17, 30)] }),
+    memory("mem_dana", "person", "Dana is their boss and signs off on budgets", 12, { used: [6, atDay(now, 2, 16, 20)] }),
+    memory("mem_city", "fact", "Works from Bengaluru, on India time", SIGNUP_DAYS_AGO - 1),
+    memory("mem_short", "preference", "Prefers short replies with no emoji", SIGNUP_DAYS_AGO - 1, { used: [2, atDay(now, 9, 11, 0)] }),
+  ];
+}
+
+/** What the memory tools left in the activity log. As in the backend, an entry names the memory and never holds its text. */
+function memoryTrail(now: Date): Happened[] {
+  const saved = (at: string, memoryId: string, kind: Memory["kind"]): Happened => ({
+    at,
+    did: { action: "remember", summary: `Saved a memory (${kind})`, creditsCharged: null, memoryId },
+  });
+  return [
+    saved(atDay(now, SIGNUP_DAYS_AGO - 1, 10, 30), "mem_short", "preference"),
+    saved(atDay(now, SIGNUP_DAYS_AGO - 1, 10, 31), "mem_city", "fact"),
+    saved(atDay(now, 14, 15, 5), DELETED_MEMORY, "fact"),
+    saved(atDay(now, 12, 10, 30), "mem_dana", "person"),
+    saved(atDay(now, 12, 10, 31), "mem_cc_dana", "instruction"),
+    { at: atDay(now, 10, 9, 12), did: { actor: "user", action: "memory_deleted", summary: "Deleted a memory", creditsCharged: null, memoryId: DELETED_MEMORY } },
+    saved(atDay(now, 8, 10, 30), "mem_website", "project"),
+    { at: atDay(now, 6, 14, 2), did: { action: "memory_refused", summary: "Refused to save a memory: it looked like an API key", creditsCharged: null } },
+    saved(atDay(now, 5, 10, 30), "mem_maya", "person"),
+    saved(atDay(now, 2, 10, 30), "mem_meetings", "preference"),
+    { at: atDay(now, 1, 17, 40), did: { action: "forget", summary: "Corrected a memory", creditsCharged: null, memoryId: "mem_maya" } },
+    { at: earlierToday(now, 17), did: { action: "recall", summary: "Searched memory (2 found)", creditsCharged: null } },
+  ];
+}
+
 const PAST_CHANGES: readonly { action: string; summary: string }[] = [
   { action: "GMAIL_CREATE_EMAIL_DRAFT", summary: "Drafted a reply to Dana" },
   { action: "GOOGLECALENDAR_CREATE_EVENT", summary: "Found a free slot and sent the invite" },
@@ -264,10 +329,12 @@ function seedHappened(now: Date): Happened[] {
     happened.push(ranFor(atDay(now, d, 15, minute), total - changes - searches));
   }
   happened.push(
+    ...memoryTrail(now),
     automationRan(atDay(now, 1, 8), "Today’s meetings"),
     changed(atDay(now, 1, 17, 32), "SLACK_SEND_MESSAGE", "Posted yesterday’s update in #team"),
     automationRan(earlierToday(now, 390), "Today’s meetings"),
     changed(earlierToday(now, 207), "NOTION_CREATE_PAGE", "Filed notes from your voice note"),
+    { at: earlierToday(now, 207), did: { action: "remember", summary: "Saved a memory (project)", creditsCharged: null, memoryId: "mem_acme_launch" } },
     ranFor(earlierToday(now, 206), 2),
     // Scout looked something up: one paid search, two pages read for free, one address it had no business opening.
     progress(earlierToday(now, 141), "scout", "Scout: find what other B2B tools send in week one"),
@@ -483,14 +550,14 @@ function seedMoney(now: Date) {
     { id: "led_g3", delta: 1500, reason: "grant", grantId: "grant_monthly", description: "Pro monthly credits", createdAt: proSince },
   ];
   const activity: ActivityEntry[] = [
-    { id: "act_s1", actor: "user", action: "channel_linked", summary: "Linked Telegram", crew: null, creditsCharged: null, createdAt: iso(Date.parse(signedUp) + 5 * MINUTE) },
-    { id: "act_s2", actor: "user", action: "coupon_redeemed", summary: "Redeemed a coupon for 800 credits", crew: null, creditsCharged: null, createdAt: grants[1].createdAt },
-    { id: "act_s3", actor: "user", action: "app_connected", summary: "Connected Gmail", crew: null, creditsCharged: null, createdAt: atDay(now, SIGNUP_DAYS_AGO - 2, 10, 15) },
-    { id: "act_s4", actor: "system", action: "approval_expired", summary: "“Renew your Notion plan ($10)” expired with no answer", crew: null, creditsCharged: null, createdAt: atDay(now, 3, 9, 12) },
-    { id: "act_s5", actor: "user", action: "approval_decided", summary: "Approved “Post yesterday’s update in #team”", crew: null, creditsCharged: null, createdAt: atDay(now, 1, 17, 31) },
-    { id: "act_s6", actor: "agent", action: "approval_requested", summary: "Asked to delete 12 old drafts", crew: null, creditsCharged: null, createdAt: earlierToday(now, 230) },
-    { id: "act_s7", actor: "agent", action: "approval_requested", summary: "Asked to post today’s update in #team", crew: null, creditsCharged: null, createdAt: earlierToday(now, 88) },
-    { id: "act_s8", actor: "agent", action: "approval_requested", summary: "Asked to send an email to Maya", crew: null, creditsCharged: null, createdAt: earlierToday(now, 15) },
+    { id: "act_s1", actor: "user", action: "channel_linked", summary: "Linked Telegram", crew: null, memoryId: null, creditsCharged: null, createdAt: iso(Date.parse(signedUp) + 5 * MINUTE) },
+    { id: "act_s2", actor: "user", action: "coupon_redeemed", summary: "Redeemed a coupon for 800 credits", crew: null, memoryId: null, creditsCharged: null, createdAt: grants[1].createdAt },
+    { id: "act_s3", actor: "user", action: "app_connected", summary: "Connected Gmail", crew: null, memoryId: null, creditsCharged: null, createdAt: atDay(now, SIGNUP_DAYS_AGO - 2, 10, 15) },
+    { id: "act_s4", actor: "system", action: "approval_expired", summary: "“Renew your Notion plan ($10)” expired with no answer", crew: null, memoryId: null, creditsCharged: null, createdAt: atDay(now, 3, 9, 12) },
+    { id: "act_s5", actor: "user", action: "approval_decided", summary: "Approved “Post yesterday’s update in #team”", crew: null, memoryId: null, creditsCharged: null, createdAt: atDay(now, 1, 17, 31) },
+    { id: "act_s6", actor: "agent", action: "approval_requested", summary: "Asked to delete 12 old drafts", crew: null, memoryId: null, creditsCharged: null, createdAt: earlierToday(now, 230) },
+    { id: "act_s7", actor: "agent", action: "approval_requested", summary: "Asked to post today’s update in #team", crew: null, memoryId: null, creditsCharged: null, createdAt: earlierToday(now, 88) },
+    { id: "act_s8", actor: "agent", action: "approval_requested", summary: "Asked to send an email to Maya", crew: null, memoryId: null, creditsCharged: null, createdAt: earlierToday(now, 15) },
   ];
 
   // Spend the oldest-expiring credits first, exactly as the real ledger does.
@@ -511,7 +578,7 @@ function seedMoney(now: Date) {
       const day = (usage[dayKey(new Date(at))] ??= emptyDay());
       day[charge.part] += charge.amount;
     }
-    if (did) activity.push({ id: `act_c${index}`, actor: "agent", crew: null, ...did, createdAt: at });
+    if (did) activity.push({ id: `act_c${index}`, actor: "agent", crew: null, memoryId: null, ...did, createdAt: at });
   });
 
   const newestFirst = (a: { createdAt: string }, b: { createdAt: string }) => Date.parse(b.createdAt) - Date.parse(a.createdAt);
@@ -572,6 +639,7 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
     },
     aiMode,
     crewAvailable: demoCrewAvailable(),
+    memories: seedMemories(now),
     claudeLogins: {},
     plans: seedPlans(),
     topUps: [{ id: "topup_10", priceCents: 1000, credits: 800, expiresInDays: CREDIT_LIFETIME_DAYS }],

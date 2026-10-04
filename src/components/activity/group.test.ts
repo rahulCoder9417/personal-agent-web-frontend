@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ActivityEntry } from "@/lib/api/client";
-import { actionLabel, creditsToday, describeActivity, groupByDay, matchesFilter } from "./group";
+import { actionLabel, creditsToday, describeActivity, groupByDay, matchesFilter, memoryLink } from "./group";
 
 const NOW = new Date("2026-10-01T14:30:00");
 
@@ -79,6 +79,48 @@ describe("actionLabel", () => {
     expect(actionLabel("web_search")).toBe("web search");
     expect(actionLabel("read_page")).toBe("read page");
     expect(actionLabel("coupon_redeemed")).toBe("coupon redeemed");
+  });
+});
+
+describe("memory in the log", () => {
+  const at = "2026-10-01T14:20:00";
+  const saved = entry("m1", at, { action: "remember", summary: "Saved a memory (preference)", memoryId: "mem_1" });
+  const corrected = entry("m2", at, { action: "forget", summary: "Corrected a memory", memoryId: "mem_1" });
+  const removed = entry("m3", at, { action: "forget", summary: "Removed a memory", memoryId: "mem_2" });
+  const searched = entry("m4", at, { action: "recall", summary: "Searched memory (2 found)", memoryId: null });
+  const refused = entry("m5", at, { action: "memory_refused", summary: "Refused to save a memory: it looked like an API key" });
+  const deleted = entry("m6", at, { actor: "user", action: "memory_deleted", summary: "Deleted a memory", memoryId: "mem_2" });
+  const cleared = entry("m7", at, { actor: "user", action: "memories_cleared", summary: "Deleted all memories (8)" });
+  const all = [saved, corrected, removed, searched, refused, deleted, cleared];
+
+  it("says who did what with it", () => {
+    expect(all.map((e) => `${describeActivity(e).who} · ${describeActivity(e).label}`)).toEqual([
+      "Tex · remembered",
+      "Tex · corrected a memory",
+      "Tex · forgot",
+      "Tex · looked up memory",
+      "Tex · refused to save",
+      "You · deleted a memory",
+      "You · cleared memory",
+    ]);
+  });
+
+  it("filters to memory entries, whoever made them", () => {
+    expect([...ENTRIES, ...all].filter((e) => matchesFilter(e, "memory")).map((e) => e.id)).toEqual(all.map((e) => e.id));
+    expect(matchesFilter(deleted, "you")).toBe(true);
+  });
+
+  it("links to a memory only while it still exists", () => {
+    const existing = new Set(["mem_1"]);
+    expect(memoryLink(saved, existing)).toBe("/settings/memory?memory=mem_1");
+    expect(memoryLink(corrected, existing)).toBe("/settings/memory?memory=mem_1");
+    // Deleted since, by Tex or by the person: nothing to show.
+    expect(memoryLink(removed, existing)).toBeNull();
+    expect(memoryLink(deleted, existing)).toBeNull();
+    // No memory named at all.
+    expect(memoryLink(searched, existing)).toBeNull();
+    expect(memoryLink(refused, existing)).toBeNull();
+    expect(memoryLink(ENTRIES[0], existing)).toBeNull();
   });
 });
 

@@ -19,6 +19,11 @@ describe("resolveUpstream", () => {
     expect(resolveUpstream(BASE, ["pr-reviews", "acme", ".."])).toBeNull();
   });
 
+  it("lets the memory list and one memory through", () => {
+    expect(resolveUpstream(BASE, ["memories"])?.toString()).toBe("http://localhost:8080/v1/memories");
+    expect(resolveUpstream(BASE, ["memories", "mem_01jb2k"])?.toString()).toBe("http://localhost:8080/v1/memories/mem_01jb2k");
+  });
+
   it("keeps the query string but drops a client-supplied token", () => {
     const url = resolveUpstream(BASE, ["messages"], "?limit=30&token=stolen&channel=web");
     expect(url?.searchParams.get("limit")).toBe("30");
