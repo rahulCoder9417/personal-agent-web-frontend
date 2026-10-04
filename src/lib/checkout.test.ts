@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CreditBalance, Plan, Subscription } from "./api/client";
 import { CHECKOUT_MAX_AGE_MS, checkoutResult, parsePending, planAction, type PendingCheckout } from "./checkout";
 
-const limits = { apps: 25, automations: 5, ownMcpServers: false, topUps: true, models: "all" as const };
+const limits = { apps: 25, automations: 5, ownMcpServers: false, topUps: true, models: "all" as const, browser: false };
 const plan = (id: Plan["id"], priceCents: number, monthlyCredits: number): Plan => ({
   id,
   name: id[0].toUpperCase() + id.slice(1),

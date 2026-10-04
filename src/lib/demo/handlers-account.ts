@@ -175,7 +175,7 @@ export const getUsage: Handler = ({ state, url }) => {
   if (to.getTime() - from.getTime() > MAX_USAGE_DAYS * 86_400_000) throw badRequest("Ask for a year at most");
 
   const items: UsagePeriod[] = [];
-  const totals: UsageTotals = { aiCredits: 0, awakeCredits: 0, appActionCredits: 0, toolCredits: 0, totalCredits: 0 };
+  const totals: UsageTotals = { aiCredits: 0, awakeCredits: 0, appActionCredits: 0, browserCredits: 0, toolCredits: 0, totalCredits: 0 };
   const day = new Date(from);
   day.setHours(0, 0, 0, 0);
   while (day < to) {
@@ -191,6 +191,8 @@ export const getUsage: Handler = ({ state, url }) => {
       awakeCredits: awake,
       appActionCredits: actions,
       // Browser use and paid tools aren't on yet.
+      browserSeconds: 0,
+      browserCredits: 0,
       toolCredits: 0,
       totalCredits: ai + awake + actions,
     });

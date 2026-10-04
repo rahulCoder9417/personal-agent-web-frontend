@@ -6,6 +6,8 @@ const base: AgentSettings = {
   runtime: "hermes",
   effectiveRuntime: "hermes",
   aiAccess: "own_key",
+  aiPreference: "auto",
+  platformAvailable: true,
   claude: { connected: false },
   ownKeyProviders: ["anthropic"],
 };

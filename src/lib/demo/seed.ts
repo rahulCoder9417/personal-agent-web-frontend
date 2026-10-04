@@ -226,17 +226,17 @@ function seedPlans(): Plan[] {
   return [
     {
       id: "free", name: "Free", priceCents: 0, interval: null, monthlyCredits: 0, signupCredits: 100,
-      limits: { apps: 10, automations: 1, ownMcpServers: false, topUps: false, models: "all" },
+      limits: { apps: 10, automations: 1, ownMcpServers: false, topUps: false, models: "all", browser: false },
       features: ["100 credits at sign-up, plus coupon codes", "10 apps", "1 automation", ownKey],
     },
     {
       id: "pro", name: "Pro", priceCents: 1200, interval: "month", monthlyCredits: 1500, signupCredits: 0,
-      limits: { apps: 25, automations: 5, ownMcpServers: false, topUps: true, models: "all" },
+      limits: { apps: 25, automations: 5, ownMcpServers: false, topUps: true, models: "all", browser: false },
       features: ["1,500 credits every month", "All 25 apps", "5 automations", topUp, ownKey],
     },
     {
       id: "max", name: "Max", priceCents: 3000, interval: "month", monthlyCredits: 4500, signupCredits: 0,
-      limits: { apps: 25, automations: 50, ownMcpServers: true, topUps: true, models: "all" },
+      limits: { apps: 25, automations: 50, ownMcpServers: true, topUps: true, models: "all", browser: true },
       features: ["4,500 credits every month", "Priority when things get busy", "All 25 apps plus your own MCP servers", "50 automations", "Browser use", topUp, ownKey],
     },
   ];
@@ -429,6 +429,7 @@ function seedMcpServers(plan: PlanId, now: Date): McpServer[] {
 
 export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
   const money = seedMoney(now);
+  const aiMode = demoAiMode();
   const signedUp = atDay(now, SIGNUP_DAYS_AGO, 9, 40);
   return {
     user: {
@@ -460,9 +461,10 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
     agentStatus: { state: "awake", lastActiveAt: earlierToday(now, 15) },
     agentSettings: {
       runtime: "hermes", effectiveRuntime: "hermes", aiAccess: "own_key",
+      aiPreference: "auto", platformAvailable: aiMode === "platform",
       claude: { connected: false, connectedAt: null }, ownKeyProviders: ["anthropic"],
     },
-    aiMode: demoAiMode(),
+    aiMode,
     claudeLogins: {},
     plans: seedPlans(),
     topUps: [{ id: "topup_10", priceCents: 1000, credits: 800, expiresInDays: CREDIT_LIFETIME_DAYS }],

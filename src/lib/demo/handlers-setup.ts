@@ -129,7 +129,7 @@ function syncAgentSettings(state: DemoState): void {
   else if (connected) access = { effectiveRuntime: "claude_code", aiAccess: "claude_plan" };
   else access = { effectiveRuntime: null, aiAccess: "none" };
 
-  state.agentSettings = { ...settings, runtime, ownKeyProviders, ...access };
+  state.agentSettings = { ...settings, runtime, ownKeyProviders, platformAvailable: state.aiMode === "platform", ...access };
 }
 
 export const listByokKeys: Handler = ({ state }) => json({ items: state.byok });

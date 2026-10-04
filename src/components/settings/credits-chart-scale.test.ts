@@ -8,6 +8,7 @@ function day(awake: number, tools: number, ai = 0, actions = 0): UsagePeriod {
     periodEnd: "2026-10-02T00:00:00Z",
     awakeCredits: awake,
     appActionCredits: actions,
+    browserCredits: 0,
     toolCredits: tools,
     aiCredits: ai,
     totalCredits: awake + actions + tools + ai,
