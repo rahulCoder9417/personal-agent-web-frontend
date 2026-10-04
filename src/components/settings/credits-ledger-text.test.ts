@@ -24,6 +24,15 @@ describe("describeLedgerEntry", () => {
     expect(describeLedgerEntry({ reason: "charge", description: "Usage: none" }).what).toBe("Usage");
   });
 
+  it("says a web search is a paid tool, apart from browser use", () => {
+    expect(describeLedgerEntry({ reason: "charge", description: "Web search" })).toEqual({ what: "Web search", reason: "paid tool" });
+    expect(describeLedgerEntry({ reason: "reversal", description: "Web search" })).toEqual({ what: "Web search", reason: "reversed" });
+    expect(describeLedgerEntry({ reason: "refund", description: "Failed turn refunded (paid tools)" })).toEqual({
+      what: "Failed turn refunded (paid tools)",
+      reason: "refund",
+    });
+  });
+
   it("keeps a reversed app action readable", () => {
     expect(describeLedgerEntry({ reason: "reversal", description: "App action: SLACK_SEND_MESSAGE" })).toEqual({
       what: "Slack: send message",

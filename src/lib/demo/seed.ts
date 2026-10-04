@@ -31,8 +31,13 @@ export const SIGNUP_DAYS_AGO = 19;
 const PRO_SINCE_DAYS_AGO = 10;
 const CREDIT_LIFETIME_DAYS = 90;
 
-/** Credits used in a day, by what they paid for. Browser use and paid tools aren't on yet, so there is no fourth part. */
-export type DayUsage = { ai: number; awake: number; actions: number };
+/**
+ * Credits used in a day, by what they paid for. `tools` is paid tools (Scout's web search).
+ * There is no browser part: Scout's browser isn't built yet, as `GET /v1/crew` says.
+ */
+export type DayUsage = { ai: number; awake: number; actions: number; tools: number };
+
+export const emptyDay = (): DayUsage => ({ ai: 0, awake: 0, actions: 0, tools: 0 });
 
 export type DemoData = {
   user: Omit<Me, "credits">;
@@ -118,9 +123,9 @@ function nearestRun(now: Date, hour: number, weekdays: readonly number[], direct
 
 /** Credits charged on each day, index = days ago. They add up to what the grants have spent (516). */
 function dailyCredits(): number[] {
-  const today = 6;
+  const today = 7;
   const yesterday = 2;
-  const rest = 508;
+  const rest = 507;
   const days: number[] = [];
   for (let d = 2; d <= SIGNUP_DAYS_AGO; d++) days.push(3 + (((d * 2654435761) >>> 0) % 37));
   const weight = days.reduce((sum, w) => sum + w, 0);
@@ -132,8 +137,9 @@ function dailyCredits(): number[] {
 
 /**
  * Something Tex did: a charge in the ledger, a line in the activity log, or both.
- * As in the backend, the time the agent ran is charged as "Usage: awake time N" and each app
- * action that changed something as its own one-credit "App action: NAME"; reading is free.
+ * As in the backend, the time the agent ran is charged as "Usage: awake time N", each app
+ * action that changed something as its own one-credit "App action: NAME" (reading is free),
+ * and each web search as its own "Web search" (a paid tool).
  */
 type Happened = {
   at: string;
@@ -153,6 +159,13 @@ const changed = (at: string, action: string, summary: string): Happened => ({
 });
 
 const read = (at: string, summary: string): Happened => ({ at, did: { action: "run_app_action", summary, creditsCharged: 0 } });
+
+/** Scout searched the web: a paid tool, one credit a search in the demo. */
+const searched = (at: string, query: string): Happened => ({
+  at,
+  charge: { amount: 1, description: "Web search", part: "tools" },
+  did: { action: "web_search", summary: `Searched the web: ${query}`, creditsCharged: 1 },
+});
 
 const automationRan = (at: string, title: string): Happened => ({
   ...ranFor(at, 1),
@@ -176,6 +189,13 @@ const PAST_READS: readonly string[] = [
   "Looked up the “Acme kickoff” notes",
 ];
 
+const PAST_SEARCHES: readonly string[] = [
+  "pricing pages of three scheduling tools",
+  "what changed in the Notion API this year",
+  "places near the Acme office for a team dinner",
+  "how other studios word a late-invoice reminder",
+];
+
 /** Everything Tex did since sign-up, oldest first. Each day's charges add up to `dailyCredits()`. */
 function seedHappened(now: Date): Happened[] {
   const perDay = dailyCredits();
@@ -183,13 +203,18 @@ function seedHappened(now: Date): Happened[] {
   for (let d = SIGNUP_DAYS_AGO; d >= 2; d--) {
     const total = perDay[d];
     const changes = Math.min(1 + (d % 3), total - 1);
+    // On some days Scout looked something up. The rest of the day's credits are running time.
+    const searches = d % 4 === 1 ? Math.max(0, Math.min(2, total - changes - 1)) : 0;
     const minute = (d * 7) % 50;
     happened.push(read(atDay(now, d, 10, minute), PAST_READS[d % PAST_READS.length]));
     for (let i = 0; i < changes; i++) {
       const change = PAST_CHANGES[(d + i * 3) % PAST_CHANGES.length];
       happened.push(changed(atDay(now, d, 10 + i * 2, minute + 2), change.action, change.summary));
     }
-    happened.push(ranFor(atDay(now, d, 15, minute), total - changes));
+    for (let i = 0; i < searches; i++) {
+      happened.push(searched(atDay(now, d, 11 + i * 2, minute + 5), PAST_SEARCHES[(d + i) % PAST_SEARCHES.length]));
+    }
+    happened.push(ranFor(atDay(now, d, 15, minute), total - changes - searches));
   }
   happened.push(
     automationRan(atDay(now, 1, 8), "Today’s meetings"),
@@ -197,6 +222,7 @@ function seedHappened(now: Date): Happened[] {
     automationRan(earlierToday(now, 390), "Today’s meetings"),
     changed(earlierToday(now, 207), "NOTION_CREATE_PAGE", "Filed notes from your voice note"),
     ranFor(earlierToday(now, 206), 2),
+    searched(earlierToday(now, 140), "onboarding emails other B2B tools send in week one"),
     changed(earlierToday(now, 16), "GOOGLECALENDAR_UPDATE_EVENT", "Moved “Roadmap sync” to tomorrow, 3:00 PM"),
     ranFor(earlierToday(now, 15), 1),
   );
@@ -237,7 +263,7 @@ function seedPlans(): Plan[] {
     {
       id: "max", name: "Max", priceCents: 3000, interval: "month", monthlyCredits: 4500, signupCredits: 0,
       limits: { apps: 25, automations: 50, ownMcpServers: true, topUps: true, models: "all", browser: true },
-      features: ["4,500 credits every month", "Priority when things get busy", "All 25 apps plus your own MCP servers", "50 automations", "Browser use", topUp, ownKey],
+      features: ["4,500 credits every month", "Priority when things get busy", "All 25 apps plus your own MCP servers", "50 automations", "Browser use: 2 credits per minute", topUp, ownKey],
     },
   ];
 }
@@ -404,7 +430,7 @@ function seedMoney(now: Date) {
         firstGrant ??= grant.id;
       }
       ledger.push({ id: `led_c${index}`, delta: -charge.amount, reason: "charge", grantId: firstGrant, description: charge.description, createdAt: at });
-      const day = (usage[dayKey(new Date(at))] ??= { ai: 0, awake: 0, actions: 0 });
+      const day = (usage[dayKey(new Date(at))] ??= emptyDay());
       day[charge.part] += charge.amount;
     }
     if (did) activity.push({ id: `act_c${index}`, actor: "agent", ...did, createdAt: at });

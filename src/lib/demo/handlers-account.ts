@@ -18,7 +18,7 @@ import {
   requiredString,
   stringField,
 } from "./http";
-import { dayKey } from "./seed";
+import { dayKey, emptyDay } from "./seed";
 import { balanceOf, creditBalance, grantCredits, logActivity, nextExpiryOf, nextId, schedule, type DemoState } from "./store";
 
 // ---------------------------------------------------------------- me
@@ -181,7 +181,7 @@ export const getUsage: Handler = ({ state, url }) => {
   while (day < to) {
     const next = new Date(day);
     next.setDate(next.getDate() + 1);
-    const { ai, awake, actions } = state.usage[dayKey(day)] ?? { ai: 0, awake: 0, actions: 0 };
+    const { ai, awake, actions, tools } = state.usage[dayKey(day)] ?? emptyDay();
     items.push({
       periodStart: day.toISOString(),
       periodEnd: next.toISOString(),
@@ -190,16 +190,18 @@ export const getUsage: Handler = ({ state, url }) => {
       awakeSeconds: awake * 600,
       awakeCredits: awake,
       appActionCredits: actions,
-      // Browser use and paid tools aren't on yet.
+      // Scout's browser isn't built yet, so there is no browser time to charge.
       browserSeconds: 0,
       browserCredits: 0,
-      toolCredits: 0,
-      totalCredits: ai + awake + actions,
+      // Paid tools only (web search); browser time has its own number.
+      toolCredits: tools,
+      totalCredits: ai + awake + actions + tools,
     });
     totals.aiCredits += ai;
     totals.awakeCredits += awake;
     totals.appActionCredits += actions;
-    totals.totalCredits += ai + awake + actions;
+    totals.toolCredits += tools;
+    totals.totalCredits += ai + awake + actions + tools;
     day.setTime(next.getTime());
   }
   return json({ items, totals });

@@ -1,6 +1,7 @@
-// How a line of the credit history reads. The backend writes two kinds of charge:
-// "Usage: AI 3, awake time 1, browser 2" (the AI, the time the agent ran, minutes in the browser)
-// and "App action: GMAIL_SEND_EMAIL" (one credit for an action that changed something).
+// How a line of the credit history reads. The backend writes three kinds of charge:
+// "Usage: AI 3, awake time 1, browser 2" (the AI, the time the agent ran, minutes in the browser),
+// "App action: GMAIL_SEND_EMAIL" (one credit for an action that changed something)
+// and a paid tool under its own name, such as "Web search" (one line per use).
 
 import type { LedgerEntry } from "@/lib/api/client";
 import { humanizeEvent, titleCase } from "@/lib/format";
@@ -13,6 +14,9 @@ const REASON_LABEL: Record<LedgerEntry["reason"], string> = {
   adjust: "adjusted",
   reversal: "reversed",
 };
+
+// The ledger has no field for the kind of charge, so a paid tool is known by the name the backend gives it.
+const PAID_TOOLS: ReadonlySet<string> = new Set(["Web search"]);
 
 const APP_ACTION = /^App action:\s*([A-Za-z0-9_]+)$/;
 const USAGE = /^Usage:\s*(.*)$/;
@@ -50,6 +54,7 @@ export function describeLedgerEntry(entry: Pick<LedgerEntry, "description" | "re
     if (action) return { what: describeAction(action[1]), reason: entry.reason === "charge" ? "app action" : REASON_LABEL.reversal };
     const usage = USAGE.exec(description);
     if (usage) return { what: describeUsage(usage[1]), reason: REASON_LABEL[entry.reason] };
+    if (PAID_TOOLS.has(description)) return { what: description, reason: entry.reason === "charge" ? "paid tool" : REASON_LABEL.reversal };
   }
   return { what: description || "Credits", reason: REASON_LABEL[entry.reason] };
 }

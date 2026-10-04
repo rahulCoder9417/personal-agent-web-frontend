@@ -16,8 +16,7 @@ function derivedFeatures(plan: Plan, topUp: TopUpPack | undefined): string[] {
   if (plan.signupCredits > 0) lines.push(`${formatNumber(plan.signupCredits)} credits at sign-up, plus coupon codes`);
   lines.push(`${formatNumber(plan.limits.apps)} apps${plan.limits.ownMcpServers ? " plus your own MCP servers" : ""}`);
   lines.push(`${formatNumber(plan.limits.automations)} ${plan.limits.automations === 1 ? "automation" : "automations"}`);
-  // The contract has no limit for it yet, so this goes by the plan: browser use is Max only.
-  if (plan.id === "max") lines.push("Browser use");
+  if (plan.limits.browser) lines.push("Browser use: 2 credits per minute");
   if (plan.limits.topUps) {
     lines.push(topUp ? `Top-ups: ${formatMoney(topUp.priceCents)} for ${formatNumber(topUp.credits)} credits` : "Top-ups when you need more");
   }

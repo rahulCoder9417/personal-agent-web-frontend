@@ -2,26 +2,29 @@
 
 import type { UsagePeriod, UsageTotals } from "@/lib/api/client";
 
-export type SeriesId = "awake" | "actions" | "tools" | "ai";
+export type SeriesId = "awake" | "actions" | "browser" | "tools" | "ai";
 
 export type Series = { id: SeriesId; label: string; color: string };
 
 /**
- * Fixed order and colours; a series keeps its colour whatever else is on screen. The four were
+ * Fixed order and colours; a series keeps its colour whatever else is on screen. The five were
  * validated as a set, every pair against every other, because a day's column leaves out what it
  * didn't use, so any two can end up touching.
  */
 export const SERIES: readonly Series[] = [
   { id: "awake", label: "Running time", color: "#3355F5" },
   { id: "actions", label: "App actions", color: "#C22866" },
-  // One number in the API: minutes in the browser (Max plan) and tools that cost money.
-  { id: "tools", label: "Browser use and paid tools", color: "#FF6B2C" },
+  // Minutes Scout spent in a real browser (Max plan).
+  { id: "browser", label: "Browser use", color: "#7C4A03" },
+  // Tools that cost money per use, such as web search. Browser time is not in here.
+  { id: "tools", label: "Paid tools", color: "#FF6B2C" },
   { id: "ai", label: "Textcrew AI", color: "#11A39B" },
 ];
 
 const FIELD = {
   awake: "awakeCredits",
   actions: "appActionCredits",
+  browser: "browserCredits",
   tools: "toolCredits",
   ai: "aiCredits",
 } as const satisfies Record<SeriesId, keyof UsageTotals>;

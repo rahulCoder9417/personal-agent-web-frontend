@@ -10,6 +10,7 @@ import type {
   Me,
   Message,
   UsagePeriod,
+  UsageTotals,
 } from "@/lib/api/client";
 import { handleDemoRequest, resetDemoStore } from "./index";
 import { getStore } from "./store";
@@ -76,27 +77,38 @@ describe("account", () => {
 
   it("reports today's usage and one period per day", async () => {
     const from = new Date("2026-09-25T00:00:00").toISOString();
-    const usage = await call<{ items: UsagePeriod[]; totals: { totalCredits: number } }>(
+    const usage = await call<{ items: UsagePeriod[]; totals: UsageTotals }>(
       "GET",
       `usage?from=${encodeURIComponent(from)}&to=${encodeURIComponent(NOW.toISOString())}`,
     );
     const today = usage.body.items.at(-1);
     expect(usage.body.items).toHaveLength(7);
-    expect(today).toMatchObject({ aiCredits: 0, awakeCredits: 4, appActionCredits: 2, toolCredits: 0, totalCredits: 6 });
+    expect(today).toMatchObject({ aiCredits: 0, awakeCredits: 4, appActionCredits: 2, browserCredits: 0, toolCredits: 1, totalCredits: 7 });
     expect(usage.body.totals.totalCredits).toBe(usage.body.items.reduce((sum, day) => sum + day.totalCredits, 0));
+    // Browser use and paid tools are separate numbers, and every part is in the total.
+    for (const day of usage.body.items) {
+      expect(day.aiCredits + day.awakeCredits + day.appActionCredits + day.browserCredits + day.toolCredits).toBe(day.totalCredits);
+    }
+    expect(usage.body.totals.browserCredits).toBe(0);
+    expect(usage.body.totals.toolCredits).toBe(usage.body.items.reduce((sum, day) => sum + day.toolCredits, 0));
   });
 
-  it("charges running time and app actions as separate ledger lines, and reading for nothing", async () => {
+  it("charges running time, app actions and web searches as separate ledger lines, and reading for nothing", async () => {
     const store = getStore();
     const charges = store.ledger.filter((entry) => entry.reason === "charge");
     const actions = charges.filter((entry) => entry.description?.startsWith("App action: "));
     const usage = charges.filter((entry) => entry.description?.startsWith("Usage: awake time "));
-    expect(actions.length + usage.length).toBe(charges.length);
+    const searches = charges.filter((entry) => entry.description === "Web search");
+    expect(actions.length + usage.length + searches.length).toBe(charges.length);
     expect(actions.every((entry) => entry.delta === -1)).toBe(true);
+    expect(searches.length).toBeGreaterThan(3);
 
     const days = Object.values(store.usage);
     expect(days.reduce((sum, day) => sum + day.actions, 0)).toBe(actions.length);
     expect(days.reduce((sum, day) => sum + day.awake, 0)).toBe(usage.reduce((sum, entry) => sum - entry.delta, 0));
+    expect(days.reduce((sum, day) => sum + day.tools, 0)).toBe(searches.reduce((sum, entry) => sum - entry.delta, 0));
+    // Each search is in the activity log with what it cost.
+    expect(store.activity.filter((entry) => entry.action === "web_search" && entry.creditsCharged === 1)).toHaveLength(searches.length);
 
     const done = store.activity.filter((entry) => entry.action === "run_app_action");
     expect(done.filter((entry) => entry.creditsCharged === 1)).toHaveLength(actions.length);
@@ -296,7 +308,7 @@ describe("setup", () => {
     vi.advanceTimersByTime(2000);
     expect(getStore().ledger[0]).toMatchObject({ delta: -3, description: "Usage: AI 2, awake time 1" });
     const today = (await call<{ items: UsagePeriod[] }>("GET", `usage?from=${encodeURIComponent(new Date("2026-10-01T00:00:00").toISOString())}&to=${encodeURIComponent(new Date("2026-10-01T23:00:00").toISOString())}`)).body.items[0];
-    expect(today).toMatchObject({ aiCredits: 2, awakeCredits: 5, appActionCredits: 2, totalCredits: 9 });
+    expect(today).toMatchObject({ aiCredits: 2, awakeCredits: 5, appActionCredits: 2, toolCredits: 1, totalCredits: 10 });
 
     const saved = await call<{ last4: string }>("PUT", "byok/openrouter", { apiKey: "sk-or-0123456789abcd" });
     expect(saved.body.last4).toBe("abcd");

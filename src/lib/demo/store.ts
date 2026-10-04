@@ -2,7 +2,7 @@
 // more than one endpoint needs (events, credits, the activity log).
 
 import type { ActivityEntry, AgentStatus, CreditBalance, StreamEvent } from "@/lib/api/client";
-import { createSeed, dayKey, type DayUsage, type DemoData } from "./seed";
+import { createSeed, dayKey, emptyDay, type DayUsage, type DemoData } from "./seed";
 
 export type Listener = (event: StreamEvent) => void;
 
@@ -122,7 +122,7 @@ function spend(state: DemoState, amount: number, description: string, now: numbe
 }
 
 function usageToday(state: DemoState, now: number): DayUsage {
-  return (state.usage[dayKey(new Date(now))] ??= { ai: 0, awake: 0, actions: 0 });
+  return (state.usage[dayKey(new Date(now))] ??= emptyDay());
 }
 
 /**

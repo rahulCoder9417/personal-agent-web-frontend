@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { UsagePeriod } from "@/lib/api/client";
 import { niceScale, SERIES, seriesTotal, seriesValue, stackColumn, visibleSeries } from "./credits-chart-scale";
 
-function day(awake: number, tools: number, ai = 0, actions = 0): UsagePeriod {
+function day(awake: number, tools: number, ai = 0, actions = 0, browser = 0): UsagePeriod {
   return {
     periodStart: "2026-10-01T00:00:00Z",
     periodEnd: "2026-10-02T00:00:00Z",
     awakeCredits: awake,
     appActionCredits: actions,
-    browserCredits: 0,
+    browserCredits: browser,
     toolCredits: tools,
     aiCredits: ai,
-    totalCredits: awake + actions + tools + ai,
+    totalCredits: awake + actions + browser + tools + ai,
   };
 }
 
@@ -51,13 +51,27 @@ describe("visibleSeries", () => {
   it("stacks app actions on top of running time", () => {
     expect(visibleSeries([day(3, 0, 2, 4)]).map((s) => s.id)).toEqual(["awake", "actions", "ai"]);
   });
+
+  it("keeps browser use and paid tools apart", () => {
+    expect(visibleSeries([day(3, 0, 0, 0, 6)]).map((s) => s.id)).toEqual(["awake", "browser"]);
+    expect(visibleSeries([day(3, 2, 0, 0, 6), day(1, 0)]).map((s) => s.id)).toEqual(["awake", "browser", "tools"]);
+  });
+});
+
+describe("SERIES", () => {
+  it("names the five things credits are spent on, each in its own colour", () => {
+    expect(SERIES.map((s) => s.label)).toEqual(["Running time", "App actions", "Browser use", "Paid tools", "Textcrew AI"]);
+    expect(new Set(SERIES.map((s) => s.color)).size).toBe(SERIES.length);
+  });
 });
 
 describe("seriesValue and seriesTotal", () => {
   it("read each series from its own field", () => {
-    const period = day(1, 2, 3, 4);
-    expect(SERIES.map((s) => seriesValue(period, s.id))).toEqual([1, 4, 2, 3]);
-    expect(SERIES.map((s) => seriesTotal(period, s.id))).toEqual([1, 4, 2, 3]);
+    const period = day(1, 2, 3, 4, 5);
+    expect(SERIES.map((s) => seriesValue(period, s.id))).toEqual([1, 4, 5, 2, 3]);
+    expect(SERIES.map((s) => seriesTotal(period, s.id))).toEqual([1, 4, 5, 2, 3]);
+    // The five add up to the total: nothing is counted twice.
+    expect(SERIES.reduce((sum, s) => sum + seriesValue(period, s.id), 0)).toBe(period.totalCredits);
   });
 });
 
