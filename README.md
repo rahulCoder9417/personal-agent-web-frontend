@@ -8,7 +8,7 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
                                          token on the server)
 ```
 
-- **Screens**: chat, approvals, automations and pull-request review, activity, apps and your own MCP servers, crew, settings (general, agent and AI, credits, plans), onboarding, sign-in.
+- **Screens**: chat, approvals, automations and pull-request review, activity, apps and your own MCP servers, crew, settings (general, agent and AI, memory, credits, plans), onboarding, sign-in.
 - **One layout, two shapes**: on a wide screen a sidebar sits beside the current screen; on a phone there is a top bar, the screen edge to edge and five tabs along the bottom (the rest is under More).
 - **Installable on a phone**: "Add to Home Screen" on Android and iPhone opens it in its own window. See [Installing on a phone](#installing-on-a-phone).
 - **The pages only talk to this app's own `/api/v1/*`.** `src/app/api/v1/[...path]/route.ts` forwards to the backend and adds the Clerk session token on the server, so the token never sits in page JavaScript or in an `EventSource` URL. Only user-facing paths are allowed through (no admin, waitlist or webhook routes).
@@ -39,6 +39,7 @@ Things to try in the demo:
 - **The crew at work**: ask Tex in the web chat to research something ("research what other tools charge"), fix code ("fix the bug in…") or review ("review my pull request"). Scout, Byte or Patch reports three lines while it works, then Tex answers. Scout's search costs 1 credit.
 - **Pull-request review** (Automations → Pull-request review): two repos are seeded, one on and one paused after failures. Pro allows five automations and four are used, so one more repo can be given review and the next one hits the plan limit. A repo owned by `octocat` stands in for one the GitHub account can't administer. Disconnect GitHub under Apps to see the screen without it.
 - **Choosing Textcrew AI** (Settings → Agent & AI): the demo has an Anthropic key saved, so "Use Textcrew AI" and the way back are both there.
+- **Memory** (Settings → Memory): eight memories are seeded. Tell Tex "remember that I send invoices on the 1st" in the web chat and it is saved; "remember that my password is…" is refused. Both are in the activity log.
 
 ## Against the real backend
 
@@ -94,6 +95,15 @@ Automations → Pull-request review (`/automations/reviews`). The person turns r
 
 - **Chat**: `agent.progress` events (`{ text, crew, at }`) arrive on the live stream while a turn runs. The bubble that says "Tex is working…" shows the latest line of each member at work, with its face and name ("Scout · reading 4 pages"). The lines are live only: they are kept in the query cache, emptied when the agent stops being busy and when the stream reconnects, and are not there after a reload.
 - **Activity**: an entry with `crew` is shown as that member's (face, name, and the name taken off the front of the line), and the "Crew" filter picks those out. `read_page_refused` reads "Blocked a page Scout wasn't given". On a phone an entry gets two lines.
+
+## Memory
+
+Settings → Memory (`/settings/memory`): what Tex has saved about the person. One memory is one short fact with a kind (standing instruction, preference, person, project, or anything else that lasts). Every engine shares them.
+
+- **The API**: `GET /v1/memories` returns all of them, newest first, with `max` (200); `DELETE /v1/memories/{memoryId}` removes one; `DELETE /v1/memories` removes all and says how many. There is no call to add or edit: the person tells Tex ("remember that…", "that's wrong, it's…"), and the screen says so.
+- **The screen** groups memories by kind, standing instructions first (`src/lib/memory.ts`). Each shows when it was saved, when Tex corrected it (`updatedAt`, when it differs from `createdAt`), and how often and when Tex last found it with a search (`useCount`, `lastUsedAt`). A meter shows how many of `max` are used; at the limit the screen says Tex can't save more. "Delete" and "Delete all" both ask once more first.
+- **Keeping it fresh**: memory has no live event. The list is asked for when the screen opens and again whenever a turn ends (`agent.status` stops being `busy`), which is when Tex saves, corrects or forgets.
+- **Activity**: the memory actions read "remembered", "looked up memory", "forgot" or "corrected a memory", "refused to save", "deleted a memory" and "cleared memory", after who did it, and a "Memory" filter picks them out. An entry never holds a memory's text. Where it has a `memoryId` and that memory still exists, "See the memory" opens the Memory screen on it (`?memory=<id>`).
 
 ## Installing on a phone
 
@@ -151,6 +161,7 @@ src/lib/
   demo/              the in-memory demo backend
   channels.ts        which chat apps to offer, from what the backend has switched on
   crew.ts            who is on the crew and what they are doing, from what the backend says
+  memory.ts          what Tex remembers: the kinds, their order and how a memory's dates read
   pr-review.ts       reading a repo as typed, a repo's state and the API's refusals in words
   credit-costs.ts    what credits pay for, in the words every screen uses
   checkout.ts        what a Polar checkout is waiting for, and when it has arrived
@@ -162,7 +173,6 @@ src/lib/
 
 - Admin screens (`/v1/admin/*`).
 - Voice notes from the composer (files and text only).
-- The memory screen (it follows the backend's shared memory, launch plan W3a).
 - Scout's browser: the contract says it isn't built (`browser.available: false`), so there is nothing to show but the note. `browserSeconds` is in the usage and not shown yet.
 - What the screens would like and the contract doesn't offer:
   - A pull-request review repo has no history: which pull requests were reviewed, the verdicts, or why a review failed. The screen shows only when the last one ran.
@@ -171,5 +181,8 @@ src/lib/
   - The ledger has no field for the kind of charge, so a paid tool is known by its description.
   - Only progress lines carry `crew`. A web search or a refused page is logged as Tex's, though it is Scout's tool.
   - Progress lines are not replayed: after a reload in the middle of a turn the chat says "Tex is working…" until the next line.
+  - Memory can't be added or edited from the app, and has no live event (the list is asked for again when a turn ends).
+  - The activity log names a memory by id only. Once it is deleted, the log can't say what it was, and a `forget` entry doesn't say whether Tex removed or corrected (the app goes by the entry's summary).
+  - A refused save (`memory_refused`) and a search (`recall`) carry no `memoryId`, so they link nowhere.
 - Installed on a phone, the app has not been tried on a real Android phone or iPhone.
 - Not yet run with a real Clerk application, real Polar products or a real agent container.
