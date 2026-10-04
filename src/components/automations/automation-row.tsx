@@ -3,18 +3,20 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { Automation } from "@/lib/api/client";
-import { useDeleteAutomation, useUpdateAutomation } from "@/lib/api/hooks";
+import { useDeleteAutomation, usePrReviews, useUpdateAutomation } from "@/lib/api/hooks";
 import {
   AUTOMATION_KIND_LABEL,
   cn,
   describeAutomationNext,
   describeAutomationSchedule,
   formatAgo,
+  PR_REVIEW_LABEL,
   titleCase,
 } from "@/lib/format";
+import { repoName } from "@/lib/pr-review";
 import { BrandIcon } from "../brand-icon";
 import { ClockIcon, TrashIcon, WarningIcon } from "../icons";
-import { Button, IconButton, IconTile, InlineError, Switch } from "../ui";
+import { Button, ButtonLink, IconButton, IconTile, InlineError, Switch } from "../ui";
 
 /** Why a paused automation is paused, with the way out. Nothing for one the user paused themselves. */
 function PausedNote({ automation }: { automation: Automation }) {
@@ -51,8 +53,57 @@ function lastRan(iso: string): string {
   return ago === "Yesterday" ? "yesterday" : ago;
 }
 
+/**
+ * A repo with pull-request review on. It is an automation, but not one made by asking Tex: it is
+ * turned on, paused and turned off on the review screen, so this row shows it and points there.
+ */
+function ReviewAutomationRow({ automation }: { automation: Automation }) {
+  const on = automation.enabled;
+  // The automation doesn't carry its repo; the review list does, under the same id.
+  const review = usePrReviews().data?.find((item) => item.id === automation.id);
+  const title = review ? repoName(review) : automation.title;
+  return (
+    <li className="flex flex-col gap-2 border-b border-line px-5 py-4 last:border-b-0">
+      <div className="flex items-center gap-x-4 gap-y-1.5 max-lg:flex-wrap">
+        <IconTile size={38}>
+          <BrandIcon name="github" size={18} />
+        </IconTile>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className={cn("truncate text-[14px] font-semibold", !on && "text-muted")}>{title}</span>
+          <span className="truncate text-[13px] text-muted">Patch reviews each pull request and sends you a short verdict.</span>
+          <PausedNote automation={automation} />
+        </div>
+
+        <div className="flex w-[210px] shrink-0 flex-col items-start gap-1 max-lg:order-4 max-lg:w-full max-lg:flex-row max-lg:flex-wrap max-lg:items-center max-lg:gap-x-2 max-lg:pl-[54px]">
+          <span className="rounded-md bg-accent-soft px-2 py-0.5 text-[12px] font-medium whitespace-nowrap text-accent-dark">{PR_REVIEW_LABEL}</span>
+          <span className="max-w-full text-[12px] text-nav">Each new or updated pull request</span>
+        </div>
+
+        <div className="flex w-[170px] shrink-0 flex-col gap-0.5 max-lg:order-5 max-lg:w-full max-lg:flex-row max-lg:gap-2 max-lg:pl-[54px]">
+          <span className={cn("truncate text-[12px]", on ? "text-fg" : "text-muted")}>{describeAutomationNext(automation)}</span>
+          <span className="truncate text-[12px] text-muted">
+            {automation.lastRunAt ? `last review ${lastRan(automation.lastRunAt)}` : "no review yet"}
+          </span>
+        </div>
+
+        <div className="flex w-[156px] shrink-0 items-center justify-end gap-2 max-lg:w-auto">
+          <ButtonLink href="/automations/reviews" size="sm" aria-label={`Manage review for ${title}`}>
+            Manage
+          </ButtonLink>
+        </div>
+      </div>
+    </li>
+  );
+}
+
 /** One automation: what it does, when it runs, and the switch and delete that the app is allowed to do. */
 export function AutomationRow({ automation }: { automation: Automation }) {
+  if (automation.preset === "pr_review") return <ReviewAutomationRow automation={automation} />;
+  return <PlainAutomationRow automation={automation} />;
+}
+
+function PlainAutomationRow({ automation }: { automation: Automation }) {
   const update = useUpdateAutomation();
   const remove = useDeleteAutomation();
   const [confirming, setConfirming] = useState(false);

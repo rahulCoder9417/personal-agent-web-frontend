@@ -36,6 +36,7 @@ export const qk = {
   mcpServers: ["mcp-servers"] as const,
   byok: ["byok"] as const,
   automations: ["automations"] as const,
+  prReviews: ["pr-reviews"] as const,
   agentStatus: ["agent", "status"] as const,
   agentSettings: ["agent", "settings"] as const,
   crew: ["crew"] as const,
@@ -312,6 +313,14 @@ export function useDeleteByokKey() {
 
 // ---------------------------------------------------------------- automations
 
+/** A repo with pull-request review on is an automation too, so the two lists change together. */
+export function invalidateAutomations(qc: QueryClient) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: qk.automations }),
+    qc.invalidateQueries({ queryKey: qk.prReviews }),
+  ]);
+}
+
 export function useAutomations() {
   return useQuery({
     queryKey: qk.automations,
@@ -344,7 +353,7 @@ export function useUpdateAutomation() {
     onError: (_error, _input, context) => {
       if (context?.previous) qc.setQueryData(qk.automations, context.previous);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.automations }),
+    onSettled: () => invalidateAutomations(qc),
   });
 }
 
@@ -353,7 +362,39 @@ export function useDeleteAutomation() {
   return useMutation({
     mutationFn: (automationId: string) =>
       unwrap(api.DELETE("/v1/automations/{automationId}", { params: { path: { automationId } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.automations }),
+    onSuccess: () => invalidateAutomations(qc),
+  });
+}
+
+// ---------------------------------------------------------------- pull-request review
+
+/** The GitHub repos with pull-request review on. Each one is also an automation (`preset: pr_review`). */
+export function usePrReviews() {
+  return useQuery({
+    queryKey: qk.prReviews,
+    queryFn: () => unwrap(api.GET("/v1/pr-reviews")),
+    select: (data) => data.items,
+  });
+}
+
+/** Turns review on for one repo. Asking again for a repo that is already on resumes it if it was paused. */
+export function useEnablePrReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (repo: { owner: string; repo: string }) =>
+      unwrap(api.PUT("/v1/pr-reviews/{owner}/{repo}", { params: { path: repo } })),
+    onSuccess: () => invalidateAutomations(qc),
+  });
+}
+
+/** Turns review off for one repo: the automation goes, and with it the OK to comment there. */
+export function useDisablePrReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (repo: { owner: string; repo: string }) =>
+      unwrap(api.DELETE("/v1/pr-reviews/{owner}/{repo}", { params: { path: repo } })),
+    // Also after a failure: a 404 means it was already off, and the list should say so.
+    onSettled: () => invalidateAutomations(qc),
   });
 }
 

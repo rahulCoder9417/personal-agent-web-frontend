@@ -1,6 +1,6 @@
 // Apps, own MCP servers, API keys, automations and agent settings for the demo account.
 
-import type { AgentRuntime, AgentSettings, AiPreference, ByokKey, ByokProvider, CrewMember, McpServer } from "@/lib/api/client";
+import type { AgentRuntime, AgentSettings, AiPreference, ByokKey, ByokProvider, McpServer } from "@/lib/api/client";
 import { nowIso, type Handler } from "./context";
 import {
   badRequest,
@@ -202,27 +202,6 @@ export const updateAgentSettings: Handler = async ({ state, request }) => {
   return json(state.agentSettings);
 };
 
-// The crew as the backend lists it: fixed ids, names, roles and descriptions.
-const CREW: Omit<CrewMember, "available" | "browser">[] = [
-  { id: "tex", name: "Tex", kind: "lead", role: "Lead", description: "The one you text. Plans the job, hands parts to the crew and answers you." },
-  { id: "byte", name: "Byte", kind: "specialist", role: "Coding", description: "Writes and changes code, and opens pull requests." },
-  { id: "patch", name: "Patch", kind: "specialist", role: "Code review", description: "Reviews code with several reviewers: bugs, security and tests." },
-  { id: "scout", name: "Scout", kind: "specialist", role: "Research", description: "Searches the web and reads pages. On Max it also drives a real browser." },
-];
-
-/** Scout's real browser isn't built yet. The plan it needs comes from the plans, as in the backend. */
-const BROWSER_BUILT = false;
-
-export const listCrew: Handler = ({ state }) => {
-  const browserPlan = state.plans.find((plan) => plan.limits.browser)?.id ?? "max";
-  const items: CrewMember[] = CREW.map((member) => ({
-    ...member,
-    available: member.kind === "lead" || state.crewAvailable.some((id) => id === member.id),
-    browser: member.id === "scout" ? { requiresPlan: browserPlan, available: BROWSER_BUILT } : null,
-  }));
-  return json({ items });
-};
-
 export const startClaudeLogin: Handler = ({ state }) => {
   const loginId = nextId(state, "login");
   const expiresAt = new Date(Date.now() + CLAUDE_LOGIN_MINUTES * 60_000).toISOString();
@@ -274,5 +253,7 @@ export const deleteAutomation: Handler = ({ state, params }) => {
   const index = state.automations.findIndex((item) => item.id === params.automationId);
   if (index === -1) throw notFound("That automation doesn't exist");
   state.automations.splice(index, 1);
+  // A repo with pull-request review on is gone with its automation.
+  state.prReviews = state.prReviews.filter((review) => review.automationId !== params.automationId);
   return noContent();
 };

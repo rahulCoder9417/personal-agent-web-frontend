@@ -4,12 +4,14 @@ import type {
   AgentSettings,
   Approval,
   App,
+  Automation,
   ChannelLink,
   CreditBalance,
   CrewMember,
   LedgerEntry,
   Me,
   Message,
+  PrReviewRepo,
   UsagePeriod,
   UsageTotals,
 } from "@/lib/api/client";
@@ -84,7 +86,7 @@ describe("account", () => {
     );
     const today = usage.body.items.at(-1);
     expect(usage.body.items).toHaveLength(7);
-    expect(today).toMatchObject({ aiCredits: 0, awakeCredits: 4, appActionCredits: 2, browserCredits: 0, toolCredits: 1, totalCredits: 7 });
+    expect(today).toMatchObject({ aiCredits: 0, awakeCredits: 5, appActionCredits: 3, browserCredits: 0, toolCredits: 1, totalCredits: 9 });
     expect(usage.body.totals.totalCredits).toBe(usage.body.items.reduce((sum, day) => sum + day.totalCredits, 0));
     // Browser use and paid tools are separate numbers, and every part is in the total.
     for (const day of usage.body.items) {
@@ -173,10 +175,10 @@ describe("chat", () => {
     expect(response.headers.get("content-type")).toBe("text/event-stream");
     expect(await read()).toBe("event: ready\ndata: {}\n\n");
 
-    await call("PATCH", "automations/aut_week", { enabled: false });
+    await call("PATCH", "automations/aut_meetings", { enabled: false });
     const frame = await read();
     expect(frame.startsWith("event: automation.updated\ndata: ")).toBe(true);
-    expect(JSON.parse(frame.split("data: ")[1])).toMatchObject({ type: "automation.updated", data: { id: "aut_week", enabled: false, pausedReason: "user" } });
+    expect(JSON.parse(frame.split("data: ")[1])).toMatchObject({ type: "automation.updated", data: { id: "aut_meetings", enabled: false, pausedReason: "user" } });
 
     abort.abort();
     expect(getStore().listeners.size).toBe(0);
@@ -280,10 +282,10 @@ describe("setup", () => {
   it("connects an app and reconnects an expired one", async () => {
     const connect = await call<{ redirectUrl: string }>("POST", "apps/linear/connect", { returnUrl: `${ORIGIN}/apps` });
     expect(connect.body.redirectUrl).toBe(`${ORIGIN}/apps?app=linear`);
-    await call("POST", "apps/github/connect");
+    await call("POST", "apps/googledrive/connect");
     const apps = (await call<{ items: App[] }>("GET", "apps")).body.items;
     expect(apps.find((app) => app.slug === "linear")?.connections).toMatchObject([{ status: "active" }]);
-    expect(apps.find((app) => app.slug === "github")?.connections).toMatchObject([{ status: "active" }]);
+    expect(apps.find((app) => app.slug === "googledrive")?.connections).toMatchObject([{ status: "active" }]);
     expect((await call("POST", "apps/linear/connect", { returnUrl: "https://evil.example/" })).status).toBe(400);
   });
 
@@ -309,7 +311,7 @@ describe("setup", () => {
     vi.advanceTimersByTime(2000);
     expect(getStore().ledger[0]).toMatchObject({ delta: -3, description: "Usage: AI 2, awake time 1" });
     const today = (await call<{ items: UsagePeriod[] }>("GET", `usage?from=${encodeURIComponent(new Date("2026-10-01T00:00:00").toISOString())}&to=${encodeURIComponent(new Date("2026-10-01T23:00:00").toISOString())}`)).body.items[0];
-    expect(today).toMatchObject({ aiCredits: 2, awakeCredits: 5, appActionCredits: 2, toolCredits: 1, totalCredits: 10 });
+    expect(today).toMatchObject({ aiCredits: 2, awakeCredits: 6, appActionCredits: 3, toolCredits: 1, totalCredits: 12 });
 
     const saved = await call<{ last4: string }>("PUT", "byok/openrouter", { apiKey: "sk-or-0123456789abcd" });
     expect(saved.body.last4).toBe("abcd");
@@ -423,6 +425,117 @@ describe("setup", () => {
     const sent = await call<ErrorBody>("POST", "messages", { text: "hello", clientMessageId: uuid(9) });
     expect(sent.status).toBe(403);
     expect(sent.body.error.code).toBe("channel_disabled");
+  });
+});
+
+describe("pull-request review", () => {
+  type Reviews = { items: PrReviewRepo[] };
+  const automations = async () => (await call<{ items: Automation[] }>("GET", "automations")).body.items;
+
+  it("lists the repos with review on, each one an automation with the preset", async () => {
+    const reviews = (await call<Reviews>("GET", "pr-reviews")).body.items;
+    expect(reviews).toMatchObject([
+      { id: "aut_pr_website", owner: "northwind", repo: "website", enabled: true, pausedReason: null, channel: "telegram" },
+      { id: "aut_pr_api", owner: "northwind", repo: "api", enabled: false, pausedReason: "failures", channel: "telegram" },
+    ]);
+    expect(reviews[0].lastReviewAt).not.toBeNull();
+
+    const list = await automations();
+    expect(list.filter((item) => item.preset === "pr_review").map((item) => item.id)).toEqual(["aut_pr_website", "aut_pr_api"]);
+    expect(list.filter((item) => item.preset === null)).toHaveLength(2);
+  });
+
+  it("turns review on for a repo once, whatever the spelling", async () => {
+    const on = await call<PrReviewRepo>("PUT", "pr-reviews/northwind/docs.git");
+    expect(on.status).toBe(200);
+    expect(on.body).toMatchObject({ owner: "northwind", repo: "docs", enabled: true, pausedReason: null, channel: "telegram", lastReviewAt: null });
+
+    const again = await call<PrReviewRepo>("PUT", "pr-reviews/Northwind/DOCS");
+    expect(again.body.id).toBe(on.body.id);
+    expect((await call<Reviews>("GET", "pr-reviews")).body.items).toHaveLength(3);
+
+    const automation = (await automations()).find((item) => item.id === on.body.id);
+    expect(automation).toMatchObject({ kind: "event", preset: "pr_review", title: "Review pull requests in northwind/docs", trigger: { app: "github" } });
+    expect(getStore().activity[0]).toMatchObject({ actor: "user", action: "pr_review_enabled", summary: "Turned on pull-request review for northwind/docs" });
+  });
+
+  it("counts each repo as one of the plan's automations", async () => {
+    // Pro allows five: four are seeded, so one more repo fits and the next doesn't.
+    expect((await call("PUT", "pr-reviews/northwind/docs")).status).toBe(200);
+    const full = await call<ErrorBody>("PUT", "pr-reviews/northwind/mobile");
+    expect(full.status).toBe(403);
+    expect(full.body.error).toMatchObject({ code: "plan_limit", message: "Your pro plan allows 5 automations; cancel one or upgrade" });
+    // A repo that is already on is not a new automation.
+    expect((await call("PUT", "pr-reviews/northwind/website")).status).toBe(200);
+  });
+
+  it("needs GitHub connected", async () => {
+    expect((await call("DELETE", "connections/con_github_1")).status).toBe(204);
+    const refused = await call<ErrorBody>("PUT", "pr-reviews/northwind/docs");
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toEqual({ code: "conflict", message: "Connect GitHub first" });
+  });
+
+  it("refuses a repo the connected account can't administer, and anything that isn't a repo name", async () => {
+    const noAdmin = await call<ErrorBody>("PUT", "pr-reviews/octocat/hello-world");
+    expect(noAdmin.status).toBe(400);
+    expect(noAdmin.body.error.code).toBe("invalid_request");
+    expect(noAdmin.body.error.message).toContain("admin access");
+
+    for (const path of ["pr-reviews/northwind/we$bsite", "pr-reviews/northwind/..", "pr-reviews/north wind/website"]) {
+      const bad = await call<ErrorBody>("PUT", path);
+      expect(bad.status, path).toBe(400);
+      expect(bad.body.error.message).toBe("Not a GitHub repository name");
+    }
+    expect((await call<Reviews>("GET", "pr-reviews")).body.items).toHaveLength(2);
+  });
+
+  it("pauses with the automation's switch and resumes by turning review on again", async () => {
+    const paused = await call<Automation>("PATCH", "automations/aut_pr_website", { enabled: false });
+    expect(paused.body).toMatchObject({ enabled: false, pausedReason: "user" });
+    expect((await call<Reviews>("GET", "pr-reviews")).body.items[0]).toMatchObject({ repo: "website", enabled: false, pausedReason: "user" });
+
+    // The repo that was paused after failures comes back the same way.
+    const resumed = await call<PrReviewRepo>("PUT", "pr-reviews/northwind/api");
+    expect(resumed.body).toMatchObject({ id: "aut_pr_api", enabled: true, pausedReason: null });
+  });
+
+  it("turns review off, and answers 404 when it wasn't on", async () => {
+    expect((await call("DELETE", "pr-reviews/northwind/website")).status).toBe(204);
+    expect((await automations()).some((item) => item.id === "aut_pr_website")).toBe(false);
+    expect(getStore().activity[0]).toMatchObject({ action: "pr_review_disabled", summary: "Turned off pull-request review for northwind/website" });
+
+    const twice = await call<ErrorBody>("DELETE", "pr-reviews/northwind/website");
+    expect(twice.status).toBe(404);
+    expect(twice.body.error.code).toBe("not_found");
+
+    // Deleting the automation takes the repo off the list too.
+    expect((await call("DELETE", "automations/aut_pr_api")).status).toBe(204);
+    expect((await call<Reviews>("GET", "pr-reviews")).body.items).toEqual([]);
+  });
+
+  it("sends the verdict to web chat when no Telegram chat is linked", async () => {
+    await call("DELETE", "channels/ch_telegram");
+    expect((await call<PrReviewRepo>("PUT", "pr-reviews/northwind/docs")).body.channel).toBe("web");
+  });
+
+  it("allows 30 changes an hour", async () => {
+    for (let i = 0; i < 30; i++) expect((await call("PUT", "pr-reviews/northwind/website")).status).toBe(200);
+    const limited = await call<ErrorBody>("PUT", "pr-reviews/northwind/website");
+    expect(limited.status).toBe(429);
+    expect(limited.body.error.code).toBe("rate_limited");
+
+    vi.advanceTimersByTime(3_600_001);
+    expect((await call("PUT", "pr-reviews/northwind/website")).status).toBe(200);
+  });
+
+  it("has today's review in the activity log and the history: asked for, done by Patch, one credit for the posted review", async () => {
+    const store = getStore();
+    const asked = store.activity.find((entry) => entry.action === "pr_review_requested");
+    expect(asked).toMatchObject({ actor: "system", summary: "Review of northwind/website#128 at 4f2a9c1 requested" });
+    expect(store.activity.filter((entry) => entry.crew === "patch").map((entry) => entry.action)).toEqual(["crew_progress", "crew_progress"]);
+    expect(store.ledger.some((entry) => entry.description === "App action: GITHUB_CREATE_A_REVIEW_FOR_A_PULL_REQUEST" && entry.delta === -1)).toBe(true);
+    expect(store.messages.some((message) => message.direction === "out" && message.text.startsWith("Patch reviewed pull request #128"))).toBe(true);
   });
 });
 

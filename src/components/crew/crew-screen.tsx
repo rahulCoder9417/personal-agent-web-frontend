@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { CrewMember } from "@/lib/api/client";
-import { useCrew, useMe, usePlans } from "@/lib/api/hooks";
+import { useCrew, useMe, usePlans, usePrReviews } from "@/lib/api/hooks";
 import { crewHeadline, describeBrowser, splitCrew, type CrewBrowser } from "@/lib/crew";
 import { titleCase } from "@/lib/format";
 import { Page, PageBody, PageHeader } from "../page";
@@ -38,6 +38,17 @@ function BrowserNote({ browser }: { browser: CrewBrowser }) {
   );
 }
 
+/** Patch's job that needs setting up: pull-request review, which lives with the automations. */
+function ReviewLink() {
+  const reviews = usePrReviews();
+  const on = reviews.data?.filter((review) => review.enabled).length ?? 0;
+  return (
+    <Link href="/automations/reviews" className="self-start text-[12.5px] font-medium text-accent hover:text-accent-dark">
+      {on > 0 ? `Reviewing pull requests in ${on} ${on === 1 ? "repo" : "repos"}` : "Turn on pull-request review"}
+    </Link>
+  );
+}
+
 function Specialist({ member }: { member: CrewMember }) {
   return (
     <li className="flex gap-3.5">
@@ -50,6 +61,7 @@ function Specialist({ member }: { member: CrewMember }) {
         </h3>
         <p className="text-[13.5px] text-muted">{member.description}</p>
         {member.browser && <BrowserNote browser={member.browser} />}
+        {member.id === "patch" && <ReviewLink />}
       </div>
     </li>
   );

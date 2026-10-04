@@ -117,8 +117,13 @@ export function describeCron(cron: string): string {
   return cron;
 }
 
+/** What a pull-request review automation is called wherever automations are listed. */
+export const PR_REVIEW_LABEL = "Pull-request review";
+
 /** When an automation runs, in words. */
 export function describeAutomationSchedule(automation: Automation, now = new Date()): string {
+  // The trigger's own name (GITHUB_PULL_REQUEST_EVENT) says less than this does.
+  if (automation.preset === "pr_review") return "When a pull request opens or gets new commits";
   if (automation.kind === "once") {
     return automation.runAt ? formatDateTime(automation.runAt, now) : "One time";
   }

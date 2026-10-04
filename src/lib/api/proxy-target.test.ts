@@ -11,8 +11,12 @@ describe("resolveUpstream", () => {
     );
   });
 
-  it("lets the crew list through", () => {
+  it("lets the crew list and pull-request review through", () => {
     expect(resolveUpstream(BASE, ["crew"])?.toString()).toBe("http://localhost:8080/v1/crew");
+    expect(resolveUpstream(BASE, ["pr-reviews"])?.toString()).toBe("http://localhost:8080/v1/pr-reviews");
+    expect(resolveUpstream(BASE, ["pr-reviews", "acme", "web_site.v2"])?.toString()).toBe("http://localhost:8080/v1/pr-reviews/acme/web_site.v2");
+    // A repo name can't be used to climb out of the path.
+    expect(resolveUpstream(BASE, ["pr-reviews", "acme", ".."])).toBeNull();
   });
 
   it("keeps the query string but drops a client-supplied token", () => {

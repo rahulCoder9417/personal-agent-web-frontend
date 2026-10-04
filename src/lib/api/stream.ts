@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import type { AgentStatus, Approval, CreditBalance, Message, StreamEvent } from "./client";
-import { qk, upsertMessage } from "./hooks";
+import { invalidateAutomations, qk, upsertMessage } from "./hooks";
 
 const EVENT_TYPES: StreamEvent["type"][] = [
   "message.created",
@@ -71,7 +71,7 @@ export function useEventStream(onEvent?: StreamListener) {
           void qc.invalidateQueries({ queryKey: qk.ledger });
           break;
         case "automation.updated":
-          void qc.invalidateQueries({ queryKey: qk.automations });
+          void invalidateAutomations(qc);
           break;
       }
       listener.current?.(event);

@@ -39,6 +39,9 @@ export type DayUsage = { ai: number; awake: number; actions: number; tools: numb
 
 export const emptyDay = (): DayUsage => ({ ai: 0, awake: 0, actions: 0, tools: 0 });
 
+/** What the automation itself doesn't carry: which repo it watches and where the verdict goes. */
+export type DemoPrReview = { automationId: string; owner: string; repo: string; channel: ChannelType };
+
 export type DemoData = {
   user: Omit<Me, "credits">;
   /** The channels that are switched on, like the backend's ENABLED_CHANNELS: Telegram and the web chat at launch. */
@@ -56,6 +59,10 @@ export type DemoData = {
   mcpServers: McpServer[];
   byok: ByokKey[];
   automations: Automation[];
+  /** The repos with pull-request review on. Each one belongs to an automation with `preset: pr_review`. */
+  prReviews: DemoPrReview[];
+  /** When review was last turned on, for the limit of 30 an hour. */
+  prReviewCalls: number[];
   agentStatus: AgentStatus;
   agentSettings: AgentSettings;
   /** Like the backend's AI_ACCESS_MODE: `platform` offers Textcrew AI, `own_only` requires the user's own AI. */
@@ -125,9 +132,9 @@ function nearestRun(now: Date, hour: number, weekdays: readonly number[], direct
 
 /** Credits charged on each day, index = days ago. They add up to what the grants have spent (516). */
 function dailyCredits(): number[] {
-  const today = 7;
+  const today = 9;
   const yesterday = 2;
-  const rest = 507;
+  const rest = 505;
   const days: number[] = [];
   for (let d = 2; d <= SIGNUP_DAYS_AGO; d++) days.push(3 + (((d * 2654435761) >>> 0) % 37));
   const weight = days.reduce((sum, w) => sum + w, 0);
@@ -146,7 +153,8 @@ function dailyCredits(): number[] {
 type Happened = {
   at: string;
   charge?: { amount: number; description: string; part: keyof DayUsage };
-  did?: { action: string; summary: string; creditsCharged: number | null };
+  /** `actor` is the agent unless it says otherwise; `crew` names the specialist a progress line belongs to. */
+  did?: { action: string; summary: string; creditsCharged: number | null; actor?: ActivityEntry["actor"]; crew?: ActivityEntry["crew"] };
 };
 
 const ranFor = (at: string, credits: number): Happened => ({
@@ -173,6 +181,34 @@ const automationRan = (at: string, title: string): Happened => ({
   ...ranFor(at, 1),
   did: { action: "automation_run", summary: `Ran “${title}”`, creditsCharged: null },
 });
+
+/** A progress line from a specialist, as the backend saves it: the text starts with the member's name. */
+const progress = (at: string, crew: NonNullable<ActivityEntry["crew"]>, text: string): Happened => ({
+  at,
+  did: { action: "crew_progress", summary: text, creditsCharged: null, crew },
+});
+
+/** The review Patch posted today, on the repo that has pull-request review on. */
+export const REVIEWED = { owner: "northwind", repo: "website", number: 128, headSha: "4f2a9c1" } as const;
+
+/**
+ * One pull-request review, start to finish: the platform asks for it, Patch works, the review is
+ * posted without a per-comment approval (review is on for that repo) and costs 1 credit like any
+ * app action that changes something, plus the time the agent ran.
+ */
+function reviewedPullRequest(now: Date): Happened[] {
+  const name = `${REVIEWED.owner}/${REVIEWED.repo}`;
+  return [
+    {
+      at: earlierToday(now, 96),
+      did: { actor: "system", action: "pr_review_requested", summary: `Review of ${name}#${REVIEWED.number} at ${REVIEWED.headSha} requested`, creditsCharged: null },
+    },
+    progress(earlierToday(now, 95), "patch", `Patch: review pull request #${REVIEWED.number} in ${name}`),
+    changed(earlierToday(now, 93), "GITHUB_CREATE_A_REVIEW_FOR_A_PULL_REQUEST", `Ran GITHUB_CREATE_A_REVIEW_FOR_A_PULL_REQUEST (pull-request review is on for ${name})`),
+    progress(earlierToday(now, 93), "patch", "Patch: done"),
+    ranFor(earlierToday(now, 92), 1),
+  ];
+}
 
 const PAST_CHANGES: readonly { action: string; summary: string }[] = [
   { action: "GMAIL_CREATE_EMAIL_DRAFT", summary: "Drafted a reply to Dana" },
@@ -225,6 +261,7 @@ function seedHappened(now: Date): Happened[] {
     changed(earlierToday(now, 207), "NOTION_CREATE_PAGE", "Filed notes from your voice note"),
     ranFor(earlierToday(now, 206), 2),
     searched(earlierToday(now, 140), "onboarding emails other B2B tools send in week one"),
+    ...reviewedPullRequest(now),
     changed(earlierToday(now, 16), "GOOGLECALENDAR_UPDATE_EVENT", "Moved “Roadmap sync” to tomorrow, 3:00 PM"),
     ranFor(earlierToday(now, 15), 1),
   );
@@ -294,8 +331,8 @@ function seedApps(): App[] {
     app("googlecalendar", "Google Calendar", "calendar", [active("con_calendar_1", "aarav@northwind.studio")]),
     app("notion", "Notion", "notes", [active("con_notion_1", "Northwind workspace")]),
     app("slack", "Slack", "chat", [active("con_slack_1", "Northwind")]),
-    app("github", "GitHub", "dev", [{ id: "con_github_1", accountLabel: "aarav-shah", status: "expired" }]),
-    app("googledrive", "Google Drive", "files"),
+    app("github", "GitHub", "dev", [active("con_github_1", "aarav-shah")]),
+    app("googledrive", "Google Drive", "files", [{ id: "con_drive_1", accountLabel: "aarav@northwind.studio", status: "expired" }]),
     app("googlesheets", "Google Sheets", "files"),
     app("linear", "Linear", "dev"),
     app("hubspot", "HubSpot", "crm"),
@@ -306,35 +343,41 @@ function seedApps(): App[] {
   ];
 }
 
+/** The repos with pull-request review on: one working, one paused after its reviews kept failing. */
+const SEED_REVIEWS: readonly DemoPrReview[] = [
+  { automationId: "aut_pr_website", owner: REVIEWED.owner, repo: REVIEWED.repo, channel: "telegram" },
+  { automationId: "aut_pr_api", owner: "northwind", repo: "api", channel: "telegram" },
+];
+
+/** A repo with review on is an automation like any other, with the preset that marks it. */
+export function reviewAutomation(id: string, name: string, timezone: string, createdAt: string): Automation {
+  return {
+    id, kind: "event", title: `Review pull requests in ${name}`, instruction: `Have Patch review each pull request in ${name}.`,
+    trigger: { app: "github", event: "GITHUB_PULL_REQUEST_EVENT" }, preset: "pr_review", timezone, enabled: true, pausedReason: null,
+    nextRunAt: null, lastRunAt: null, createdAt,
+  };
+}
+
+// Four of the Pro plan's five, so one more repo can be given review before the limit is reached.
 function seedAutomations(now: Date): Automation[] {
   const timezone = "Asia/Kolkata";
   const weekdays = [1, 2, 3, 4, 5];
   const created = atDay(now, SIGNUP_DAYS_AGO - 2, 11);
   return [
     {
-      id: "aut_week", kind: "repeat", title: "Send me my week", instruction: "Read my calendar and inbox and send a short summary.",
-      cron: "0 9 * * 1", timezone, enabled: true, pausedReason: null,
-      nextRunAt: nearestRun(now, 9, [1], 1), lastRunAt: nearestRun(now, 9, [1], -1), createdAt: created,
-    },
-    {
-      id: "aut_boss", kind: "event", title: "Tell me when my boss emails", instruction: "Message me the moment Dana emails.",
-      trigger: { app: "gmail", event: "new_email_from_dana" }, timezone, enabled: true, pausedReason: null,
-      nextRunAt: null, lastRunAt: atDay(now, 2, 16, 20), createdAt: created,
-    },
-    {
       id: "aut_meetings", kind: "repeat", title: "Today’s meetings", instruction: "Send me today’s meetings with who’s in each one.",
-      cron: "0 8 * * 1-5", timezone, enabled: true, pausedReason: null,
+      cron: "0 8 * * 1-5", timezone, preset: null, enabled: true, pausedReason: null,
       nextRunAt: nearestRun(now, 8, weekdays, 1), lastRunAt: nearestRun(now, 8, weekdays, -1), createdAt: created,
     },
     {
       id: "aut_invoice", kind: "once", title: "Chase the Acme invoice", instruction: "Remind me to chase invoice INV-2291.",
-      runAt: atDay(now, -1, 10), timezone, enabled: true, pausedReason: null,
+      runAt: atDay(now, -1, 10), timezone, preset: null, enabled: true, pausedReason: null,
       nextRunAt: atDay(now, -1, 10), lastRunAt: null, createdAt: atDay(now, 3, 12, 5),
     },
+    { ...reviewAutomation("aut_pr_website", "northwind/website", timezone, atDay(now, 8, 10, 30)), lastRunAt: earlierToday(now, 93) },
     {
-      id: "aut_lead", kind: "event", title: "New lead to CRM", instruction: "When a new lead fills my form, add it to my CRM.",
-      trigger: { app: "hubspot", event: "new_form_submission" }, timezone, enabled: false, pausedReason: "failures",
-      nextRunAt: null, lastRunAt: atDay(now, 1, 13, 40), createdAt: atDay(now, 6, 9, 30),
+      ...reviewAutomation("aut_pr_api", "northwind/api", timezone, atDay(now, 6, 9, 30)),
+      enabled: false, pausedReason: "failures", lastRunAt: atDay(now, 2, 16, 20),
     },
   ];
 }
@@ -383,6 +426,10 @@ function seedMessages(now: Date): Message[] {
       channel: "telegram", direction: "out", status: "delivered", approvalId: null,
       text: "Filed. Tidy notes are on your “Acme kickoff” page in Notion.",
     }),
+    message("msg_review", 92, {
+      channel: "telegram", direction: "out", status: "delivered", approvalId: null,
+      text: `Patch reviewed pull request #${REVIEWED.number} in ${REVIEWED.owner}/${REVIEWED.repo}. Two things to fix before you merge: the discount is applied twice when a coupon and a plan change land together, and the new webhook handler has no test. The details are on the pull request.`,
+    }),
     message("msg_3", 17, {
       channel: "telegram", direction: "in", status: "read", approvalId: null,
       text: "Move my 3pm with Maya to tomorrow and let her know",
@@ -421,14 +468,14 @@ function seedMoney(now: Date) {
     { id: "led_g3", delta: 1500, reason: "grant", grantId: "grant_monthly", description: "Pro monthly credits", createdAt: proSince },
   ];
   const activity: ActivityEntry[] = [
-    { id: "act_s1", actor: "user", action: "channel_linked", summary: "Linked Telegram", creditsCharged: null, createdAt: iso(Date.parse(signedUp) + 5 * MINUTE) },
-    { id: "act_s2", actor: "user", action: "coupon_redeemed", summary: "Redeemed a coupon for 800 credits", creditsCharged: null, createdAt: grants[1].createdAt },
-    { id: "act_s3", actor: "user", action: "app_connected", summary: "Connected Gmail", creditsCharged: null, createdAt: atDay(now, SIGNUP_DAYS_AGO - 2, 10, 15) },
-    { id: "act_s4", actor: "system", action: "approval_expired", summary: "“Renew your Notion plan ($10)” expired with no answer", creditsCharged: null, createdAt: atDay(now, 3, 9, 12) },
-    { id: "act_s5", actor: "user", action: "approval_decided", summary: "Approved “Post yesterday’s update in #team”", creditsCharged: null, createdAt: atDay(now, 1, 17, 31) },
-    { id: "act_s6", actor: "agent", action: "approval_requested", summary: "Asked to delete 12 old drafts", creditsCharged: null, createdAt: earlierToday(now, 230) },
-    { id: "act_s7", actor: "agent", action: "approval_requested", summary: "Asked to post today’s update in #team", creditsCharged: null, createdAt: earlierToday(now, 88) },
-    { id: "act_s8", actor: "agent", action: "approval_requested", summary: "Asked to send an email to Maya", creditsCharged: null, createdAt: earlierToday(now, 15) },
+    { id: "act_s1", actor: "user", action: "channel_linked", summary: "Linked Telegram", crew: null, creditsCharged: null, createdAt: iso(Date.parse(signedUp) + 5 * MINUTE) },
+    { id: "act_s2", actor: "user", action: "coupon_redeemed", summary: "Redeemed a coupon for 800 credits", crew: null, creditsCharged: null, createdAt: grants[1].createdAt },
+    { id: "act_s3", actor: "user", action: "app_connected", summary: "Connected Gmail", crew: null, creditsCharged: null, createdAt: atDay(now, SIGNUP_DAYS_AGO - 2, 10, 15) },
+    { id: "act_s4", actor: "system", action: "approval_expired", summary: "“Renew your Notion plan ($10)” expired with no answer", crew: null, creditsCharged: null, createdAt: atDay(now, 3, 9, 12) },
+    { id: "act_s5", actor: "user", action: "approval_decided", summary: "Approved “Post yesterday’s update in #team”", crew: null, creditsCharged: null, createdAt: atDay(now, 1, 17, 31) },
+    { id: "act_s6", actor: "agent", action: "approval_requested", summary: "Asked to delete 12 old drafts", crew: null, creditsCharged: null, createdAt: earlierToday(now, 230) },
+    { id: "act_s7", actor: "agent", action: "approval_requested", summary: "Asked to post today’s update in #team", crew: null, creditsCharged: null, createdAt: earlierToday(now, 88) },
+    { id: "act_s8", actor: "agent", action: "approval_requested", summary: "Asked to send an email to Maya", crew: null, creditsCharged: null, createdAt: earlierToday(now, 15) },
   ];
 
   // Spend the oldest-expiring credits first, exactly as the real ledger does.
@@ -449,7 +496,7 @@ function seedMoney(now: Date) {
       const day = (usage[dayKey(new Date(at))] ??= emptyDay());
       day[charge.part] += charge.amount;
     }
-    if (did) activity.push({ id: `act_c${index}`, actor: "agent", ...did, createdAt: at });
+    if (did) activity.push({ id: `act_c${index}`, actor: "agent", crew: null, ...did, createdAt: at });
   });
 
   const newestFirst = (a: { createdAt: string }, b: { createdAt: string }) => Date.parse(b.createdAt) - Date.parse(a.createdAt);
@@ -500,6 +547,8 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
       { provider: "openrouter", set: false, last4: null, model: null, updatedAt: null },
     ],
     automations: seedAutomations(now),
+    prReviews: SEED_REVIEWS.map((review) => ({ ...review })),
+    prReviewCalls: [],
     agentStatus: { state: "awake", lastActiveAt: earlierToday(now, 15) },
     agentSettings: {
       runtime: "hermes", effectiveRuntime: "hermes", aiAccess: "own_key",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   describeAutomationNext,
+  describeAutomationSchedule,
   describeCron,
   formatAgo,
   formatCredits,
@@ -93,6 +94,14 @@ describe("describeAutomationNext", () => {
 
   it("says what a trigger is watching", () => {
     expect(describeAutomationNext({ ...base, kind: "event", trigger: { app: "gmail", event: "NEW_EMAIL" } })).toBe("Watching Gmail");
+  });
+
+  it("puts a trigger into words, and pull-request review into its own", () => {
+    const event: Automation = { ...base, kind: "event", trigger: { app: "gmail", event: "NEW_EMAIL" } };
+    expect(describeAutomationSchedule(event)).toBe("Gmail · new email");
+    const review: Automation = { ...base, kind: "event", preset: "pr_review", trigger: { app: "github", event: "GITHUB_PULL_REQUEST_EVENT" } };
+    expect(describeAutomationSchedule(review)).toBe("When a pull request opens or gets new commits");
+    expect(describeAutomationNext(review)).toBe("Watching GitHub");
   });
 });
 

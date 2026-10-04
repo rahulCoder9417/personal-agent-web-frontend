@@ -188,13 +188,14 @@ export function grantCredits(
 
 export function logActivity(
   state: DemoState,
-  entry: Pick<ActivityEntry, "actor" | "action" | "summary"> & { creditsCharged?: number | null },
+  entry: Pick<ActivityEntry, "actor" | "action" | "summary"> & { creditsCharged?: number | null; crew?: ActivityEntry["crew"] },
 ): void {
   state.activity.unshift({
     id: nextId(state, "act"),
     actor: entry.actor,
     action: entry.action,
     summary: entry.summary,
+    crew: entry.crew ?? null,
     creditsCharged: entry.creditsCharged ?? null,
     createdAt: new Date().toISOString(),
   });

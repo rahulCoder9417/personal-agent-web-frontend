@@ -3,6 +3,7 @@
 import type { Handler } from "./context";
 import * as account from "./handlers-account";
 import * as chat from "./handlers-chat";
+import * as crew from "./handlers-crew";
 import * as setup from "./handlers-setup";
 
 type Route = { method: string; parts: string[]; handler: Handler };
@@ -42,13 +43,17 @@ const ROUTES: Route[] = [
   route("PATCH", "automations/:automationId", setup.updateAutomation),
   route("DELETE", "automations/:automationId", setup.deleteAutomation),
 
+  route("GET", "pr-reviews", crew.listPrReviews),
+  route("PUT", "pr-reviews/:owner/:repo", crew.enablePrReview),
+  route("DELETE", "pr-reviews/:owner/:repo", crew.disablePrReview),
+
   route("GET", "agent/status", setup.getAgentStatus),
   route("GET", "agent/settings", setup.getAgentSettings),
   route("PATCH", "agent/settings", setup.updateAgentSettings),
   route("POST", "agent/claude/login", setup.startClaudeLogin),
   route("POST", "agent/claude/login/:loginId/complete", setup.completeClaudeLogin),
   route("DELETE", "agent/claude", setup.disconnectClaude),
-  route("GET", "crew", setup.listCrew),
+  route("GET", "crew", crew.listCrew),
 
   route("GET", "billing/plans", account.listPlans),
   route("GET", "billing/subscription", account.getSubscription),
