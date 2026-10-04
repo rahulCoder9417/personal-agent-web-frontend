@@ -48,6 +48,7 @@ const ROUTES: Route[] = [
   route("POST", "agent/claude/login", setup.startClaudeLogin),
   route("POST", "agent/claude/login/:loginId/complete", setup.completeClaudeLogin),
   route("DELETE", "agent/claude", setup.disconnectClaude),
+  route("GET", "crew", setup.listCrew),
 
   route("GET", "billing/plans", account.listPlans),
   route("GET", "billing/subscription", account.getSubscription),

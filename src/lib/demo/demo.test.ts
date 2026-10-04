@@ -6,6 +6,7 @@ import type {
   App,
   ChannelLink,
   CreditBalance,
+  CrewMember,
   LedgerEntry,
   Me,
   Message,
@@ -370,6 +371,22 @@ describe("setup", () => {
     await call("DELETE", "byok/anthropic");
     const settings = await call<AgentSettings>("PATCH", "agent/settings", { runtime: "hermes" });
     expect(settings.body).toMatchObject({ runtime: "hermes", effectiveRuntime: "claude_code", aiAccess: "claude_plan" });
+  });
+
+  it("lists the crew, with who works yet and what Scout's browser needs", async () => {
+    const crew = (await call<{ items: CrewMember[] }>("GET", "crew")).body.items;
+    expect(crew.map((member) => [member.id, member.kind, member.available])).toEqual([
+      ["tex", "lead", true],
+      ["byte", "specialist", true],
+      ["patch", "specialist", true],
+      ["scout", "specialist", true],
+    ]);
+    expect(crew.find((member) => member.id === "scout")?.browser).toEqual({ requiresPlan: "max", available: false });
+    expect(crew.filter((member) => member.browser !== null)).toHaveLength(1);
+
+    getStore().crewAvailable = ["byte"];
+    const fewer = (await call<{ items: CrewMember[] }>("GET", "crew")).body.items;
+    expect(fewer.filter((member) => member.available).map((member) => member.id)).toEqual(["tex", "byte"]);
   });
 
   it("lists the channels that are switched on next to the linked chats", async () => {

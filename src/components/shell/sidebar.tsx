@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useAgentStatus, useApprovals, useMe, usePlans } from "@/lib/api/hooks";
+import { useAgentStatus, useApprovals, useCrew, useMe, usePlans } from "@/lib/api/hooks";
 import { describeAgent } from "@/lib/agent-state";
+import { crewNavNote } from "@/lib/crew";
 import { cn, formatAgo, formatDate, formatNumber, initials, titleCase } from "@/lib/format";
 import { ActivityIcon, ApprovalsIcon, AppsIcon, AutomationsIcon, ChatIcon, CrewIcon, SettingsIcon } from "../icons";
 import { Brand } from "./brand";
@@ -90,6 +91,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const pending = useApprovals("pending").data?.length ?? 0;
   const me = useMe();
+  const crew = useCrew();
   const { mode } = useAppConfig();
 
   const work: Item[] = [
@@ -100,7 +102,7 @@ export function Sidebar() {
   ];
   const setup: Item[] = [
     { href: "/apps", label: "Apps", icon: <AppsIcon size={18} /> },
-    { href: "/crew", label: "Crew", icon: <CrewIcon size={18} />, note: "soon" },
+    { href: "/crew", label: "Crew", icon: <CrewIcon size={18} />, note: crewNavNote(crew.data) },
     { href: "/settings", label: "Settings", icon: <SettingsIcon size={18} /> },
   ];
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));

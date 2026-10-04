@@ -60,6 +60,8 @@ export type DemoData = {
   agentSettings: AgentSettings;
   /** Like the backend's AI_ACCESS_MODE: `platform` offers Textcrew AI, `own_only` requires the user's own AI. */
   aiMode: AiMode;
+  /** Like the backend's CREW_AVAILABLE: the specialists that work yet. Tex always does. */
+  crewAvailable: SpecialistId[];
   /** loginId → expiresAt */
   claudeLogins: Record<string, string>;
   plans: Plan[];
@@ -244,6 +246,20 @@ export type AiMode = "platform" | "own_only";
 /** `TEXTCREW_DEMO_AI_ACCESS_MODE=own_only` shows the screens as they are when Textcrew AI isn't on offer. */
 export function demoAiMode(): AiMode {
   return process.env.TEXTCREW_DEMO_AI_ACCESS_MODE === "own_only" ? "own_only" : "platform";
+}
+
+const SPECIALISTS = ["byte", "patch", "scout"] as const;
+export type SpecialistId = (typeof SPECIALISTS)[number];
+
+/**
+ * Like the backend's CREW_AVAILABLE: the specialists that are switched on. All three by default.
+ * `TEXTCREW_DEMO_CREW_AVAILABLE=byte` shows the others as coming soon; set it to nothing for none.
+ */
+export function demoCrewAvailable(): SpecialistId[] {
+  const wanted = process.env.TEXTCREW_DEMO_CREW_AVAILABLE;
+  if (wanted === undefined) return [...SPECIALISTS];
+  const asked = wanted.split(",").map((id) => id.trim().toLowerCase());
+  return SPECIALISTS.filter((id) => asked.includes(id));
 }
 
 function seedPlans(): Plan[] {
@@ -491,6 +507,7 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
       claude: { connected: false, connectedAt: null }, ownKeyProviders: ["anthropic"],
     },
     aiMode,
+    crewAvailable: demoCrewAvailable(),
     claudeLogins: {},
     plans: seedPlans(),
     topUps: [{ id: "topup_10", priceCents: 1000, credits: 800, expiresInDays: CREDIT_LIFETIME_DAYS }],

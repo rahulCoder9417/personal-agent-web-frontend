@@ -4,8 +4,9 @@ import { usePendingCheckout } from "@/components/checkout-watcher";
 import { CheckIcon } from "@/components/icons";
 import { Button, Pill } from "@/components/ui";
 import { ApiError, errorMessage, type Plan, type Subscription, type TopUpPack } from "@/lib/api/client";
-import { useCreateCheckout } from "@/lib/api/hooks";
+import { useCreateCheckout, useCrew } from "@/lib/api/hooks";
 import { planAction, startPendingCheckout } from "@/lib/checkout";
+import { crewBrowser } from "@/lib/crew";
 import { leaveTo } from "@/lib/navigate";
 import { cn, formatDate, formatMoney, formatNumber } from "@/lib/format";
 
@@ -34,11 +35,14 @@ function PlanColumn({
   currentPlan,
   subscription,
   topUp,
+  browserReady,
 }: {
   plan: Plan;
   currentPlan: Plan | undefined;
   subscription: Subscription;
   topUp: TopUpPack | undefined;
+  /** False while Scout's browser isn't built yet (the crew list says so); unknown until it has loaded. */
+  browserReady: boolean | undefined;
 }) {
   const checkout = useCreateCheckout();
   const pending = usePendingCheckout();
@@ -81,6 +85,10 @@ function PlanColumn({
             <span>{feature}</span>
           </li>
         ))}
+        {/* The plan includes browser use, but there is no browser to use yet: say so before anyone pays for it. */}
+        {plan.limits.browser && browserReady === false && (
+          <li className="text-[12.5px] text-muted">Browser use isn’t ready yet. It comes with this plan when it is.</li>
+        )}
       </ul>
 
       <div className="flex flex-col gap-2">
@@ -134,10 +142,12 @@ function PlanColumn({
 /** The plans side by side, as the API describes them, with the action each one allows right now. */
 export function PlanColumns({ plans, topUps, subscription }: { plans: Plan[]; topUps: TopUpPack[]; subscription: Subscription }) {
   const currentPlan = plans.find((p) => p.id === subscription.plan);
+  const crew = useCrew();
+  const browserReady = crew.data ? crewBrowser(crew.data)?.available : undefined;
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(min(250px,100%),1fr))] items-stretch gap-4">
       {plans.map((plan) => (
-        <PlanColumn key={plan.id} plan={plan} currentPlan={currentPlan} subscription={subscription} topUp={topUps[0]} />
+        <PlanColumn key={plan.id} plan={plan} currentPlan={currentPlan} subscription={subscription} topUp={topUps[0]} browserReady={browserReady} />
       ))}
     </div>
   );

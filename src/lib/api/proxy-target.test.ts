@@ -11,6 +11,10 @@ describe("resolveUpstream", () => {
     );
   });
 
+  it("lets the crew list through", () => {
+    expect(resolveUpstream(BASE, ["crew"])?.toString()).toBe("http://localhost:8080/v1/crew");
+  });
+
   it("keeps the query string but drops a client-supplied token", () => {
     const url = resolveUpstream(BASE, ["messages"], "?limit=30&token=stolen&channel=web");
     expect(url?.searchParams.get("limit")).toBe("30");

@@ -38,6 +38,7 @@ export const qk = {
   automations: ["automations"] as const,
   agentStatus: ["agent", "status"] as const,
   agentSettings: ["agent", "settings"] as const,
+  crew: ["crew"] as const,
   plans: ["billing", "plans"] as const,
   subscription: ["billing", "subscription"] as const,
   credits: ["credits"] as const,
@@ -376,6 +377,16 @@ export function useUpdateAgentSettings() {
   return useSettingsMutation((body: { runtime?: AgentRuntime; aiPreference?: AiPreference }) =>
     unwrap(api.PATCH("/v1/agent/settings", { body })),
   );
+}
+
+/** The lead and the specialists, with who works on this deployment yet. It only changes with a deploy. */
+export function useCrew() {
+  return useQuery({
+    queryKey: qk.crew,
+    queryFn: () => unwrap(api.GET("/v1/crew")),
+    select: (data) => data.items,
+    staleTime: 5 * 60_000,
+  });
 }
 
 export function useStartClaudeLogin() {
