@@ -44,7 +44,7 @@ export default function AgentSettingsPage() {
         </div>
         <div className="flex min-w-0 flex-col gap-6">
           <RuntimeSection settings={settings.data} />
-          <HowItsDecided />
+          <HowItsDecided settings={settings.data} />
         </div>
       </div>
     </PageBody>

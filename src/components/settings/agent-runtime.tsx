@@ -119,21 +119,27 @@ export function RuntimeSection({ settings }: { settings: AgentSettings }) {
   );
 }
 
+/** Only where Textcrew AI is on offer: choosing it comes before everything else. */
+const CHOSEN_RULE = {
+  when: "You chose Textcrew AI",
+  then: "Hermes runs on Textcrew AI and the AI is paid in credits, even with a key saved or a plan connected. You can go back whenever you like.",
+};
+
 // In the order the backend applies them: the first that fits decides.
 const RULES: { when: string; then: string }[] = [
-  { when: "You chose Textcrew AI", then: "Hermes runs on Textcrew AI and the AI is paid in credits, even with a key saved or a plan connected. You can go back whenever you like." },
   { when: "Claude plan connected", then: "Claude Code runs, when you choose it. Your plan covers the AI." },
   { when: "Your own API key", then: "Hermes runs. Your provider bills the AI, not your credits." },
   { when: "Neither", then: "Hermes runs on Textcrew AI, and the AI is paid in credits. Where Textcrew AI isn’t available, Tex can’t start a job until you add a key or connect a plan." },
 ];
 
-export function HowItsDecided() {
+export function HowItsDecided({ settings }: { settings: AgentSettings }) {
+  const rules = settings.platformAvailable ? [CHOSEN_RULE, ...RULES] : RULES;
   return (
     <section className="flex flex-col gap-3">
       <SectionLabel>How it’s decided</SectionLabel>
       <Card>
         <dl>
-          {RULES.map((rule) => (
+          {rules.map((rule) => (
             <div key={rule.when} className="flex gap-4 border-b border-line px-5 py-3.5 last:border-b-0 max-sm:flex-col max-sm:gap-1">
               <dt className="w-[150px] shrink-0 text-[13.5px] font-medium max-sm:w-full">{rule.when}</dt>
               <dd className="text-[13px] text-muted">{rule.then}</dd>

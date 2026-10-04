@@ -90,7 +90,9 @@ export function TextcrewAiSection({ settings, state }: { settings: AgentSettings
   return (
     <section className="flex flex-col gap-3">
       <ChoiceHeading title="Textcrew AI" state={state}>
-        Nothing to set up, paid in credits. It’s what Tex uses when you haven’t connected your own AI, and you can choose it when you have.
+        {state === "unavailable"
+          ? "Nothing to set up, paid in credits. It isn’t on offer on this account right now."
+          : "Nothing to set up, paid in credits. It’s what Tex uses when you haven’t connected your own AI, and you can choose it when you have."}
       </ChoiceHeading>
       <Card className="flex flex-col gap-3 p-5">
         <div className="flex items-center gap-3">
