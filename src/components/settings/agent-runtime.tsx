@@ -5,7 +5,7 @@ import { Card, InlineError, Pill, SectionLabel, Spinner } from "@/components/ui"
 import type { AgentRuntime, AgentSettings } from "@/lib/api/client";
 import { useUpdateAgentSettings } from "@/lib/api/hooks";
 import { cn } from "@/lib/format";
-import { describeAgentSettings } from "./agent-summary";
+import { chosenRuntime, describeAgentSettings, runtimePatch } from "./agent-summary";
 
 function Fact({ label, children }: { label: string; children: string }) {
   return (
@@ -89,8 +89,9 @@ function RuntimeOption({
 /** Which agent runs. Claude Code only becomes a choice once a Claude plan is connected. */
 export function RuntimeSection({ settings }: { settings: AgentSettings }) {
   const update = useUpdateAgentSettings();
-  const pick = (runtime: AgentRuntime) => update.mutate(runtime);
-  const moving = (runtime: AgentRuntime) => update.isPending && update.variables === runtime;
+  const chosen = chosenRuntime(settings);
+  const pick = (runtime: AgentRuntime) => update.mutate(runtimePatch(runtime));
+  const moving = (runtime: AgentRuntime) => update.isPending && update.variables?.runtime === runtime;
 
   return (
     <section className="flex flex-col gap-3">
@@ -98,8 +99,8 @@ export function RuntimeSection({ settings }: { settings: AgentSettings }) {
       <div role="radiogroup" aria-label="Agent" className="flex flex-col gap-2.5">
         <RuntimeOption
           title="Hermes"
-          description="Our agent. Runs on your own API key, or on Textcrew AI when you haven’t added one."
-          checked={settings.runtime === "hermes"}
+          description="Our agent. Runs on your own API key, or on Textcrew AI."
+          checked={chosen === "hermes"}
           pending={moving("hermes")}
           onPick={() => pick("hermes")}
         />
@@ -107,7 +108,7 @@ export function RuntimeSection({ settings }: { settings: AgentSettings }) {
           title="Claude Code"
           description="Runs Claude Code in your private workspace, on your Claude plan."
           note={settings.claude.connected ? "Beta" : "Needs a Claude plan"}
-          checked={settings.runtime === "claude_code"}
+          checked={chosen === "claude_code"}
           disabled={!settings.claude.connected}
           pending={moving("claude_code")}
           onPick={() => pick("claude_code")}
@@ -118,7 +119,9 @@ export function RuntimeSection({ settings }: { settings: AgentSettings }) {
   );
 }
 
+// In the order the backend applies them: the first that fits decides.
 const RULES: { when: string; then: string }[] = [
+  { when: "You chose Textcrew AI", then: "Hermes runs on Textcrew AI and the AI is paid in credits, even with a key saved or a plan connected. You can go back whenever you like." },
   { when: "Claude plan connected", then: "Claude Code runs, when you choose it. Your plan covers the AI." },
   { when: "Your own API key", then: "Hermes runs. Your provider bills the AI, not your credits." },
   { when: "Neither", then: "Hermes runs on Textcrew AI, and the AI is paid in credits. Where Textcrew AI isn’t available, Tex can’t start a job until you add a key or connect a plan." },

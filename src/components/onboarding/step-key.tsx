@@ -1,12 +1,19 @@
 "use client";
 
 import { useId, useState, type FormEvent, type ReactNode } from "react";
-import type { ByokProvider } from "@/lib/api/client";
-import { useAgentSettings, useSetByokKey } from "@/lib/api/hooks";
+import type { AgentSettings, ByokProvider } from "@/lib/api/client";
+import { useAgentSettings, useSetByokKey, useUpdateAgentSettings } from "@/lib/api/hooks";
 import { CheckIcon, LockIcon } from "@/components/icons";
 import { CHOICE_TAG, ChoiceStatePill } from "@/components/settings/agent-choice";
 import { CLAUDE_SIGN_IN_NOTE, ClaudeConnectSteps } from "@/components/settings/agent-claude";
-import { describeAiChoices, PROVIDER_LABEL, PROVIDERS, type AiChoice, type AiChoiceState } from "@/components/settings/agent-summary";
+import {
+  describeAiChoices,
+  PROVIDER_LABEL,
+  PROVIDERS,
+  textcrewAiOffer,
+  type AiChoice,
+  type AiChoiceState,
+} from "@/components/settings/agent-summary";
 import { Button, Card, ErrorState, Field, InlineError, inputClass, SkeletonRows } from "@/components/ui";
 import { cn, listNames } from "@/lib/format";
 
@@ -154,24 +161,42 @@ function ClaudePanel({ connected, onDone }: { connected: boolean; onDone: () => 
   );
 }
 
-function TextcrewPanel({ state, onDone }: { state: AiChoiceState; onDone: () => void }) {
-  if (state === "unavailable") {
+function TextcrewPanel({ settings, onDone }: { settings: AgentSettings; onDone: () => void }) {
+  const update = useUpdateAgentSettings();
+  const offer = textcrewAiOffer(settings);
+
+  if (!settings.platformAvailable) {
     return (
       <p className="text-[14px] text-muted">
         Textcrew AI isn’t available on this account right now. Tex needs your own API key or your Claude plan to work.
       </p>
     );
   }
-  const inUse = state === "in_use";
+  // Tex is on the person's own AI: Textcrew AI can be chosen over it.
+  if (offer?.action === "choose") {
+    return (
+      <div className="flex flex-col items-start gap-3.5">
+        <p className="text-[14px]">
+          Tex is on your own AI now, so the AI isn’t charged in credits. Use Textcrew AI instead and the AI is paid in credits. What you set up stays
+          saved, so you can go back under Agent &amp; AI.
+        </p>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button variant="primary" size="lg" pending={update.isPending} onClick={() => update.mutate(offer.patch, { onSuccess: onDone })}>
+            Use Textcrew AI
+          </Button>
+          <Button variant="ghost" size="lg" disabled={update.isPending} onClick={onDone}>
+            Keep your own AI
+          </Button>
+        </div>
+        <InlineError error={update.error} />
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-start gap-3.5">
-      <p className="text-[14px]">
-        {inUse
-          ? "Tex is ready. The AI it uses comes out of your credits, along with running time and app actions."
-          : "Tex is on your own AI now, so the AI isn’t charged in credits. Textcrew AI is what it uses when no key or plan is connected."}
-      </p>
+      <p className="text-[14px]">Tex is ready. The AI it uses comes out of your credits, along with running time and app actions.</p>
       <Button variant="primary" size="lg" onClick={onDone}>
-        {inUse ? "Continue with Textcrew AI" : "Continue"}
+        Continue with Textcrew AI
       </Button>
     </div>
   );
@@ -258,7 +283,7 @@ export function StepKey({ onDone }: { onDone: () => void }) {
       <Card className="p-5">
         {picked === "own_key" && <KeyForm onDone={onDone} />}
         {picked === "claude_plan" && <ClaudePanel connected={settings.data.claude.connected} onDone={onDone} />}
-        {picked === "textcrew" && <TextcrewPanel state={choices.textcrew} onDone={onDone} />}
+        {picked === "textcrew" && <TextcrewPanel settings={settings.data} onDone={onDone} />}
       </Card>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">

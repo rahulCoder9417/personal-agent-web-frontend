@@ -23,6 +23,7 @@ export type Automation = Schemas["Automation"];
 export type AgentStatus = Schemas["AgentStatus"];
 export type AgentSettings = Schemas["AgentSettings"];
 export type AgentRuntime = Schemas["AgentRuntime"];
+export type AiPreference = Schemas["AiPreference"];
 export type ClaudeLoginStart = Schemas["ClaudeLoginStart"];
 export type Plan = Schemas["Plan"];
 export type TopUpPack = Schemas["TopUpPack"];

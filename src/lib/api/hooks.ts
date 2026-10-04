@@ -14,6 +14,7 @@ import {
   unwrap,
   type AgentRuntime,
   type AgentSettings,
+  type AiPreference,
   type Approval,
   type ApprovalStatus,
   type Attachment,
@@ -370,9 +371,10 @@ function useSettingsMutation<TInput>(run: (input: TInput) => Promise<AgentSettin
   return useMutation({ mutationFn: run, onSuccess: (settings) => qc.setQueryData(qk.agentSettings, settings) });
 }
 
+/** Changes the agent, the AI preference (`platform` is Textcrew AI over your own AI), or both. */
 export function useUpdateAgentSettings() {
-  return useSettingsMutation((runtime: AgentRuntime) =>
-    unwrap(api.PATCH("/v1/agent/settings", { body: { runtime } })),
+  return useSettingsMutation((body: { runtime?: AgentRuntime; aiPreference?: AiPreference }) =>
+    unwrap(api.PATCH("/v1/agent/settings", { body })),
   );
 }
 

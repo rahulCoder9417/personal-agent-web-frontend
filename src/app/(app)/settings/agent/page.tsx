@@ -40,7 +40,7 @@ export default function AgentSettingsPage() {
           <AiChoicesIntro />
           <ApiKeysSection state={choices.own_key} />
           <ClaudePlanSection settings={settings.data} state={choices.claude_plan} />
-          <TextcrewAiSection state={choices.textcrew} />
+          <TextcrewAiSection settings={settings.data} state={choices.textcrew} />
         </div>
         <div className="flex min-w-0 flex-col gap-6">
           <RuntimeSection settings={settings.data} />

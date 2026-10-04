@@ -303,6 +303,48 @@ describe("setup", () => {
     expect((await call<AgentSettings>("GET", "agent/settings")).body.aiAccess).toBe("own_key");
   });
 
+  it("lets Textcrew AI be chosen over a saved key, charges the AI in credits, and goes back", async () => {
+    const before = (await call<AgentSettings>("GET", "agent/settings")).body;
+    expect(before).toMatchObject({ aiAccess: "own_key", aiPreference: "auto", platformAvailable: true });
+
+    const chosen = await call<AgentSettings>("PATCH", "agent/settings", { aiPreference: "platform" });
+    expect(chosen.status).toBe(200);
+    // The key stays saved.
+    expect(chosen.body).toMatchObject({ effectiveRuntime: "hermes", aiAccess: "platform", aiPreference: "platform", ownKeyProviders: ["anthropic"] });
+    expect(getStore().activity[0]).toMatchObject({ actor: "user", action: "ai_preference_changed" });
+
+    await call<Message>("POST", "messages", { text: "What's on my calendar today?", clientMessageId: uuid(5) });
+    vi.advanceTimersByTime(2000);
+    expect(getStore().ledger[0]).toMatchObject({ delta: -3, description: "Usage: AI 2, awake time 1" });
+
+    const back = await call<AgentSettings>("PATCH", "agent/settings", { runtime: "hermes", aiPreference: "auto" });
+    expect(back.body).toMatchObject({ aiAccess: "own_key", aiPreference: "auto" });
+  });
+
+  it("refuses Textcrew AI when it isn't on offer, and ignores a preference saved before", async () => {
+    getStore().aiMode = "own_only";
+    expect((await call<AgentSettings>("GET", "agent/settings")).body.platformAvailable).toBe(false);
+    const refused = await call<ErrorBody>("PATCH", "agent/settings", { aiPreference: "platform" });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe("conflict");
+
+    getStore().agentSettings.aiPreference = "platform";
+    expect((await call<AgentSettings>("GET", "agent/settings")).body).toMatchObject({ aiAccess: "own_key", platformAvailable: false });
+    expect((await call("PATCH", "agent/settings", {})).status).toBe(400);
+    expect((await call("PATCH", "agent/settings", { aiPreference: "sometimes" })).status).toBe(400);
+  });
+
+  it("drops the Textcrew AI choice when a Claude plan is connected", async () => {
+    await call("PATCH", "agent/settings", { aiPreference: "platform" });
+    const login = await call<{ loginId: string }>("POST", "agent/claude/login");
+    const done = await call<AgentSettings>("POST", `agent/claude/login/${login.body.loginId}/complete`, { code: "abcd-1234" });
+    expect(done.body).toMatchObject({ runtime: "claude_code", aiAccess: "claude_plan", aiPreference: "auto" });
+
+    // Chosen again over the plan: Hermes runs, and the plan stays connected.
+    const chosen = await call<AgentSettings>("PATCH", "agent/settings", { aiPreference: "platform" });
+    expect(chosen.body).toMatchObject({ runtime: "claude_code", effectiveRuntime: "hermes", aiAccess: "platform", claude: { connected: true } });
+  });
+
   it("has nothing to run on without a key when your own AI is required", async () => {
     getStore().aiMode = "own_only";
     expect((await call("DELETE", "byok/anthropic")).status).toBe(204);

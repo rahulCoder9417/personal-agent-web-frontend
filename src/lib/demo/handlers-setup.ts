@@ -1,6 +1,6 @@
 // Apps, own MCP servers, API keys, automations and agent settings for the demo account.
 
-import type { AgentRuntime, AgentSettings, ByokKey, ByokProvider, McpServer } from "@/lib/api/client";
+import type { AgentRuntime, AgentSettings, AiPreference, ByokKey, ByokProvider, McpServer } from "@/lib/api/client";
 import { nowIso, type Handler } from "./context";
 import {
   badRequest,
@@ -14,7 +14,7 @@ import {
   requiredString,
   stringField,
 } from "./http";
-import { emit, nextId, type DemoState } from "./store";
+import { emit, logActivity, nextId, type DemoState } from "./store";
 
 // ---------------------------------------------------------------- apps
 
@@ -106,10 +106,12 @@ export const deleteMcpServer: Handler = ({ state, params }) => {
 
 const PROVIDERS: readonly ByokProvider[] = ["anthropic", "openai", "openrouter"];
 const RUNTIMES: readonly AgentRuntime[] = ["hermes", "claude_code"];
+const AI_PREFERENCES: readonly AiPreference[] = ["auto", "platform"];
 const CLAUDE_LOGIN_MINUTES = 10;
 
 /**
  * Works out what runs and what pays for the AI, by the backend's rule, in order:
+ * 0. Textcrew AI on offer and chosen → Hermes, paid in credits, whatever else is set up
  * 1. a connected Claude plan and Claude Code chosen → Claude Code, on the plan
  * 2. an own API key → Hermes, on the key
  * 3. Textcrew AI on offer → Hermes, paid in credits
@@ -121,15 +123,17 @@ function syncAgentSettings(state: DemoState): void {
   const ownKeyProviders = state.byok.filter((key) => key.set).map((key) => key.provider);
   const connected = settings.claude.connected;
   const runtime = connected ? settings.runtime : "hermes";
+  const platformAvailable = state.aiMode === "platform";
 
   let access: Pick<AgentSettings, "effectiveRuntime" | "aiAccess">;
-  if (connected && runtime === "claude_code") access = { effectiveRuntime: "claude_code", aiAccess: "claude_plan" };
+  if (platformAvailable && settings.aiPreference === "platform") access = { effectiveRuntime: "hermes", aiAccess: "platform" };
+  else if (connected && runtime === "claude_code") access = { effectiveRuntime: "claude_code", aiAccess: "claude_plan" };
   else if (ownKeyProviders.length > 0) access = { effectiveRuntime: "hermes", aiAccess: "own_key" };
-  else if (state.aiMode === "platform") access = { effectiveRuntime: "hermes", aiAccess: "platform" };
+  else if (platformAvailable) access = { effectiveRuntime: "hermes", aiAccess: "platform" };
   else if (connected) access = { effectiveRuntime: "claude_code", aiAccess: "claude_plan" };
   else access = { effectiveRuntime: null, aiAccess: "none" };
 
-  state.agentSettings = { ...settings, runtime, ownKeyProviders, platformAvailable: state.aiMode === "platform", ...access };
+  state.agentSettings = { ...settings, runtime, ownKeyProviders, platformAvailable, ...access };
 }
 
 export const listByokKeys: Handler = ({ state }) => json({ items: state.byok });
@@ -163,16 +167,37 @@ export const deleteByokKey: Handler = ({ state, params }) => {
 
 export const getAgentStatus: Handler = ({ state }) => json(state.agentStatus);
 
-export const getAgentSettings: Handler = ({ state }) => json(state.agentSettings);
+export const getAgentSettings: Handler = ({ state }) => {
+  syncAgentSettings(state);
+  return json(state.agentSettings);
+};
 
+/** The agent, the AI preference, or both. Textcrew AI can only be chosen while it is on offer. */
 export const updateAgentSettings: Handler = async ({ state, request }) => {
   const body = await readJson(request);
-  if (Object.keys(body).some((name) => name !== "runtime")) throw badRequest("Only runtime can be changed");
-  const runtime = oneOf(body.runtime, RUNTIMES, "runtime");
+  const names = Object.keys(body);
+  if (names.length === 0 || names.some((name) => name !== "runtime" && name !== "aiPreference")) {
+    throw badRequest("Send runtime, aiPreference or both");
+  }
+  const runtime = body.runtime === undefined ? undefined : oneOf(body.runtime, RUNTIMES, "runtime");
+  const aiPreference = body.aiPreference === undefined ? undefined : oneOf(body.aiPreference, AI_PREFERENCES, "aiPreference");
+
+  syncAgentSettings(state);
   if (runtime === "claude_code" && !state.agentSettings.claude.connected) {
     throw conflict("Connect your Claude plan first, then choose Claude Code");
   }
-  state.agentSettings.runtime = runtime;
+  if (aiPreference === "platform" && !state.agentSettings.platformAvailable) {
+    throw conflict("Textcrew AI isn't on offer here. Use your own API key or your Claude plan");
+  }
+  if (runtime) state.agentSettings.runtime = runtime;
+  if (aiPreference && aiPreference !== state.agentSettings.aiPreference) {
+    state.agentSettings.aiPreference = aiPreference;
+    logActivity(state, {
+      actor: "user",
+      action: "ai_preference_changed",
+      summary: aiPreference === "platform" ? "Chose Textcrew AI (paid in credits)" : "Went back to their own AI",
+    });
+  }
   syncAgentSettings(state);
   return json(state.agentSettings);
 };
@@ -196,6 +221,8 @@ export const completeClaudeLogin: Handler = async ({ state, request, params }) =
   delete state.claudeLogins[params.loginId];
   state.agentSettings.claude = { connected: true, connectedAt: nowIso() };
   state.agentSettings.runtime = "claude_code";
+  // They have just chosen their Claude plan, so an earlier choice of Textcrew AI is dropped.
+  state.agentSettings.aiPreference = "auto";
   syncAgentSettings(state);
   return json(state.agentSettings);
 };
