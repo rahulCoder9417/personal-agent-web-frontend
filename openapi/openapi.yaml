@@ -40,6 +40,7 @@ tags:
   - name: byok
   - name: automations
   - name: agent
+  - name: memory
   - name: billing
   - name: credits
   - name: coupons
@@ -1061,6 +1062,63 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  # ---------------------------------------------------------------- memory
+  /v1/memories:
+    get:
+      operationId: listMemories
+      tags: [memory]
+      summary: What the agent has saved about this user
+      description: |
+        The shared memory (HLD 0.9): short facts the agent saved about the user, given to
+        whichever engine runs. Memories are made by chatting with the agent; the web app can
+        list and delete them, not add or edit them. All of them come in one answer, newest
+        first: there are at most `max`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, max]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Memory" }
+                  max:
+                    type: integer
+                    description: The most memories a user can have. At the limit the agent can't save more.
+                    examples: [200]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      operationId: deleteAllMemories
+      tags: [memory]
+      summary: Delete every memory of this user
+      description: Can't be undone. The agent starts again with nothing saved about the user.
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted: { type: integer, description: How many memories were removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/memories/{memoryId}:
+    delete:
+      operationId: deleteMemory
+      tags: [memory]
+      summary: Delete one memory
+      parameters:
+        - $ref: "#/components/parameters/MemoryId"
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ---------------------------------------------------------------- activity
   /v1/activity:
     get:
@@ -1072,6 +1130,11 @@ paths:
         something, 0 for one that only read. A `web_search` entry carries what the search cost.
         A `read_page_refused` entry is a web address the agent asked to read and was not allowed to.
         A `crew_progress` entry is a progress line from a specialist; `crew` names it.
+        Memory (HLD 0.9): `remember` (the agent saved a memory), `forget` (it removed or corrected
+        one), `recall` (it searched), `memory_refused` (a save was refused because it looked like
+        a secret), `memory_deleted` and `memories_cleared` (the user deleted in the web app).
+        These carry `memoryId` where there is one. They never carry the memory's text: show it
+        from `GET /v1/memories`.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -1491,6 +1554,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    MemoryId:
+      name: memoryId
+      in: path
+      required: true
+      schema: { type: string }
     Provider:
       name: provider
       in: path
@@ -1783,6 +1851,32 @@ components:
         nextRunAt: { type: [string, "null"], format: date-time }
         lastRunAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
+
+    Memory:
+      type: object
+      description: One short fact the agent saved about the user (HLD 0.9).
+      required: [id, kind, content, createdAt, updatedAt, lastUsedAt, useCount]
+      properties:
+        id: { type: string, examples: [mem_01jb2k3m4n5p6q7r8s9t0v1w2x] }
+        kind:
+          type: string
+          enum: [preference, person, project, instruction, fact]
+          description: "`instruction` is a standing instruction; `fact` is anything else that lasts."
+        content:
+          type: string
+          maxLength: 300
+          description: One line of plain text.
+          examples: ["Prefers short replies with no emoji"]
+        createdAt: { type: string, format: date-time }
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the text last changed (the agent corrected it). Equal to `createdAt` if never.
+        lastUsedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the agent last found it with a search. Null if never.
+        useCount: { type: integer, description: How many times the agent found it with a search. }
 
     PrReviewRepo:
       type: object
@@ -2148,12 +2242,15 @@ components:
       properties:
         id: { type: string }
         actor: { type: string, enum: [user, agent, admin, system] }
-        action: { type: string, examples: [run_app_action, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked, web_search, read_page, read_page_refused, crew_progress, pr_review_requested] }
+        action: { type: string, examples: [run_app_action, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked, web_search, read_page, read_page_refused, crew_progress, pr_review_requested, remember, recall, forget, memory_refused, memory_deleted, memories_cleared] }
         summary: { type: string }
         crew:
           type: [string, "null"]
           enum: [byte, patch, scout, null]
           description: The specialist this entry belongs to, when the platform knows it (progress lines).
+        memoryId:
+          type: [string, "null"]
+          description: The memory this entry is about (`remember`, `forget`, `memory_deleted`). It may have been deleted since. Null for every other entry.
         creditsCharged:
           type: [integer, "null"]
           description: "Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Web search: what the search cost. Null when nothing is charged per entry."

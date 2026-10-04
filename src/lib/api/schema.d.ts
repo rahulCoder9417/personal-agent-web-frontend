@@ -699,6 +699,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/memories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the agent has saved about this user
+         * @description The shared memory (HLD 0.9): short facts the agent saved about the user, given to
+         *     whichever engine runs. Memories are made by chatting with the agent; the web app can
+         *     list and delete them, not add or edit them. All of them come in one answer, newest
+         *     first: there are at most `max`.
+         */
+        get: operations["listMemories"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete every memory of this user
+         * @description Can't be undone. The agent starts again with nothing saved about the user.
+         */
+        delete: operations["deleteAllMemories"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/memories/{memoryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete one memory */
+        delete: operations["deleteMemory"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/activity": {
         parameters: {
             query?: never;
@@ -712,6 +756,11 @@ export interface paths {
          *     something, 0 for one that only read. A `web_search` entry carries what the search cost.
          *     A `read_page_refused` entry is a web address the agent asked to read and was not allowed to.
          *     A `crew_progress` entry is a progress line from a specialist; `crew` names it.
+         *     Memory (HLD 0.9): `remember` (the agent saved a memory), `forget` (it removed or corrected
+         *     one), `recall` (it searched), `memory_refused` (a save was refused because it looked like
+         *     a secret), `memory_deleted` and `memories_cleared` (the user deleted in the web app).
+         *     These carry `memoryId` where there is one. They never carry the memory's text: show it
+         *     from `GET /v1/memories`.
          */
         get: operations["listActivity"];
         put?: never;
@@ -1214,6 +1263,35 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /** @description One short fact the agent saved about the user (HLD 0.9). */
+        Memory: {
+            /** @example mem_01jb2k3m4n5p6q7r8s9t0v1w2x */
+            id: string;
+            /**
+             * @description `instruction` is a standing instruction; `fact` is anything else that lasts.
+             * @enum {string}
+             */
+            kind: "preference" | "person" | "project" | "instruction" | "fact";
+            /**
+             * @description One line of plain text.
+             * @example Prefers short replies with no emoji
+             */
+            content: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the text last changed (the agent corrected it). Equal to `createdAt` if never.
+             */
+            updatedAt: string;
+            /**
+             * Format: date-time
+             * @description When the agent last found it with a search. Null if never.
+             */
+            lastUsedAt: string | null;
+            /** @description How many times the agent found it with a search. */
+            useCount: number;
+        };
         PrReviewRepo: {
             /** @description The automation's id. Pause or resume it with `PATCH /v1/automations/{automationId}`. */
             id: string;
@@ -1577,6 +1655,12 @@ export interface components {
              * @example read_page_refused
              * @example crew_progress
              * @example pr_review_requested
+             * @example remember
+             * @example recall
+             * @example forget
+             * @example memory_refused
+             * @example memory_deleted
+             * @example memories_cleared
              */
             action: string;
             summary: string;
@@ -1585,6 +1669,8 @@ export interface components {
              * @enum {string|null}
              */
             crew?: "byte" | "patch" | "scout" | null;
+            /** @description The memory this entry is about (`remember`, `forget`, `memory_deleted`). It may have been deleted since. Null for every other entry. */
+            memoryId?: string | null;
             /** @description Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Web search: what the search cost. Null when nothing is charged per entry. */
             creditsCharged?: number | null;
             /** Format: date-time */
@@ -1697,6 +1783,7 @@ export interface components {
         ChannelLinkId: string;
         McpServerId: string;
         AutomationId: string;
+        MemoryId: string;
         Provider: components["schemas"]["ByokProvider"];
         /** @description The GitHub user or organisation that owns the repo. */
         RepoOwner: string;
@@ -2934,6 +3021,80 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["RateLimited"];
+        };
+    };
+    listMemories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Memory"][];
+                        /**
+                         * @description The most memories a user can have. At the limit the agent can't save more.
+                         * @example 200
+                         */
+                        max: number;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteAllMemories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description How many memories were removed. */
+                        deleted: number;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memoryId: components["parameters"]["MemoryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     listActivity: {
