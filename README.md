@@ -130,7 +130,7 @@ The plan buttons follow the backend's rules: a second plan can't be started whil
 
 ## Running on the server (container)
 
-`Dockerfile` builds the app for the backend's compose file, which runs it as the `web` service behind Caddy (`../beckend/infra/docker-compose.yml`, `../beckend/docs/deployment.md`).
+`Dockerfile` builds the app for the backend's compose file, which runs it as the `web` service behind Caddy (`../beckend/infra/docker-compose.yml`).
 
 - **Build:** the Clerk publishable key is a build argument (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`), because `NEXT_PUBLIC_*` values are compiled into the browser bundle. The Clerk secret key is passed as a build secret (`clerk_secret_key`) so pages rendered at build time are built in sign-in mode; it is not kept in the image.
 - **Run:** `TEXTCREW_API_URL` (inside compose: `http://api:8080`), `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` as environment. Port 3000. `GET /api/health` answers when it is up.
