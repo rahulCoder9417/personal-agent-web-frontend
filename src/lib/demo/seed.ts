@@ -367,6 +367,20 @@ export function demoAiMode(): AiMode {
   return process.env.TEXTCREW_DEMO_AI_ACCESS_MODE === "own_only" ? "own_only" : "platform";
 }
 
+/**
+ * What Claude Code's model and effort can be set to, as the backend offers them (`claudeChoices`).
+ * Null in the settings is Claude Code's own default.
+ */
+export const CLAUDE_CHOICES: AgentSettings["claudeChoices"] = {
+  models: [
+    { id: "claude-opus-5-5", label: "Opus 5.5" },
+    { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
+    { id: "claude-haiku-4-5", label: "Haiku 4.5" },
+    { id: "claude-fable-5-1", label: "Fable 5.1" },
+  ],
+  efforts: ["low", "medium", "high", "xhigh", "max"],
+};
+
 const SPECIALISTS = ["byte", "patch", "scout"] as const;
 export type SpecialistId = (typeof SPECIALISTS)[number];
 
@@ -636,6 +650,7 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
       runtime: "hermes", effectiveRuntime: "hermes", aiAccess: "own_key",
       aiPreference: "auto", platformAvailable: aiMode === "platform",
       claude: { connected: false, connectedAt: null }, ownKeyProviders: ["anthropic"],
+      claudeModel: null, claudeEffort: null, claudeChoices: structuredClone(CLAUDE_CHOICES),
     },
     aiMode,
     crewAvailable: demoCrewAvailable(),

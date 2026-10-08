@@ -175,6 +175,10 @@ paths:
       operationId: listMessages
       tags: [chat]
       summary: Chat history (all channels, newest first)
+      description: |
+        `chatStartedAt` is when the web chat's latest new chat started (`POST /v1/chats/new`), or
+        null if it never was. The list is unchanged by it: earlier messages are still returned. The
+        web app draws a "New chat" divider before the first message after that time.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -189,12 +193,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, nextCursor]
+                required: [items, nextCursor, chatStartedAt]
                 properties:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/Message" }
                   nextCursor: { type: [string, "null"] }
+                  chatStartedAt:
+                    type: [string, "null"]
+                    format: date-time
+                    description: When the web chat's latest new chat started (null if never)
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
@@ -232,6 +240,29 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "402": { $ref: "#/components/responses/OutOfCredits" }
         "403": { $ref: "#/components/responses/ChannelDisabled" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/chats/new:
+    post:
+      operationId: startNewChat
+      tags: [chat]
+      summary: Start a new web chat
+      description: |
+        The agent no longer sees what was said before in the web chat; its saved memories stay.
+        Earlier messages are still listed by `GET /v1/messages`, whose `chatStartedAt` becomes the
+        time returned here. No body. No turn runs and no credits are charged. Logged in the
+        activity as `chat_started`. Rate limited to 30 an hour per user.
+      responses:
+        "200":
+          description: Started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chatStartedAt]
+                properties:
+                  chatStartedAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /v1/attachments:
@@ -760,11 +791,16 @@ paths:
     patch:
       operationId: updateAgentSettings
       tags: [agent]
-      summary: Choose the agent runtime, or choose Textcrew AI
+      summary: Choose the agent runtime, Textcrew AI, or Claude Code's model and effort
       description: |
-        Send `runtime`, `aiPreference` or both. A screen with three choices sends:
+        Send `runtime`, `aiPreference`, `claudeModel`, `claudeEffort`, or any of them together.
+        A screen with three choices sends:
         own API key → `{ runtime: hermes, aiPreference: auto }`; Claude plan →
         `{ runtime: claude_code, aiPreference: auto }`; Textcrew AI → `{ aiPreference: platform }`.
+
+        `claudeModel` and `claudeEffort` can be set whatever the current engine is; they take
+        effect on turns that run on Claude Code. Null goes back to Claude Code's own default. A
+        model or effort not in `claudeChoices` is 400 `invalid_request`.
       requestBody:
         required: true
         content:
@@ -776,6 +812,13 @@ paths:
               properties:
                 runtime: { $ref: "#/components/schemas/AgentRuntime" }
                 aiPreference: { $ref: "#/components/schemas/AiPreference" }
+                claudeModel:
+                  type: [string, "null"]
+                  description: One of `claudeChoices.models[].id`, or null for Claude Code's default
+                claudeEffort:
+                  type: [string, "null"]
+                  enum: [low, medium, high, xhigh, max, null]
+                  description: One of `claudeChoices.efforts`, or null for Claude Code's default
       responses:
         "200":
           description: Updated
@@ -2263,7 +2306,8 @@ components:
 
     AgentSettings:
       type: object
-      required: [runtime, effectiveRuntime, aiAccess, aiPreference, platformAvailable, claude, ownKeyProviders]
+      required: [runtime, effectiveRuntime, aiAccess, aiPreference, platformAvailable, claude, ownKeyProviders,
+                 claudeModel, claudeEffort, claudeChoices]
       properties:
         runtime:
           $ref: "#/components/schemas/AgentRuntime"
@@ -2290,6 +2334,31 @@ components:
         ownKeyProviders:
           type: array
           items: { $ref: "#/components/schemas/ByokProvider" }
+        claudeModel:
+          type: [string, "null"]
+          description: The Claude model Claude Code uses (one of `claudeChoices.models[].id`); null is Claude Code's default
+          examples: [claude-opus-5-5]
+        claudeEffort:
+          type: [string, "null"]
+          enum: [low, medium, high, xhigh, max, null]
+          description: How hard Claude Code thinks; null is Claude Code's default
+        claudeChoices:
+          type: object
+          description: What `claudeModel` and `claudeEffort` can be set to, in the order to offer them
+          required: [models, efforts]
+          properties:
+            models:
+              type: array
+              items:
+                type: object
+                required: [id, label]
+                properties:
+                  id: { type: string, examples: [claude-opus-5-5] }
+                  label: { type: string, examples: [Opus 5.5] }
+            efforts:
+              type: array
+              items: { type: string }
+              examples: [[low, medium, high, xhigh, max]]
 
     ClaudeLoginStart:
       type: object
@@ -2305,7 +2374,7 @@ components:
       properties:
         id: { type: string }
         actor: { type: string, enum: [user, agent, admin, system] }
-        action: { type: string, examples: [run_app_action, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked, channel_unlinked, web_search, web_search_refused, read_page, read_page_refused, crew_progress, browser_enabled, browser_disabled, pr_review_requested, remember, recall, forget, memory_refused, memory_deleted, memories_cleared] }
+        action: { type: string, examples: [run_app_action, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked, channel_unlinked, web_search, web_search_refused, read_page, read_page_refused, crew_progress, browser_enabled, browser_disabled, pr_review_requested, remember, recall, forget, memory_refused, memory_deleted, memories_cleared, chat_started] }
         summary: { type: string }
         crew:
           type: [string, "null"]

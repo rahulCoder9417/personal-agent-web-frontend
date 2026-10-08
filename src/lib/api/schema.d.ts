@@ -109,7 +109,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Chat history (all channels, newest first) */
+        /**
+         * Chat history (all channels, newest first)
+         * @description `chatStartedAt` is when the web chat's latest new chat started (`POST /v1/chats/new`), or
+         *     null if it never was. The list is unchanged by it: earlier messages are still returned. The
+         *     web app draws a "New chat" divider before the first message after that time.
+         */
         get: operations["listMessages"];
         put?: never;
         /**
@@ -119,6 +124,29 @@ export interface paths {
          *     off (`web` is not in `available`, see `GET /v1/channels`).
          */
         post: operations["sendMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/new": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a new web chat
+         * @description The agent no longer sees what was said before in the web chat; its saved memories stay.
+         *     Earlier messages are still listed by `GET /v1/messages`, whose `chatStartedAt` becomes the
+         *     time returned here. No body. No turn runs and no credits are charged. Logged in the
+         *     activity as `chat_started`. Rate limited to 30 an hour per user.
+         */
+        post: operations["startNewChat"];
         delete?: never;
         options?: never;
         head?: never;
@@ -474,10 +502,15 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Choose the agent runtime, or choose Textcrew AI
-         * @description Send `runtime`, `aiPreference` or both. A screen with three choices sends:
+         * Choose the agent runtime, Textcrew AI, or Claude Code's model and effort
+         * @description Send `runtime`, `aiPreference`, `claudeModel`, `claudeEffort`, or any of them together.
+         *     A screen with three choices sends:
          *     own API key → `{ runtime: hermes, aiPreference: auto }`; Claude plan →
          *     `{ runtime: claude_code, aiPreference: auto }`; Textcrew AI → `{ aiPreference: platform }`.
+         *
+         *     `claudeModel` and `claudeEffort` can be set whatever the current engine is; they take
+         *     effect on turns that run on Claude Code. Null goes back to Claude Code's own default. A
+         *     model or effort not in `claudeChoices` is 400 `invalid_request`.
          */
         patch: operations["updateAgentSettings"];
         trace?: never;
@@ -1676,6 +1709,35 @@ export interface components {
                 connectedAt?: string | null;
             };
             ownKeyProviders: components["schemas"]["ByokProvider"][];
+            /**
+             * @description The Claude model Claude Code uses (one of `claudeChoices.models[].id`); null is Claude Code's default
+             * @example claude-opus-5-5
+             */
+            claudeModel: string | null;
+            /**
+             * @description How hard Claude Code thinks; null is Claude Code's default
+             * @enum {string|null}
+             */
+            claudeEffort: "low" | "medium" | "high" | "xhigh" | "max" | null;
+            /** @description What `claudeModel` and `claudeEffort` can be set to, in the order to offer them */
+            claudeChoices: {
+                models: {
+                    /** @example claude-opus-5-5 */
+                    id: string;
+                    /** @example Opus 5.5 */
+                    label: string;
+                }[];
+                /**
+                 * @example [
+                 *       "low",
+                 *       "medium",
+                 *       "high",
+                 *       "xhigh",
+                 *       "max"
+                 *     ]
+                 */
+                efforts: string[];
+            };
         };
         ClaudeLoginStart: {
             loginId: string;
@@ -1713,6 +1775,7 @@ export interface components {
              * @example memory_refused
              * @example memory_deleted
              * @example memories_cleared
+             * @example chat_started
              */
             action: string;
             summary: string;
@@ -2032,6 +2095,11 @@ export interface operations {
                     "application/json": {
                         items: components["schemas"]["Message"][];
                         nextCursor: string | null;
+                        /**
+                         * Format: date-time
+                         * @description When the web chat's latest new chat started (null if never)
+                         */
+                        chatStartedAt: string | null;
                     };
                 };
             };
@@ -2073,6 +2141,31 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             402: components["responses"]["OutOfCredits"];
             403: components["responses"]["ChannelDisabled"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    startNewChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Started */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        chatStartedAt: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -2726,6 +2819,13 @@ export interface operations {
                 "application/json": {
                     runtime?: components["schemas"]["AgentRuntime"];
                     aiPreference?: components["schemas"]["AiPreference"];
+                    /** @description One of `claudeChoices.models[].id`, or null for Claude Code's default */
+                    claudeModel?: string | null;
+                    /**
+                     * @description One of `claudeChoices.efforts`, or null for Claude Code's default
+                     * @enum {string|null}
+                     */
+                    claudeEffort?: "low" | "medium" | "high" | "xhigh" | "max" | null;
                 };
             };
         };
