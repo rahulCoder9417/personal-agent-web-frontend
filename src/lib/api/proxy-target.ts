@@ -5,6 +5,7 @@ export const ALLOWED_RESOURCES: ReadonlySet<string> = new Set([
   "me",
   "channels",
   "messages",
+  "chats",
   "attachments",
   "stream",
   "approvals",

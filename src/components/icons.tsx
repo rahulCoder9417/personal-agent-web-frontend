@@ -182,3 +182,11 @@ export const ClockIcon = (p: IconProps) => (
     <path d="M12 7.5V12l3 2" />
   </Base>
 );
+
+/** A pencil on a page: start something new (a new chat). */
+export const NewChatIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5" />
+    <path d="M17.5 3.5a2.1 2.1 0 0 1 3 3L13 14l-4 1 1-4 7.5-7.5Z" />
+  </Base>
+);

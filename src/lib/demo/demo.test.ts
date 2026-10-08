@@ -221,6 +221,44 @@ describe("chat", () => {
     expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1884);
   });
 
+  it("starts a new web chat: the messages stay listed, the start is kept, logged and not charged", async () => {
+    type Thread = Page<Message> & { chatStartedAt: string | null };
+    const before = await call<Thread>("GET", "messages");
+    expect(before.body.chatStartedAt).toBeNull();
+
+    vi.advanceTimersByTime(60_000);
+    const started = await call<{ chatStartedAt: string }>("POST", "chats/new");
+    expect(started.status).toBe(200);
+    expect(started.body.chatStartedAt).toBe(new Date(NOW.getTime() + 60_000).toISOString());
+    expect(getStore().webChat).toEqual({ epoch: 1, startedAt: started.body.chatStartedAt });
+
+    // Earlier messages are still there; every page and filter says when the new chat started.
+    const after = await call<Thread>("GET", "messages");
+    expect(after.body.items).toEqual(before.body.items);
+    expect(after.body.chatStartedAt).toBe(started.body.chatStartedAt);
+    expect((await call<Thread>("GET", "messages?channel=telegram")).body.chatStartedAt).toBe(started.body.chatStartedAt);
+
+    // Logged with the channel and no text; no turn ran and nothing was charged.
+    expect(getStore().activity[0]).toMatchObject({ actor: "user", action: "chat_started", summary: "Started a new chat in web chat", creditsCharged: null });
+    expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1884);
+    expect(getStore().agentStatus.state).toBe("awake");
+
+    const again = await call<{ chatStartedAt: string }>("POST", "chats/new");
+    expect(getStore().webChat.epoch).toBe(2);
+    expect(Date.parse(again.body.chatStartedAt)).toBeGreaterThanOrEqual(Date.parse(started.body.chatStartedAt));
+  });
+
+  it("allows 30 new chats an hour", async () => {
+    for (let i = 0; i < 30; i++) expect((await call("POST", "chats/new")).status).toBe(200);
+    const limited = await call<ErrorBody>("POST", "chats/new");
+    expect(limited.status).toBe(429);
+    expect(limited.body.error.code).toBe("rate_limited");
+    expect(getStore().webChat.epoch).toBe(30);
+
+    vi.advanceTimersByTime(3_600_001);
+    expect((await call("POST", "chats/new")).status).toBe(200);
+  });
+
   it("answers 402 when there are no credits left", async () => {
     for (const grant of getStore().grants) grant.remaining = 0;
     const sent = await call<ErrorBody>("POST", "messages", { text: "hello", clientMessageId: uuid(3) });

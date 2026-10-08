@@ -21,6 +21,7 @@ const ROUTES: Route[] = [
 
   route("GET", "messages", chat.listMessages),
   route("POST", "messages", chat.sendMessage),
+  route("POST", "chats/new", chat.startNewChat),
   route("POST", "attachments", chat.uploadAttachment),
   route("GET", "stream", chat.openStream),
 

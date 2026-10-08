@@ -80,6 +80,12 @@ describe("actionLabel", () => {
     expect(actionLabel("read_page")).toBe("read page");
     expect(actionLabel("coupon_redeemed")).toBe("coupon redeemed");
   });
+
+  it("reads a new chat as the person's", () => {
+    const started = entry("n", "2026-10-01T14:22:00", { actor: "user", action: "chat_started", summary: "Started a new chat in web chat" });
+    expect(describeActivity(started)).toEqual({ crew: null, who: "You", label: "started a new chat", summary: "Started a new chat in web chat" });
+    expect(matchesFilter(started, "you")).toBe(true);
+  });
 });
 
 describe("memory in the log", () => {

@@ -2,8 +2,8 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { ChannelType, Message } from "@/lib/api/client";
-import { useAgentProgress, useAgentStatus, useMessages } from "@/lib/api/hooks";
-import { threadIsWorking } from "@/lib/chat-thread";
+import { chatStartedAtOf, useAgentProgress, useAgentStatus, useMessages } from "@/lib/api/hooks";
+import { NEW_CHAT_NOTE, newChatDividerAt, showsNewChat, threadIsWorking } from "@/lib/chat-thread";
 import type { ProgressLine } from "@/lib/crew";
 import { CHANNEL_LABEL, cn, formatDate, formatDay, formatTime } from "@/lib/format";
 import { BrandIcon } from "../brand-icon";
@@ -99,6 +99,28 @@ function Bubble({ message }: { message: Message }) {
   );
 }
 
+function DayDivider({ iso }: { iso: string }) {
+  return (
+    <p className="flex items-center gap-3 py-1 text-[12px] font-medium text-muted before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
+      {dayLabel(iso)}
+    </p>
+  );
+}
+
+/** Where the web chat last started afresh. What was said above it stays readable; Tex no longer uses it. */
+function NewChatDivider() {
+  return (
+    <div className="flex flex-col gap-1 py-1">
+      <p className="flex items-center gap-3 text-[12px] font-semibold text-accent-dark before:h-px before:flex-1 before:bg-accent/30 after:h-px after:flex-1 after:bg-accent/30">
+        New chat
+      </p>
+      <p className="text-center text-[12px] text-muted">{NEW_CHAT_NOTE}</p>
+    </div>
+  );
+}
+
+const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString();
+
 /**
  * What Tex is doing while it works. Until a progress line arrives it just says so; then it shows
  * the latest line of each crew member at work, so it is clear who is on what.
@@ -139,13 +161,25 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
     const ordered = newestFirst.slice().reverse();
     return ordered.map((message, index) => ({
       message,
-      startsDay: index === 0 || new Date(ordered[index - 1].createdAt).toDateString() !== new Date(message.createdAt).toDateString(),
+      startsDay: index === 0 || !sameDay(ordered[index - 1].createdAt, message.createdAt),
     }));
   }, [newestFirst]);
   const newestId = messages[messages.length - 1]?.message.id;
   const count = messages.length;
   // With one chat app picked, only a turn on that chat app shows here.
   const working = threadIsWorking(channel, busy, newestFirst);
+
+  // The web chat's latest new chat: a divider before the first message after it, or at the end.
+  const chatStartedAt = showsNewChat(channel) ? chatStartedAtOf(query.data) : null;
+  const dividerAt = useMemo(
+    () => newChatDividerAt(messages.map((row) => row.message), chatStartedAt, !query.hasNextPage),
+    [messages, chatStartedAt, query.hasNextPage],
+  );
+
+  // A new chat was just started: follow the thread to the bottom, where its divider is.
+  useLayoutEffect(() => {
+    if (chatStartedAt) stick.current = true;
+  }, [chatStartedAt]);
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -157,7 +191,7 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
     } else if (stick.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [count, newestId, working]);
+  }, [count, newestId, working, chatStartedAt]);
 
   // Content can grow after it first renders (an approval card loading, a font swapping in).
   // While following, stay pinned to the newest message through that too.
@@ -214,16 +248,20 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
           </Button>
         )}
 
-        {messages.map(({ message, startsDay }) => (
-          <div key={message.id} className="flex flex-col gap-[13px]">
-            {startsDay && (
-              <p className="flex items-center gap-3 py-1 text-[12px] font-medium text-muted before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
-                {dayLabel(message.createdAt)}
-              </p>
-            )}
-            <Bubble message={message} />
-          </div>
-        ))}
+        {messages.map(({ message, startsDay }, index) => {
+          const divider = index === dividerAt && chatStartedAt !== null;
+          // The divider sits on the day the new chat started: before this day's heading if that was an earlier day.
+          const dividerFirst = divider && !sameDay(chatStartedAt, message.createdAt);
+          return (
+            <div key={message.id} className="flex flex-col gap-[13px]">
+              {dividerFirst && <NewChatDivider />}
+              {startsDay && <DayDivider iso={message.createdAt} />}
+              {divider && !dividerFirst && <NewChatDivider />}
+              <Bubble message={message} />
+            </div>
+          );
+        })}
+        {count > 0 && dividerAt === count && <NewChatDivider />}
 
         {working && count > 0 && <Working lines={progress} />}
       </div>

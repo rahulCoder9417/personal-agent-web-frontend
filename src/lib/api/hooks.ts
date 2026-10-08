@@ -135,6 +135,32 @@ export function upsertMessage(qc: QueryClient, message: Message) {
   );
 }
 
+/** A page of the chat: the messages, and when the web chat's latest new chat started (null if never). */
+type MessagePage = Page<Message> & { chatStartedAt?: string | null };
+
+/** When the web chat's latest new chat started, from a cached thread (its newest page says it). */
+export function chatStartedAtOf(data: InfiniteData<MessagePage> | undefined): string | null {
+  return data?.pages[0]?.chatStartedAt ?? null;
+}
+
+/**
+ * Starts a new web chat: Tex no longer sees what was said before in it. The earlier messages stay
+ * listed; every cached thread learns the new start, so the "New chat" divider shows at once.
+ */
+export function useStartNewChat() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST("/v1/chats/new")),
+    onSuccess: ({ chatStartedAt }) => {
+      qc.setQueriesData<InfiniteData<MessagePage>>({ queryKey: ["messages"] }, (data) =>
+        data ? { ...data, pages: data.pages.map((page) => ({ ...page, chatStartedAt })) } : data,
+      );
+      // It is in the activity log (`chat_started`).
+      void qc.invalidateQueries({ queryKey: qk.activity });
+    },
+  });
+}
+
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({

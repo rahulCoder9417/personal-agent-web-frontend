@@ -5,6 +5,22 @@ import { Spinner } from "@/components/ui";
 import { cn } from "@/lib/format";
 
 /**
+ * The "ask once more" step: `armed` after the first click, and back to rest after a few seconds
+ * if left alone (never while the action is pending).
+ */
+export function useArmed(pending?: boolean) {
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed || pending) return;
+    const timer = setTimeout(() => setArmed(false), 6000);
+    return () => clearTimeout(timer);
+  }, [armed, pending]);
+
+  return [armed, setArmed] as const;
+}
+
+/**
  * A quiet text button that asks once more before doing something that removes things:
  * the first click swaps it for "confirm / cancel", and it settles back if left alone.
  */
@@ -24,13 +40,7 @@ export function ConfirmButton({
   pending?: boolean;
   className?: string;
 }) {
-  const [armed, setArmed] = useState(false);
-
-  useEffect(() => {
-    if (!armed || pending) return;
-    const timer = setTimeout(() => setArmed(false), 6000);
-    return () => clearTimeout(timer);
-  }, [armed, pending]);
+  const [armed, setArmed] = useArmed(pending);
 
   if (!armed && !pending) {
     return (

@@ -12,6 +12,7 @@ import {
   oneOf,
   outOfCredits,
   paginate,
+  rateLimited,
   readJson,
   requiredString,
   type JsonObject,
@@ -43,7 +44,26 @@ export const listMessages: Handler = ({ state, url }) => {
   const raw = url.searchParams.get("channel");
   const channel = raw === null ? null : oneOf(raw, CHANNELS, "channel");
   const items = channel ? state.messages.filter((message) => message.channel === channel) : state.messages;
-  return json(paginate(items, url));
+  return json({ ...paginate(items, url), chatStartedAt: state.webChat.startedAt });
+};
+
+const NEW_CHATS_PER_HOUR = 30;
+const HOUR_MS = 3_600_000;
+
+/**
+ * A new web chat, as the backend starts one: the chat's epoch goes up by one and the time is kept.
+ * Tex then starts afresh in the web chat; its memories stay. No turn runs and nothing is charged.
+ */
+export const startNewChat: Handler = ({ state }) => {
+  const now = Date.now();
+  state.newChatCalls = state.newChatCalls.filter((at) => now - at < HOUR_MS);
+  if (state.newChatCalls.length >= NEW_CHATS_PER_HOUR) throw rateLimited();
+  state.newChatCalls.push(now);
+
+  state.webChat = { epoch: state.webChat.epoch + 1, startedAt: new Date(now).toISOString() };
+  // The channel, never what was said.
+  logActivity(state, { actor: "user", action: "chat_started", summary: "Started a new chat in web chat" });
+  return json({ chatStartedAt: state.webChat.startedAt });
 };
 
 function readAttachments(state: DemoState, body: JsonObject): Attachment[] {

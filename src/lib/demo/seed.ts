@@ -52,6 +52,13 @@ export type DemoData = {
   messages: Message[];
   /** clientMessageId → message id, for idempotent sends. */
   sentIds: Record<string, string>;
+  /**
+   * The web chat's chat epoch, as the backend keeps it: 0 until the first new chat, plus one for
+   * each, and when the latest one started (`chatStartedAt`, null if never).
+   */
+  webChat: { epoch: number; startedAt: string | null };
+  /** When a new chat was last started, for the limit of 30 an hour. */
+  newChatCalls: number[];
   attachments: Record<string, Attachment>;
   approvals: Approval[];
   /** What Tex says after an approval is decided. */
@@ -625,6 +632,8 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
     channels: [{ id: "ch_telegram", channel: "telegram", displayId: "@aarav_s", linkedAt: iso(Date.parse(signedUp) + 5 * MINUTE) }],
     messages: seedMessages(now),
     sentIds: {},
+    webChat: { epoch: 0, startedAt: null },
+    newChatCalls: [],
     attachments: {},
     approvals: seedApprovals(now),
     approvalReplies: {

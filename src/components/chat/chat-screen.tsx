@@ -9,6 +9,7 @@ import { BrandIcon } from "../brand-icon";
 import { Page, PageHeader } from "../page";
 import { FilterPills, type FilterOption } from "../ui";
 import { Composer, type ComposerHandle } from "./composer";
+import { NewChatButton } from "./new-chat-button";
 import { SidePanel } from "./side-panel";
 import { Thread } from "./thread";
 
@@ -67,7 +68,17 @@ export function ChatScreen() {
         className={cn("relative", dropping && "bg-accent-soft/40")}
       >
         <PageHeader title="Chat">
-          {filters.length > 0 && <FilterPills label="Filter by chat app" options={filters} value={channel} onChange={setChannel} />}
+          {/* On a phone the button sits next to the title and the filter takes the next line; wider, it goes to the end. */}
+          {available?.includes("web") && (
+            <div className="ml-auto md:order-last">
+              <NewChatButton />
+            </div>
+          )}
+          {filters.length > 0 && (
+            <div className="min-w-0 max-w-full max-md:w-full">
+              <FilterPills label="Filter by chat app" options={filters} value={channel} onChange={setChannel} />
+            </div>
+          )}
         </PageHeader>
 
         <div
