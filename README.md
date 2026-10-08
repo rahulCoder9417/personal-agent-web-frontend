@@ -8,7 +8,7 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
                                          token on the server)
 ```
 
-- **Screens**: chat, approvals, automations and pull-request review, activity, apps and your own MCP servers, crew, settings (general, agent and AI, memory, credits, plans), onboarding, sign-in.
+- **Screens**: chat, approvals, automations and pull-request review, activity, apps and your own MCP servers, crew, settings (general, agent and AI, memory, credits, plans), onboarding, sign-in and sign-up.
 - **One layout, two shapes**: on a wide screen a sidebar sits beside the current screen; on a phone there is a top bar, the screen edge to edge and five tabs along the bottom (the rest is under More).
 - **Installable on a phone**: "Add to Home Screen" on Android and iPhone opens it in its own window. See [Installing on a phone](#installing-on-a-phone).
 - **The pages only talk to this app's own `/api/v1/*`.** `src/app/api/v1/[...path]/route.ts` forwards to the backend and adds the Clerk session token on the server, so the token never sits in page JavaScript or in an `EventSource` URL. Only user-facing paths are allowed through (no admin, waitlist or webhook routes).
@@ -56,6 +56,23 @@ pnpm backend:local     # the real api + worker, on :8080
 ```
 
 That starts the backend from `../beckend` with embedded Postgres and a throwaway Redis, seeds one user and prints two lines for `.env.local` (`TEXTCREW_API_URL` and a `TEXTCREW_DEV_TOKEN`). With the token set, the proxy signs every request as that user. Every `/v1` route, the database, the queues, credits and the Polar webhook handling are the real code; the agent, Composio and Polar's hosted checkout are stand-ins. The token is ignored in a production build. It needs about 1 GB of free memory.
+
+## Sign-in
+
+Clerk is the sign-in service: it holds the accounts, checks passwords and codes, sends the emails and makes the session the backend trusts. The screens are this app's own. No Clerk component is drawn; the forms sit on Clerk's hooks (`useSignIn()`, `useSignUp()`, `useClerk()`, its "custom flows" API). The rest of the Clerk use is unchanged: the provider in `src/app/layout.tsx`, the session token the API proxy adds, sign-out and deleting the account.
+
+| Page | What it does |
+|---|---|
+| `/sign-in` | Continue with Google; or email and password, with "Forgot password?" (a code by email, then a new password, which signs out the other devices) and "Email me a code instead". When Clerk wants a code from the inbox after a right password (a new device), it asks for it. |
+| `/sign-up` | Continue with Google; or first and last name (optional), email and password, then the code Clerk emails to check the address. |
+| `/sso-callback` | Where Google sends the browser back to when Clerk still needs this app: turns "sign in with Google" by someone new into an account and "sign up with Google" by someone known into a sign-in, or says what went wrong. |
+
+- **Built for what the Clerk application has switched on** (read from its public `/v1/environment`): email as the only identifier, a password (at least 15 characters, checked against known leaks), a code by email (sign-in, verifying at sign-up, resetting the password), Google, optional first and last name, no second factor, bot protection at sign-up. Switching more on in the Clerk Dashboard (a phone number, a username, an authenticator app) needs the forms to change; until then the page says what it can't ask for. The social buttons come from `SOCIAL_PROVIDERS` in `src/lib/auth-flow.ts`.
+- **Clerk's refusals in plain words**: `describeAuthError` in `src/lib/auth-flow.ts` turns Clerk's error codes into a sentence, under the field it is about or above the form. A password rule keeps Clerk's own sentence, which carries the number.
+- **Where people land**: on the page the proxy sent them from (`redirect_url`, carried between the three pages), else on the home screen. Only addresses inside this app are followed (`afterAuthPath`). Someone already signed in who opens `/sign-in` or `/sign-up` goes straight there.
+- **The proxy** (`src/proxy.ts`) lets `/sign-in`, `/sign-up` and `/sso-callback` open without a session (exactly those paths, nothing under them) and sends people without one to `/sign-in`, not to Clerk's hosted page. The addresses are set in code (`SIGN_IN_PATH`, `SIGN_UP_PATH`), so no environment variable is needed for them.
+- **Bot protection**: Clerk draws its check in `<div id="clerk-captcha">` on the sign-up and callback pages when it wants one; most of the time it stays empty.
+- **Demo mode and the development token** have no accounts: the three pages forward to the home screen.
 
 ## What the backend decides
 
@@ -161,11 +178,12 @@ public/icons/        home-screen icons for the web manifest
 src/app/
   (app)/             signed-in screens inside the shell
   api/v1/[...path]/  the proxy to the backend
-  onboarding, sign-in, billing, connected
+  onboarding, sign-in, sign-up, sso-callback, billing, connected
   manifest.ts        the web manifest ("Add to Home Screen")
-src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell/…)
+src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell/…, auth/ for the sign-in forms)
 src/lib/
   api/               generated types, typed client, TanStack Query hooks, SSE → cache
+  auth-flow.ts       sign-in and sign-up: where to land, Clerk's refusals in words, what comes next
   demo/              the in-memory demo backend
   channels.ts        which chat apps to offer, from what the backend has switched on
   crew.ts            who is on the crew and what they are doing, from what the backend says
@@ -193,4 +211,5 @@ src/lib/
   - The activity log names a memory by id only. Once it is deleted, the log can't say what it was, and a `forget` entry doesn't say whether Tex removed or corrected (the app goes by the entry's summary).
   - A refused save (`memory_refused`) and a search (`recall`) carry no `memoryId`, so they link nowhere.
 - Installed on a phone, the app has not been tried on a real Android phone or iPhone.
-- Not yet run with a real Clerk application, real Polar products or a real agent container.
+- Not yet run with a real Clerk application, real Polar products or a real agent container. The sign-in pages have been rendered with the real (development) Clerk application, but no one has signed in or up through them yet: the steps against Clerk are covered by unit tests of the logic, not by a real sign-in.
+- Sign-in has no second factor beyond a code by email, no passkeys and no phone numbers, because none is switched on in Clerk.
