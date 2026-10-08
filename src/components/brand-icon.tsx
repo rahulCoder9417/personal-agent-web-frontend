@@ -6,6 +6,7 @@ import {
   siDropbox,
   siGithub,
   siGmail,
+  siGoogle,
   siGooglecalendar,
   siGoogledocs,
   siGoogledrive,
@@ -26,8 +27,10 @@ import { cn } from "@/lib/format";
 
 // Brand marks from simple-icons (CC0). Slack isn't in the set, so it gets a neutral glyph.
 // AI providers are left out on purpose: they are named in plain text only, never shown as a logo.
+// (Google's mark is here for the "Continue with Google" button on the sign-in pages.)
 const ICONS: Record<string, SimpleIcon> = {
   gmail: siGmail,
+  google: siGoogle,
   googlecalendar: siGooglecalendar,
   notion: siNotion,
   whatsapp: siWhatsapp,
