@@ -177,8 +177,9 @@ paths:
       summary: Chat history (all channels, newest first)
       description: |
         `chatStartedAt` is when the web chat's latest new chat started (`POST /v1/chats/new`), or
-        null if it never was. The list is unchanged by it: earlier messages are still returned. The
-        web app draws a "New chat" divider before the first message after that time.
+        null if the user never started one. The list itself is unchanged: older messages are still
+        returned. The web app draws a "New chat" divider before the first web message after that
+        time.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -202,7 +203,7 @@ paths:
                   chatStartedAt:
                     type: [string, "null"]
                     format: date-time
-                    description: When the web chat's latest new chat started (null if never)
+                    description: When the web chat's latest new chat started. Null if never.
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
@@ -248,10 +249,12 @@ paths:
       tags: [chat]
       summary: Start a new web chat
       description: |
-        The agent no longer sees what was said before in the web chat; its saved memories stay.
-        Earlier messages are still listed by `GET /v1/messages`, whose `chatStartedAt` becomes the
-        time returned here. No body. No turn runs and no credits are charged. Logged in the
-        activity as `chat_started`. Rate limited to 30 an hour per user.
+        The agent starts a fresh conversation in web chat: it no longer sees what was said there
+        before. Saved memories (`/v1/memories`) are kept; they are not part of a chat. No body.
+        Applies to web chat only (a Telegram chat starts a new one with the message `/new`).
+        No turn runs and no credits are charged. Rate limited to 30 an hour per user.
+
+        The answer's `chatStartedAt` is the same value `GET /v1/messages` returns from now on.
       responses:
         "200":
           description: Started
@@ -781,6 +784,10 @@ paths:
         offer. When it is, a user with their own key or Claude plan can still choose it with
         `aiPreference: platform`, and go back with `aiPreference: auto`. `aiAccess` always says
         what pays for the AI right now.
+
+        `claudeModel` and `claudeEffort` are the Claude model and the thinking effort Claude Code
+        uses (null: Claude Code's own default). They apply to turns that run on Claude Code, and
+        can be set whatever the engine is now. `claudeChoices` lists what may be chosen.
       responses:
         "200":
           description: OK
@@ -793,14 +800,14 @@ paths:
       tags: [agent]
       summary: Choose the agent runtime, Textcrew AI, or Claude Code's model and effort
       description: |
-        Send `runtime`, `aiPreference`, `claudeModel`, `claudeEffort`, or any of them together.
-        A screen with three choices sends:
+        Send `runtime`, `aiPreference` or both. A screen with three choices sends:
         own API key → `{ runtime: hermes, aiPreference: auto }`; Claude plan →
         `{ runtime: claude_code, aiPreference: auto }`; Textcrew AI → `{ aiPreference: platform }`.
 
-        `claudeModel` and `claudeEffort` can be set whatever the current engine is; they take
-        effect on turns that run on Claude Code. Null goes back to Claude Code's own default. A
-        model or effort not in `claudeChoices` is 400 `invalid_request`.
+        `claudeModel` and `claudeEffort` may be sent too, alone or with the others. Null goes back
+        to Claude Code's own default. They can be set whatever the engine is now; they take effect
+        on turns that run on Claude Code. A model id that isn't in `claudeChoices.models` is
+        400 `invalid_request`. Example: `{ claudeModel: claude-opus-5-5, claudeEffort: xhigh }`.
       requestBody:
         required: true
         content:
@@ -814,18 +821,24 @@ paths:
                 aiPreference: { $ref: "#/components/schemas/AiPreference" }
                 claudeModel:
                   type: [string, "null"]
-                  description: One of `claudeChoices.models[].id`, or null for Claude Code's default
+                  maxLength: 100
+                  description: One of the ids in `claudeChoices.models`, or null for the default.
+                  examples: [claude-opus-5-5]
                 claudeEffort:
                   type: [string, "null"]
                   enum: [low, medium, high, xhigh, max, null]
-                  description: One of `claudeChoices.efforts`, or null for Claude Code's default
+                  description: Null for the default.
       responses:
         "200":
           description: Updated
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AgentSettings" }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "400":
+          description: Invalid input, or a Claude model id that isn't on the list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409":
           description: |
@@ -2306,8 +2319,7 @@ components:
 
     AgentSettings:
       type: object
-      required: [runtime, effectiveRuntime, aiAccess, aiPreference, platformAvailable, claude, ownKeyProviders,
-                 claudeModel, claudeEffort, claudeChoices]
+      required: [runtime, effectiveRuntime, aiAccess, aiPreference, platformAvailable, claude, ownKeyProviders, claudeModel, claudeEffort, claudeChoices]
       properties:
         runtime:
           $ref: "#/components/schemas/AgentRuntime"
@@ -2336,15 +2348,19 @@ components:
           items: { $ref: "#/components/schemas/ByokProvider" }
         claudeModel:
           type: [string, "null"]
-          description: The Claude model Claude Code uses (one of `claudeChoices.models[].id`); null is Claude Code's default
+          description: |
+            The Claude model Claude Code uses, one of `claudeChoices.models`. Null: Claude Code's
+            own default. Applies when Claude Code is the engine.
           examples: [claude-opus-5-5]
         claudeEffort:
           type: [string, "null"]
           enum: [low, medium, high, xhigh, max, null]
-          description: How hard Claude Code thinks; null is Claude Code's default
+          description: |
+            How hard Claude Code thinks. Null: Claude Code's own default. Applies when Claude Code
+            is the engine.
         claudeChoices:
           type: object
-          description: What `claudeModel` and `claudeEffort` can be set to, in the order to offer them
+          description: What may be chosen for `claudeModel` and `claudeEffort`, in display order.
           required: [models, efforts]
           properties:
             models:
@@ -2357,7 +2373,7 @@ components:
                   label: { type: string, examples: [Opus 5.5] }
             efforts:
               type: array
-              items: { type: string }
+              items: { type: string, enum: [low, medium, high, xhigh, max] }
               examples: [[low, medium, high, xhigh, max]]
 
     ClaudeLoginStart:

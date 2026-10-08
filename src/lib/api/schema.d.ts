@@ -112,8 +112,9 @@ export interface paths {
         /**
          * Chat history (all channels, newest first)
          * @description `chatStartedAt` is when the web chat's latest new chat started (`POST /v1/chats/new`), or
-         *     null if it never was. The list is unchanged by it: earlier messages are still returned. The
-         *     web app draws a "New chat" divider before the first message after that time.
+         *     null if the user never started one. The list itself is unchanged: older messages are still
+         *     returned. The web app draws a "New chat" divider before the first web message after that
+         *     time.
          */
         get: operations["listMessages"];
         put?: never;
@@ -141,10 +142,12 @@ export interface paths {
         put?: never;
         /**
          * Start a new web chat
-         * @description The agent no longer sees what was said before in the web chat; its saved memories stay.
-         *     Earlier messages are still listed by `GET /v1/messages`, whose `chatStartedAt` becomes the
-         *     time returned here. No body. No turn runs and no credits are charged. Logged in the
-         *     activity as `chat_started`. Rate limited to 30 an hour per user.
+         * @description The agent starts a fresh conversation in web chat: it no longer sees what was said there
+         *     before. Saved memories (`/v1/memories`) are kept; they are not part of a chat. No body.
+         *     Applies to web chat only (a Telegram chat starts a new one with the message `/new`).
+         *     No turn runs and no credits are charged. Rate limited to 30 an hour per user.
+         *
+         *     The answer's `chatStartedAt` is the same value `GET /v1/messages` returns from now on.
          */
         post: operations["startNewChat"];
         delete?: never;
@@ -494,6 +497,10 @@ export interface paths {
          *     offer. When it is, a user with their own key or Claude plan can still choose it with
          *     `aiPreference: platform`, and go back with `aiPreference: auto`. `aiAccess` always says
          *     what pays for the AI right now.
+         *
+         *     `claudeModel` and `claudeEffort` are the Claude model and the thinking effort Claude Code
+         *     uses (null: Claude Code's own default). They apply to turns that run on Claude Code, and
+         *     can be set whatever the engine is now. `claudeChoices` lists what may be chosen.
          */
         get: operations["getAgentSettings"];
         put?: never;
@@ -503,14 +510,14 @@ export interface paths {
         head?: never;
         /**
          * Choose the agent runtime, Textcrew AI, or Claude Code's model and effort
-         * @description Send `runtime`, `aiPreference`, `claudeModel`, `claudeEffort`, or any of them together.
-         *     A screen with three choices sends:
+         * @description Send `runtime`, `aiPreference` or both. A screen with three choices sends:
          *     own API key → `{ runtime: hermes, aiPreference: auto }`; Claude plan →
          *     `{ runtime: claude_code, aiPreference: auto }`; Textcrew AI → `{ aiPreference: platform }`.
          *
-         *     `claudeModel` and `claudeEffort` can be set whatever the current engine is; they take
-         *     effect on turns that run on Claude Code. Null goes back to Claude Code's own default. A
-         *     model or effort not in `claudeChoices` is 400 `invalid_request`.
+         *     `claudeModel` and `claudeEffort` may be sent too, alone or with the others. Null goes back
+         *     to Claude Code's own default. They can be set whatever the engine is now; they take effect
+         *     on turns that run on Claude Code. A model id that isn't in `claudeChoices.models` is
+         *     400 `invalid_request`. Example: `{ claudeModel: claude-opus-5-5, claudeEffort: xhigh }`.
          */
         patch: operations["updateAgentSettings"];
         trace?: never;
@@ -1710,16 +1717,18 @@ export interface components {
             };
             ownKeyProviders: components["schemas"]["ByokProvider"][];
             /**
-             * @description The Claude model Claude Code uses (one of `claudeChoices.models[].id`); null is Claude Code's default
+             * @description The Claude model Claude Code uses, one of `claudeChoices.models`. Null: Claude Code's
+             *     own default. Applies when Claude Code is the engine.
              * @example claude-opus-5-5
              */
             claudeModel: string | null;
             /**
-             * @description How hard Claude Code thinks; null is Claude Code's default
+             * @description How hard Claude Code thinks. Null: Claude Code's own default. Applies when Claude Code
+             *     is the engine.
              * @enum {string|null}
              */
             claudeEffort: "low" | "medium" | "high" | "xhigh" | "max" | null;
-            /** @description What `claudeModel` and `claudeEffort` can be set to, in the order to offer them */
+            /** @description What may be chosen for `claudeModel` and `claudeEffort`, in display order. */
             claudeChoices: {
                 models: {
                     /** @example claude-opus-5-5 */
@@ -1736,7 +1745,7 @@ export interface components {
                  *       "max"
                  *     ]
                  */
-                efforts: string[];
+                efforts: ("low" | "medium" | "high" | "xhigh" | "max")[];
             };
         };
         ClaudeLoginStart: {
@@ -2097,7 +2106,7 @@ export interface operations {
                         nextCursor: string | null;
                         /**
                          * Format: date-time
-                         * @description When the web chat's latest new chat started (null if never)
+                         * @description When the web chat's latest new chat started. Null if never.
                          */
                         chatStartedAt: string | null;
                     };
@@ -2819,10 +2828,13 @@ export interface operations {
                 "application/json": {
                     runtime?: components["schemas"]["AgentRuntime"];
                     aiPreference?: components["schemas"]["AiPreference"];
-                    /** @description One of `claudeChoices.models[].id`, or null for Claude Code's default */
+                    /**
+                     * @description One of the ids in `claudeChoices.models`, or null for the default.
+                     * @example claude-opus-5-5
+                     */
                     claudeModel?: string | null;
                     /**
-                     * @description One of `claudeChoices.efforts`, or null for Claude Code's default
+                     * @description Null for the default.
                      * @enum {string|null}
                      */
                     claudeEffort?: "low" | "medium" | "high" | "xhigh" | "max" | null;
@@ -2839,7 +2851,15 @@ export interface operations {
                     "application/json": components["schemas"]["AgentSettings"];
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Invalid input, or a Claude model id that isn't on the list */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             /**
              * @description Claude Code needs a connected Claude plan first, or Textcrew AI was chosen while it

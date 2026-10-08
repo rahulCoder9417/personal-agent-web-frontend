@@ -6,7 +6,7 @@ const CHOICES = {
     { id: "claude-opus-5-5", label: "Opus 5.5" },
     { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
   ],
-  efforts: ["low", "medium", "high", "xhigh", "max"],
+  efforts: ["low", "medium", "high", "xhigh", "max"] as ("low" | "medium" | "high" | "xhigh" | "max")[],
 };
 
 describe("modelOptions", () => {
