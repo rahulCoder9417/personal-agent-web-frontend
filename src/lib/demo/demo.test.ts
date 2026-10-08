@@ -18,6 +18,7 @@ import type {
   UsagePeriod,
   UsageTotals,
 } from "@/lib/api/client";
+import { threadIsWorking } from "@/lib/chat-thread";
 import { handleDemoRequest, resetDemoStore } from "./index";
 import { getStore, subscribe } from "./store";
 
@@ -141,6 +142,20 @@ describe("chat", () => {
     // With the user's own AI key only the time Tex ran is charged.
     expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1883);
     expect(getStore().ledger[0]).toMatchObject({ delta: -1, reason: "charge", description: "Usage: awake time 1" });
+  });
+
+  it("shows Tex at work in the web thread and in all chats, not in the Telegram thread, while it answers a web message", async () => {
+    await call<Message>("POST", "messages", { text: "What's on my calendar today?", clientMessageId: uuid(40) });
+    const working = async (filter: "all" | "web" | "telegram") => {
+      const busy = (await call<{ state: string }>("GET", "agent/status")).body.state === "busy";
+      const thread = (await call<Page<Message>>("GET", filter === "all" ? "messages" : `messages?channel=${filter}`)).body.items;
+      return threadIsWorking(filter, busy, thread);
+    };
+
+    vi.advanceTimersByTime(500);
+    expect([await working("all"), await working("web"), await working("telegram")]).toEqual([true, true, false]);
+    vi.advanceTimersByTime(1500);
+    expect([await working("all"), await working("web"), await working("telegram")]).toEqual([false, false, false]);
   });
 
   it("has Scout report what it is doing, charges its search and then answers", async () => {

@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { ChannelType, Message } from "@/lib/api/client";
 import { useAgentProgress, useAgentStatus, useMessages } from "@/lib/api/hooks";
+import { threadIsWorking } from "@/lib/chat-thread";
 import type { ProgressLine } from "@/lib/crew";
 import { CHANNEL_LABEL, cn, formatDate, formatDay, formatTime } from "@/lib/format";
 import { BrandIcon } from "../brand-icon";
@@ -131,17 +132,20 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
   const stick = useRef(true);
   const heightBeforeOlder = useRef<number | null>(null);
 
+  const newestFirst = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
   // The API lists newest first; the thread reads top to bottom.
   // A row also knows whether it starts a new day, so the divider needs no bookkeeping while rendering.
   const messages = useMemo(() => {
-    const ordered = (query.data?.pages.flatMap((p) => p.items) ?? []).slice().reverse();
+    const ordered = newestFirst.slice().reverse();
     return ordered.map((message, index) => ({
       message,
       startsDay: index === 0 || new Date(ordered[index - 1].createdAt).toDateString() !== new Date(message.createdAt).toDateString(),
     }));
-  }, [query.data]);
+  }, [newestFirst]);
   const newestId = messages[messages.length - 1]?.message.id;
   const count = messages.length;
+  // With one chat app picked, only a turn on that chat app shows here.
+  const working = threadIsWorking(channel, busy, newestFirst);
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -153,7 +157,7 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
     } else if (stick.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [count, newestId, busy]);
+  }, [count, newestId, working]);
 
   // Content can grow after it first renders (an approval card loading, a font swapping in).
   // While following, stay pinned to the newest message through that too.
@@ -221,7 +225,7 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
           </div>
         ))}
 
-        {busy && count > 0 && <Working lines={progress} />}
+        {working && count > 0 && <Working lines={progress} />}
       </div>
     </div>
   );
