@@ -1,5 +1,5 @@
 import { NextRequest, type NextFetchEvent } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Which pages can be opened without a session, and where the proxy sends people. Clerk's route
 // matcher is the real one; its middleware is a stand-in that records whether the page asked for a
@@ -7,6 +7,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const env = vi.hoisted(() => ({ mode: "clerk" as "demo" | "dev-token" | "clerk" }));
 const clerk = vi.hoisted(() => ({ ran: 0, protectedPaths: [] as string[], options: undefined as unknown, userId: null as string | null }));
+
+// The key Clerk would be handed, set before the proxy is loaded (it reads the environment once).
+vi.hoisted(() => {
+  process.env.CLERK_JWT_KEY = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg\n-----END PUBLIC KEY-----";
+});
 
 vi.mock("@/lib/env", () => ({ authMode: () => env.mode }));
 vi.mock("@clerk/nextjs/server", async (importOriginal) => {
@@ -28,7 +33,7 @@ vi.mock("@clerk/nextjs/server", async (importOriginal) => {
   };
 });
 
-import proxy, { config } from "./proxy";
+import proxy, { clerkOptions, config } from "./proxy";
 
 const event = {} as NextFetchEvent;
 const visit = (path: string, headers?: Record<string, string>) => proxy(new NextRequest(`https://app.textcrew.in${path}`, { headers }), event);
@@ -36,6 +41,10 @@ const open = async (path: string) => {
   await visit(path);
   return !clerk.protectedPaths.includes(new URL(path, "https://app.textcrew.in").pathname);
 };
+
+afterAll(() => {
+  delete process.env.CLERK_JWT_KEY;
+});
 
 beforeEach(() => {
   env.mode = "clerk";
@@ -105,7 +114,16 @@ describe("sign-in proxy", () => {
   });
 
   it("sends someone without a session to this app's own sign-in page, not to Clerk's", () => {
-    expect(clerk.options).toEqual({ signInUrl: "/sign-in", signUpUrl: "/sign-up" });
+    expect(clerk.options).toMatchObject({ signInUrl: "/sign-in", signUpUrl: "/sign-up" });
+  });
+
+  it("hands Clerk the JWT public key when CLERK_JWT_KEY is set, so tokens are checked without calling Clerk", () => {
+    expect(clerk.options).toEqual(clerkOptions(process.env));
+    expect(clerk.options).toMatchObject({ jwtKey: process.env.CLERK_JWT_KEY });
+    expect(clerkOptions({ CLERK_JWT_KEY: "  pem  " })).toEqual({ signInUrl: "/sign-in", signUpUrl: "/sign-up", jwtKey: "pem" });
+    // Not set, or empty: Clerk fetches its keys as before.
+    expect(clerkOptions({})).toEqual({ signInUrl: "/sign-in", signUpUrl: "/sign-up" });
+    expect(clerkOptions({ CLERK_JWT_KEY: " " })).toEqual({ signInUrl: "/sign-in", signUpUrl: "/sign-up" });
   });
 
   it("checks nothing when Clerk isn't in use", async () => {

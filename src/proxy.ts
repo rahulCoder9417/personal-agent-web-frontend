@@ -1,4 +1,4 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher, type ClerkMiddlewareOptions } from "@clerk/nextjs/server";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { afterAuthPath, requestOrigin, SIGN_IN_PATH, SIGN_UP_PATH, SSO_CALLBACK_PATH } from "@/lib/auth-flow";
 import { authMode } from "@/lib/env";
@@ -14,6 +14,17 @@ import { authMode } from "@/lib/env";
 const isOpen = createRouteMatcher([SIGN_IN_PATH, SIGN_UP_PATH, SSO_CALLBACK_PATH, "/connected", "/billing", "/api/(.*)"]);
 const isSignInPage = createRouteMatcher([SIGN_IN_PATH, SIGN_UP_PATH]);
 const isAuthPage = createRouteMatcher([SIGN_IN_PATH, SIGN_UP_PATH, SSO_CALLBACK_PATH]);
+
+/**
+ * Clerk's options. `signInUrl` and `signUpUrl` send someone without a session to this app's own
+ * pages (left out, that is Clerk's hosted page). `CLERK_JWT_KEY`, when set, lets Clerk check a
+ * session token with that public key instead of fetching its keys from Clerk's API; Clerk doesn't
+ * read that variable by itself.
+ */
+export function clerkOptions(env: Readonly<Record<string, string | undefined>>): ClerkMiddlewareOptions {
+  const jwtKey = env.CLERK_JWT_KEY?.trim();
+  return { signInUrl: SIGN_IN_PATH, signUpUrl: SIGN_UP_PATH, ...(jwtKey ? { jwtKey } : {}) };
+}
 
 /** An address on this app, as the browser sees it (behind Vercel or Caddy, the forwarded host). */
 function here(request: NextRequest, path: string): URL {
@@ -31,8 +42,7 @@ const withClerk = clerkMiddleware(
     }
     if (!isOpen(request)) await auth.protect();
   },
-  // Where someone without a session is sent. Left out, that is Clerk's own hosted sign-in page.
-  { signInUrl: SIGN_IN_PATH, signUpUrl: SIGN_UP_PATH },
+  clerkOptions(process.env),
 );
 
 export default function proxy(request: NextRequest, event: NextFetchEvent) {
