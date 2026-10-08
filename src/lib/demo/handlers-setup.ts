@@ -138,6 +138,22 @@ function syncAgentSettings(state: DemoState): void {
 
 export const listByokKeys: Handler = ({ state }) => json({ items: state.byok });
 
+/** The model a provider's key uses when none is named, as the backend picks it. */
+const DEFAULT_MODEL: Record<ByokProvider, string> = {
+  anthropic: "claude-sonnet-5-5",
+  openai: "gpt-6.1-sol",
+  openrouter: "anthropic/claude-sonnet-5.5",
+};
+
+/** As in the backend: of the saved keys, the one saved last pays for the AI. */
+function markKeyInUse(state: DemoState): void {
+  const saved = state.byok.filter((key) => key.set).sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+  for (const key of state.byok) {
+    key.inUse = key === saved[0];
+    key.effectiveModel = key.model || DEFAULT_MODEL[key.provider];
+  }
+}
+
 function findKey(state: DemoState, provider: string): ByokKey {
   const name = oneOf(provider, PROVIDERS, "provider");
   return state.byok.find((key) => key.provider === name) as ByokKey;
@@ -154,6 +170,7 @@ export const setByokKey: Handler = async ({ state, request, params }) => {
   key.last4 = apiKey.slice(-4);
   key.model = model || key.model || null;
   key.updatedAt = nowIso();
+  markKeyInUse(state);
   syncAgentSettings(state);
   return json(key);
 };
@@ -161,6 +178,7 @@ export const setByokKey: Handler = async ({ state, request, params }) => {
 export const deleteByokKey: Handler = ({ state, params }) => {
   const key = findKey(state, params.provider);
   Object.assign(key, { set: false, last4: null, model: null, updatedAt: null });
+  markKeyInUse(state);
   syncAgentSettings(state);
   return noContent();
 };

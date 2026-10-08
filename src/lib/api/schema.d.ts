@@ -320,10 +320,20 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Set or replace the user's own API key for a provider */
+        /**
+         * Set or replace the user's own API key for a provider
+         * @description The key is test-called with the provider, saved encrypted, and then put in use: when the
+         *     user's own key is what pays for their AI, every model call from their agent goes to this
+         *     provider with this key. If the AI gateway cannot be switched to the key, nothing is saved
+         *     and the answer is 503. When several keys are saved, the one saved last pays.
+         */
         put: operations["setByokKey"];
         post?: never;
-        /** Remove the user's key for a provider */
+        /**
+         * Remove the user's key for a provider
+         * @description The agent stops using the key first. If the AI gateway cannot be switched away from it,
+         *     nothing is removed, the key stays in use, and the answer is 503.
+         */
         delete: operations["deleteByokKey"];
         options?: never;
         head?: never;
@@ -483,8 +493,11 @@ export interface paths {
          * The crew, the lead and its specialists
          * @description Tex is the lead (the agent the user texts). Byte, Patch and Scout are the specialists it
          *     hands work to. The ids are fixed. `available` says whether a member works on this
-         *     deployment yet. Scout's `browser` says which plan the real browser needs and whether it is
-         *     built yet.
+         *     deployment yet. Scout's `browser` says which plan the real browser needs, whether this
+         *     deployment has it (`available`) and whether it is on for the signed-in user (`enabled`).
+         *     Scout's `description` says what else needs that plan: web search through Textcrew is part
+         *     of Max too, while the search built into the user's own Claude plan works on every plan and
+         *     costs no credits.
          */
         get: operations["listCrew"];
         put?: never;
@@ -753,9 +766,13 @@ export interface paths {
         /**
          * Audit log of everything the agent did for this user
          * @description A `run_app_action` entry carries `creditsCharged`: 1 for a successful action that changed
-         *     something, 0 for one that only read. A `web_search` entry carries what the search cost.
+         *     something, 0 for one that only read. A `web_search` entry carries what the search cost
+         *     (1 credit). A `web_search_refused` entry is a search that did not run because web search
+         *     through Textcrew is part of the Max plan and the user is on another plan; it cost nothing.
          *     A `read_page_refused` entry is a web address the agent asked to read and was not allowed to.
          *     A `crew_progress` entry is a progress line from a specialist; `crew` names it.
+         *     `browser_enabled` and `browser_disabled` (actor `system`): Scout's browser was switched on
+         *     or off for the user, because their plan changed or the deployment got or lost the browser.
          *     Memory (HLD 0.9): `remember` (the agent saved a memory), `forget` (it removed or corrected
          *     one), `recall` (it searched), `memory_refused` (a save was refused because it looked like
          *     a secret), `memory_deleted` and `memories_cleared` (the user deleted in the web app).
@@ -1054,6 +1071,7 @@ export interface components {
                  * @example channel_disabled
                  * @example invalid_or_expired_code
                  * @example conflict
+                 * @example unavailable
                  * @example internal
                  */
                 code: string;
@@ -1225,7 +1243,16 @@ export interface components {
             provider: components["schemas"]["ByokProvider"];
             set: boolean;
             last4?: string | null;
+            /** @description The model the user chose (null = the provider's default) */
             model?: string | null;
+            /** @description The model that runs with this key, the user's choice or the provider's default */
+            effectiveModel: string;
+            /**
+             * @description True when the agent's model calls go to this provider with this key right now. False
+             *     when no key is set, when another source pays (Textcrew AI chosen, a Claude plan in
+             *     charge, or a key saved later), or while the switch to this key is still pending.
+             */
+            inUse: boolean;
             /** Format: date-time */
             updatedAt?: string | null;
         };
@@ -1332,11 +1359,24 @@ export interface components {
             description: string;
             /** @description Whether this member works on this deployment yet. */
             available: boolean;
-            /** @description Scout only. The real browser Scout can drive. */
+            /**
+             * @description Scout only. The real browser Scout can drive. It runs inside the user's own container
+             *     and costs 2 credits per minute of browser time.
+             */
             browser: {
                 requiresPlan: components["schemas"]["PlanId"];
-                /** @description Whether the browser is built yet (not the same as being on the plan). */
+                /**
+                 * @description Whether this deployment has the browser (the server setting `BROWSER_AVAILABLE`).
+                 *     The same for every user, and not the same as being on the plan. False: don't
+                 *     offer a browser to anyone yet.
+                 */
                 available: boolean;
+                /**
+                 * @description Whether the browser is switched on for the signed-in user: the deployment has it
+                 *     and the user's plan includes it. After a change of plan, the user's agent has it
+                 *     (or loses it) from its next start.
+                 */
+                enabled: boolean;
             } | null;
         };
         AgentProgress: {
@@ -1392,6 +1432,10 @@ export interface components {
                 /** @description Browser use is part of this plan (Max only). */
                 browser: boolean;
             };
+            /**
+             * @description Lines for the pricing page. Max names Scout's web search (1 credit per search) and
+             *     browser use (2 credits per minute); Free and Pro name neither.
+             */
             features: string[];
         };
         TopUpPack: {
@@ -1459,12 +1503,16 @@ export interface components {
              *     send, create, update or delete; reading and searching are free).
              */
             appActionCredits: number;
+            /** @description Seconds Scout's browser was in use in this period. */
             browserSeconds?: number;
-            /** @description Browser time (2 credits per minute) */
+            /**
+             * @description Browser time, at 2 credits per minute (1 credit per 30 seconds). Part minutes carry
+             *     over to the next period, so this can be 0 for a period with a few browser seconds.
+             */
             browserCredits: number;
             /**
-             * @description Paid tools, such as web search (their cost × 2.5). Browser time is not in here: it has
-             *     its own number, `browserCredits`.
+             * @description Paid tools. Today that is Scout's web search through Textcrew: 1 credit per search,
+             *     Max plan only. Browser time is not in here: it has its own number, `browserCredits`.
              */
             toolCredits: number;
             /** @description aiCredits + awakeCredits + appActionCredits + browserCredits + toolCredits */
@@ -1650,10 +1698,14 @@ export interface components {
              * @example approval_decided
              * @example coupon_redeemed
              * @example channel_linked
+             * @example channel_unlinked
              * @example web_search
+             * @example web_search_refused
              * @example read_page
              * @example read_page_refused
              * @example crew_progress
+             * @example browser_enabled
+             * @example browser_disabled
              * @example pr_review_requested
              * @example remember
              * @example recall
@@ -1671,7 +1723,7 @@ export interface components {
             crew?: "byte" | "patch" | "scout" | null;
             /** @description The memory this entry is about (`remember`, `forget`, `memory_deleted`). It may have been deleted since. Null for every other entry. */
             memoryId?: string | null;
-            /** @description Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Web search: what the search cost. Null when nothing is charged per entry. */
+            /** @description Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Web search: 1 for a search that ran, 0 for one that did not. Null when nothing is charged per entry. */
             creditsCharged?: number | null;
             /** Format: date-time */
             createdAt: string;
@@ -2384,7 +2436,11 @@ export interface operations {
             content: {
                 "application/json": {
                     apiKey: string;
-                    /** @description Preferred model id for this provider */
+                    /**
+                     * @description The provider's model id to use with this key (e.g. `claude-opus-5-5`, or
+                     *     `openai/gpt-6.1-sol` on OpenRouter). Left out: the provider's default, shown
+                     *     in `effectiveModel`.
+                     */
                     model?: string;
                 };
             };
@@ -2401,6 +2457,15 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            /** @description The AI gateway could not be switched to this key; nothing was saved. Retry */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     deleteByokKey: {
@@ -2422,6 +2487,15 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            /** @description The AI gateway could not be switched away from this key; it was not removed. Retry */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listAutomations: {

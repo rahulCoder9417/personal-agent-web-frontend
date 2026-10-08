@@ -436,7 +436,7 @@ describe("setup", () => {
       ["patch", "specialist", true],
       ["scout", "specialist", true],
     ]);
-    expect(crew.find((member) => member.id === "scout")?.browser).toEqual({ requiresPlan: "max", available: false });
+    expect(crew.find((member) => member.id === "scout")?.browser).toEqual({ requiresPlan: "max", available: false, enabled: false });
     expect(crew.filter((member) => member.browser !== null)).toHaveLength(1);
 
     getStore().crewAvailable = ["byte"];

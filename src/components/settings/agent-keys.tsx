@@ -21,7 +21,7 @@ function keyMeta(entry: ByokKey): string {
   if (!entry.set) return "No key added";
   return [
     entry.last4 ? `•••• ${entry.last4}` : "key saved",
-    entry.model || null,
+    entry.effectiveModel || entry.model || null,
     entry.updatedAt ? `updated ${formatDate(entry.updatedAt)}` : null,
   ]
     .filter(Boolean)
@@ -115,7 +115,7 @@ function KeyRow({ entry }: { entry: ByokKey }) {
         </div>
         {entry.set ? (
           <>
-            <Pill tone="done">Key saved</Pill>
+            {entry.inUse ? <Pill tone="done">In use</Pill> : <Pill tone="muted">Saved</Pill>}
             {!editing && (
               <Button size="sm" onClick={() => setEditing(true)} aria-label={`Replace ${name} key`}>
                 Replace
@@ -163,7 +163,7 @@ export function ApiKeysSection({ state }: { state: AiChoiceState }) {
         <Card>
           <ul>
             {PROVIDERS.map((provider) => (
-              <KeyRow key={provider} entry={keys.data.find((key) => key.provider === provider) ?? { provider, set: false }} />
+              <KeyRow key={provider} entry={keys.data.find((key) => key.provider === provider) ?? { provider, set: false, inUse: false, effectiveModel: "" }} />
             ))}
           </ul>
         </Card>

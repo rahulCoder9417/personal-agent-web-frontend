@@ -624,9 +624,9 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
     apps: seedApps(),
     mcpServers: seedMcpServers(plan, now),
     byok: [
-      { provider: "anthropic", set: true, last4: "x7Qd", model: "claude-sonnet-5-5", updatedAt: atDay(now, SIGNUP_DAYS_AGO, 9, 55) },
-      { provider: "openai", set: false, last4: null, model: null, updatedAt: null },
-      { provider: "openrouter", set: false, last4: null, model: null, updatedAt: null },
+      { provider: "anthropic", set: true, last4: "x7Qd", model: "claude-sonnet-5-5", effectiveModel: "claude-sonnet-5-5", inUse: true, updatedAt: atDay(now, SIGNUP_DAYS_AGO, 9, 55) },
+      { provider: "openai", set: false, last4: null, model: null, effectiveModel: "gpt-6.1-sol", inUse: false, updatedAt: null },
+      { provider: "openrouter", set: false, last4: null, model: null, effectiveModel: "anthropic/claude-sonnet-5.5", inUse: false, updatedAt: null },
     ],
     automations: seedAutomations(now),
     prReviews: SEED_REVIEWS.map((review) => ({ ...review })),

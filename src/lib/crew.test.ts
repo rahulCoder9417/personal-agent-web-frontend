@@ -10,7 +10,7 @@ function crew(available: CrewMember["id"][], browserBuilt = false): CrewMember[]
     role,
     description: `${name} does its job.`,
     available: kind === "lead" || available.includes(id),
-    browser: id === "scout" ? { requiresPlan: "max", available: browserBuilt } : null,
+    browser: id === "scout" ? { requiresPlan: "max", available: browserBuilt, enabled: false } : null,
   });
   return [member("tex", "Tex", "Lead", "lead"), member("byte", "Byte", "Coding"), member("patch", "Patch", "Code review"), member("scout", "Scout", "Research")];
 }
@@ -47,14 +47,14 @@ describe("crewNavNote", () => {
 
 describe("the browser", () => {
   it("is read from the member that has one", () => {
-    expect(crewBrowser(crew([]))).toEqual({ requiresPlan: "max", available: false });
+    expect(crewBrowser(crew([]))).toEqual({ requiresPlan: "max", available: false, enabled: false });
     expect(crewBrowser(undefined)).toBeNull();
     expect(crewBrowser(crew([]).filter((m) => m.id !== "scout"))).toBeNull();
   });
 
   it("keeps 'built yet' apart from 'on your plan'", () => {
-    const built = { requiresPlan: "max" as const, available: true };
-    const notBuilt = { requiresPlan: "max" as const, available: false };
+    const built = { requiresPlan: "max" as const, available: true, enabled: false };
+    const notBuilt = { requiresPlan: "max" as const, available: false, enabled: false };
     expect(describeBrowser(notBuilt, "Max", false)).toEqual({ text: "A real browser isn’t ready yet. It will need the Max plan.", upgrade: false });
     expect(describeBrowser(notBuilt, "Max", true).text).toBe("A real browser isn’t ready yet. It comes with your Max plan when it is.");
     expect(describeBrowser(built, "Max", false)).toEqual({ text: "A real browser needs the Max plan.", upgrade: true });

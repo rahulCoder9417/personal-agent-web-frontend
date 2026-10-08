@@ -24,7 +24,7 @@ export const listCrew: Handler = ({ state }) => {
   const items: CrewMember[] = CREW.map((member) => ({
     ...member,
     available: member.kind === "lead" || state.crewAvailable.some((id) => id === member.id),
-    browser: member.id === "scout" ? { requiresPlan: browserPlan, available: BROWSER_BUILT } : null,
+    browser: member.id === "scout" ? { requiresPlan: browserPlan, available: BROWSER_BUILT, enabled: BROWSER_BUILT && state.user.plan === browserPlan } : null,
   }));
   return json({ items });
 };

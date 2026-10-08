@@ -532,6 +532,11 @@ paths:
       operationId: setByokKey
       tags: [byok]
       summary: Set or replace the user's own API key for a provider
+      description: |
+        The key is test-called with the provider, saved encrypted, and then put in use: when the
+        user's own key is what pays for their AI, every model call from their agent goes to this
+        provider with this key. If the AI gateway cannot be switched to the key, nothing is saved
+        and the answer is 503. When several keys are saved, the one saved last pays.
       parameters:
         - $ref: "#/components/parameters/Provider"
       requestBody:
@@ -543,7 +548,14 @@ paths:
               required: [apiKey]
               properties:
                 apiKey: { type: string, minLength: 10, writeOnly: true }
-                model: { type: string, description: Preferred model id for this provider }
+                model:
+                  type: string
+                  maxLength: 128
+                  pattern: "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+                  description: |
+                    The provider's model id to use with this key (e.g. `claude-opus-5-5`, or
+                    `openai/gpt-6.1-sol` on OpenRouter). Left out: the provider's default, shown
+                    in `effectiveModel`.
       responses:
         "200":
           description: Saved (the key is test-called before saving)
@@ -552,15 +564,28 @@ paths:
               schema: { $ref: "#/components/schemas/ByokKey" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "503":
+          description: The AI gateway could not be switched to this key; nothing was saved. Retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     delete:
       operationId: deleteByokKey
       tags: [byok]
       summary: Remove the user's key for a provider
+      description: |
+        The agent stops using the key first. If the AI gateway cannot be switched away from it,
+        nothing is removed, the key stays in use, and the answer is 503.
       parameters:
         - $ref: "#/components/parameters/Provider"
       responses:
         "204": { description: Removed }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "503":
+          description: The AI gateway could not be switched away from this key; it was not removed. Retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   # ---------------------------------------------------------------- automations
   /v1/automations:
@@ -775,8 +800,11 @@ paths:
       description: |
         Tex is the lead (the agent the user texts). Byte, Patch and Scout are the specialists it
         hands work to. The ids are fixed. `available` says whether a member works on this
-        deployment yet. Scout's `browser` says which plan the real browser needs and whether it is
-        built yet.
+        deployment yet. Scout's `browser` says which plan the real browser needs, whether this
+        deployment has it (`available`) and whether it is on for the signed-in user (`enabled`).
+        Scout's `description` says what else needs that plan: web search through Textcrew is part
+        of Max too, while the search built into the user's own Claude plan works on every plan and
+        costs no credits.
       responses:
         "200":
           description: OK
@@ -1127,9 +1155,13 @@ paths:
       summary: Audit log of everything the agent did for this user
       description: |
         A `run_app_action` entry carries `creditsCharged`: 1 for a successful action that changed
-        something, 0 for one that only read. A `web_search` entry carries what the search cost.
+        something, 0 for one that only read. A `web_search` entry carries what the search cost
+        (1 credit). A `web_search_refused` entry is a search that did not run because web search
+        through Textcrew is part of the Max plan and the user is on another plan; it cost nothing.
         A `read_page_refused` entry is a web address the agent asked to read and was not allowed to.
         A `crew_progress` entry is a progress line from a specialist; `crew` names it.
+        `browser_enabled` and `browser_disabled` (actor `system`): Scout's browser was switched on
+        or off for the user, because their plan changed or the deployment got or lost the browser.
         Memory (HLD 0.9): `remember` (the agent saved a memory), `forget` (it removed or corrected
         one), `recall` (it searched), `memory_refused` (a save was refused because it looked like
         a secret), `memory_deleted` and `memories_cleared` (the user deleted in the web app).
@@ -1652,7 +1684,7 @@ components:
               type: string
               examples: [invalid_request, unauthorized, forbidden, not_found, rate_limited,
                          out_of_credits, plan_limit, channel_disabled, invalid_or_expired_code,
-                         conflict, internal]
+                         conflict, unavailable, internal]
             message: { type: string }
             details: { type: object, additionalProperties: true }
 
@@ -1817,12 +1849,23 @@ components:
 
     ByokKey:
       type: object
-      required: [provider, set]
+      required: [provider, set, effectiveModel, inUse]
       properties:
         provider: { $ref: "#/components/schemas/ByokProvider" }
         set: { type: boolean }
         last4: { type: [string, "null"] }
-        model: { type: [string, "null"] }
+        model:
+          type: [string, "null"]
+          description: The model the user chose (null = the provider's default)
+        effectiveModel:
+          type: string
+          description: The model that runs with this key, the user's choice or the provider's default
+        inUse:
+          type: boolean
+          description: |
+            True when the agent's model calls go to this provider with this key right now. False
+            when no key is set, when another source pays (Textcrew AI chosen, a Claude plan in
+            charge, or a key saved later), or while the switch to this key is still pending.
         updatedAt: { type: [string, "null"], format: date-time }
 
     Automation:
@@ -1911,13 +1954,24 @@ components:
           description: Whether this member works on this deployment yet.
         browser:
           type: [object, "null"]
-          description: Scout only. The real browser Scout can drive.
-          required: [requiresPlan, available]
+          description: |
+            Scout only. The real browser Scout can drive. It runs inside the user's own container
+            and costs 2 credits per minute of browser time.
+          required: [requiresPlan, available, enabled]
           properties:
             requiresPlan: { $ref: "#/components/schemas/PlanId" }
             available:
               type: boolean
-              description: Whether the browser is built yet (not the same as being on the plan).
+              description: |
+                Whether this deployment has the browser (the server setting `BROWSER_AVAILABLE`).
+                The same for every user, and not the same as being on the plan. False: don't
+                offer a browser to anyone yet.
+            enabled:
+              type: boolean
+              description: |
+                Whether the browser is switched on for the signed-in user: the deployment has it
+                and the user's plan includes it. After a change of plan, the user's agent has it
+                (or loses it) from its next start.
 
     AgentProgress:
       type: object
@@ -1961,6 +2015,9 @@ components:
               description: Browser use is part of this plan (Max only).
         features:
           type: array
+          description: |
+            Lines for the pricing page. Max names Scout's web search (1 credit per search) and
+            browser use (2 credits per minute); Free and Pro name neither.
           items: { type: string }
 
     TopUpPack:
@@ -2031,13 +2088,19 @@ components:
           description: |
             Credits for app actions that changed something in this period (1 credit per successful
             send, create, update or delete; reading and searching are free).
-        browserSeconds: { type: integer }
-        browserCredits: { type: integer, description: Browser time (2 credits per minute) }
+        browserSeconds:
+          type: integer
+          description: Seconds Scout's browser was in use in this period.
+        browserCredits:
+          type: integer
+          description: |
+            Browser time, at 2 credits per minute (1 credit per 30 seconds). Part minutes carry
+            over to the next period, so this can be 0 for a period with a few browser seconds.
         toolCredits:
           type: integer
           description: |
-            Paid tools, such as web search (their cost × 2.5). Browser time is not in here: it has
-            its own number, `browserCredits`.
+            Paid tools. Today that is Scout's web search through Textcrew: 1 credit per search,
+            Max plan only. Browser time is not in here: it has its own number, `browserCredits`.
         totalCredits:
           type: integer
           description: aiCredits + awakeCredits + appActionCredits + browserCredits + toolCredits
@@ -2242,7 +2305,7 @@ components:
       properties:
         id: { type: string }
         actor: { type: string, enum: [user, agent, admin, system] }
-        action: { type: string, examples: [run_app_action, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked, web_search, read_page, read_page_refused, crew_progress, pr_review_requested, remember, recall, forget, memory_refused, memory_deleted, memories_cleared] }
+        action: { type: string, examples: [run_app_action, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked, channel_unlinked, web_search, web_search_refused, read_page, read_page_refused, crew_progress, browser_enabled, browser_disabled, pr_review_requested, remember, recall, forget, memory_refused, memory_deleted, memories_cleared] }
         summary: { type: string }
         crew:
           type: [string, "null"]
@@ -2253,7 +2316,7 @@ components:
           description: The memory this entry is about (`remember`, `forget`, `memory_deleted`). It may have been deleted since. Null for every other entry.
         creditsCharged:
           type: [integer, "null"]
-          description: "Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Web search: what the search cost. Null when nothing is charged per entry."
+          description: "Credits this entry cost. App actions: 1 if it changed something, 0 if it only read. Web search: 1 for a search that ran, 0 for one that did not. Null when nothing is charged per entry."
         createdAt: { type: string, format: date-time }
 
     StreamEvent:
