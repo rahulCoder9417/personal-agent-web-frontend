@@ -41,6 +41,8 @@ Things to try in the demo:
 - **The crew at work**: ask Tex in the web chat to research something ("research what other tools charge"), fix code ("fix the bug in…") or review ("review my pull request"). Scout, Byte or Patch reports three lines while it works, then Tex answers. Scout's search costs 1 credit.
 - **Pull-request review** (Automations → Pull-request review): two repos are seeded, one on and one paused after failures. Pro allows five automations and four are used, so one more repo can be given review and the next one hits the plan limit. A repo owned by `octocat` stands in for one the GitHub account can't administer. Disconnect GitHub under Apps to see the screen without it.
 - **Choosing Textcrew AI** (Settings → Agent & AI): the demo has an Anthropic key saved, so "Use Textcrew AI" and the way back are both there.
+- **A new chat**: "New chat" in the chat's header. The demo's web chat starts empty (the seeded messages are Telegram's), so the first one starts at once and the divider shows at the bottom; say something, and the next one asks once more.
+- **Claude Code's model and effort** (Settings → Agent & AI): connect the Claude plan with any code of four characters or more, then pick a model and a thinking effort.
 - **Memory** (Settings → Memory): eight memories are seeded. Tell Tex "remember that I send invoices on the 1st" in the web chat and it is saved; "remember that my password is…" is refused. Both are in the activity log.
 
 ## Against the real backend
@@ -92,18 +94,25 @@ The screens don't know which chat apps or which AI are on offer. They ask.
 **AI, three ways.** Settings → Agent & AI and the third onboarding step offer the same three choices:
 
 1. **Your own API key** (recommended): Anthropic, OpenAI or OpenRouter. The provider bills the AI.
-2. **Your Claude plan** (beta): runs Claude Code in the person's private workspace. Plain text only, no logos.
+2. **Your Claude plan** (beta): runs Claude Code in the person's private workspace. Plain text only, no logos. Once it is connected, its section has two selects, "Model" and "Thinking effort", each with "Default" (Claude Code's own) first.
 3. **Textcrew AI**: nothing to set up, paid in credits. It is what Tex uses when no key or plan is connected.
 
 `GET /v1/agent/settings` says all of it (`src/components/settings/agent-summary.ts` puts it into words):
 
 - `aiAccess` (`own_key`, `claude_plan`, `platform` or `none`) is what pays for the AI right now.
 - `platformAvailable` is whether Textcrew AI is on offer. When it is false (`AI_ACCESS_MODE=own_only` on the backend) the card says "Not available" rather than hiding.
+- `claudeModel` and `claudeEffort` are what Claude Code runs with (null is its default), and `claudeChoices` (`models` with an id and label each, `efforts`) is what they can be set to, in the order the selects offer them (`src/lib/claude-code.ts`). A change is saved as it is made (`PATCH /v1/agent/settings` with `claudeModel` or `claudeEffort`; "Default" sends null), shown at once and put back if refused. They can be set whatever runs now and apply to turns on Claude Code; a value not offered is 400 `invalid_request`.
 - `aiPreference` (`auto` or `platform`) is what the person chose. Someone with a key saved or a Claude plan connected can choose Textcrew AI anyway ("Use Textcrew AI" sends `{ aiPreference: "platform" }`) and go back ("Go back to your Anthropic key" sends `{ runtime: "hermes", aiPreference: "auto" }`; to the Claude plan, `{ runtime: "claude_code", aiPreference: "auto" }`). The key and the plan stay saved either way. With Textcrew AI chosen the agent shown as running is Hermes, and picking Claude Code goes back to the plan.
 
 **The crew.** `GET /v1/crew` lists Tex and the specialists with a name, role and description each, whether each one works on this deployment yet (`available`), and for Scout which plan the real browser needs and whether it is built yet (`browser`). The crew page, the "soon" note in the navigation and the browser note on the Plans screen are built from it (`src/lib/crew.ts`). The app keeps only the figures and their colours.
 
 **Credits.** What credits pay for is written once, in `src/lib/credit-costs.ts`: Textcrew AI if you use it, the agent's running time (1 credit per 10 minutes), app actions that change something (1 credit each; reading and searching are free), paid tools such as Scout's web search (about 1 credit per search) and browser use on the Max plan (2 credits per minute). The usage chart shows the same five parts from `GET /v1/usage`: browser use (`browserCredits`) and paid tools (`toolCredits`) are separate numbers. In the history (`GET /v1/credits/ledger`) browser use is part of a usage line and a paid tool is its own line, known by its name ("Web search"), because the ledger has no field for the kind of charge. Whether a plan includes browser use is `limits.browser`.
+
+## Chat
+
+- **One thread for every chat app**, newest at the bottom, with a filter by chat app when there is more than one.
+- **New chat**: the button in the chat's header calls `POST /v1/chats/new`, which starts the web chat afresh: Tex no longer sees what was said before in it, and its saved memories stay. A web chat with nothing said since it last started starts over at once; one with messages asks once more ("Start a new chat" / "Cancel"). `GET /v1/messages` says when the latest new chat started (`chatStartedAt`), and the thread draws a "New chat" divider before the first message after it, or at the end until someone speaks. Earlier messages stay above it, so nothing seems lost. Only the web chat's start is known, so the divider shows under All and Web, not under another chat app (`src/lib/chat-thread.ts`). The button is there while web chat is switched on; 30 an hour, after which a toast says so. On Telegram, `/new` does the same for that chat (the backend's part). It is in the activity log as "You · started a new chat".
+- **Tex at work**: the "Tex is working" bubble and its progress lines follow the agent's state under All. Under one chat app they show only while that chat has a turn going: its newest incoming message that has left the queue is `processing` (the backend sets that when the agent takes the message and moves it on when the turn ends) and the agent is busy. A turn on Telegram doesn't show in the Web thread.
 
 ## Pull-request review
 
@@ -200,6 +209,8 @@ src/lib/
   crew.ts            who is on the crew and what they are doing, from what the backend says
   memory.ts          what Tex remembers: the kinds, their order and how a memory's dates read
   pr-review.ts       reading a repo as typed, a repo's state and the API's refusals in words
+  chat-thread.ts     the chat thread: whether Tex is at work in it, the "New chat" divider, when a new chat asks first
+  claude-code.ts     Claude Code's model and thinking effort as the selects offer them
   credit-costs.ts    what credits pay for, in the words every screen uses
   checkout.ts        what a Polar checkout is waiting for, and when it has arrived
 ```
@@ -221,6 +232,8 @@ src/lib/
   - Memory can't be added or edited from the app, and has no live event (the list is asked for again when a turn ends).
   - The activity log names a memory by id only. Once it is deleted, the log can't say what it was, and a `forget` entry doesn't say whether Tex removed or corrected (the app goes by the entry's summary).
   - A refused save (`memory_refused`) and a search (`recall`) carry no `memoryId`, so they link nowhere.
+  - Only the web chat's new chat is known (`chatStartedAt`): one started on Telegram with `/new` draws no divider. A new chat started in another tab shows once the messages are asked for again (there is no live event for it).
+  - A turn with no incoming message of its own (an automation, the follow-up to an approval) shows Tex at work only under All, because the agent's state carries no channel.
 - Installed on a phone, the app has not been tried on a real Android phone or iPhone.
 - Not yet run with a real Clerk application, real Polar products or a real agent container. The sign-in pages have been rendered with the real (development) Clerk application, but no one has signed in or up through them yet: the steps against Clerk are covered by unit tests of the logic, not by a real sign-in.
 - Sign-in has no second factor beyond a code by email, no passkeys and no phone numbers, because none is switched on in Clerk.
