@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/shell/providers";
 import { APP_BACKGROUND, APP_DESCRIPTION, APP_NAME } from "@/lib/app-meta";
+import { SIGN_IN_PATH, SIGN_UP_PATH } from "@/lib/auth-flow";
 import { authMode } from "@/lib/env";
 import "./globals.css";
 
@@ -43,5 +44,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     </html>
   );
   // Only Clerk mode has something to sign in to; otherwise the provider stays out of the tree.
-  return mode === "clerk" ? <ClerkProvider signInUrl="/sign-in">{page}</ClerkProvider> : page;
+  // Clerk is the sign-in service only: the pages at these two addresses are this app's own forms.
+  return mode === "clerk" ? (
+    <ClerkProvider signInUrl={SIGN_IN_PATH} signUpUrl={SIGN_UP_PATH}>
+      {page}
+    </ClerkProvider>
+  ) : (
+    page
+  );
 }
