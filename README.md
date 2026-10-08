@@ -26,6 +26,8 @@ pnpm dev          # http://localhost:3000
 
 With no environment set, the app runs in **demo mode**: the proxy answers from an in-memory account (`src/lib/demo/`) and sign-in is skipped. Messages get a canned reply, approvals can be decided, and the coupon `TEXTCREW-DEMO` adds credits, so every screen can be exercised.
 
+Demo mode, sign-in or the development token is decided when the app is built, or when `pnpm dev` starts (see [Loading](#loading)). After setting or removing the Clerk keys, `TEXTCREW_DEMO` or `TEXTCREW_DEV_TOKEN`, restart `pnpm dev` or build again.
+
 The demo account behaves like the backend at launch: Telegram and the web chat are switched on, Textcrew AI is on offer, Byte, Patch and Scout are on the crew, and credits are charged for running time, for app actions that change something and for Scout's web searches. Three settings show the other cases:
 
 | | |
@@ -46,7 +48,7 @@ Things to try in the demo:
 **With Clerk (how it runs for real)**
 
 1. Start the backend (`../beckend`, `pnpm dev`, API on `:8080`).
-2. Copy `.env.example` to `.env.local` and set `TEXTCREW_API_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` (the same Clerk application as the backend).
+2. Copy `.env.example` to `.env.local` and set `TEXTCREW_API_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` (the same Clerk application as the backend). `CLERK_JWT_KEY` (Clerk's JWT public key, PEM) is optional: with it the proxy checks session tokens itself instead of fetching Clerk's keys. Clerk's package doesn't read that variable on its own; `clerkOptions` in `src/proxy.ts` hands it over.
 3. `pnpm dev`. The backend's `WEB_APP_URL` and `CLERK_AUTHORIZED_PARTIES` default to `http://localhost:3000`, which is this app.
 
 **Without Clerk, Docker or a Polar account (for working on the app)**
@@ -56,6 +58,13 @@ pnpm backend:local     # the real api + worker, on :8080
 ```
 
 That starts the backend from `../beckend` with embedded Postgres and a throwaway Redis, seeds one user and prints two lines for `.env.local` (`TEXTCREW_API_URL` and a `TEXTCREW_DEV_TOKEN`). With the token set, the proxy signs every request as that user. Every `/v1` route, the database, the queues, credits and the Polar webhook handling are the real code; the agent, Composio and Polar's hosted checkout are stand-ins. The token is ignored in a production build. It needs about 1 GB of free memory.
+
+## Loading
+
+- **The pages are static.** Every screen except `/billing` is built ahead (`○` in `pnpm build`'s route table) and served from Vercel's CDN; the data comes afterwards from `/api/v1/*`. Nothing in the pages reads the request: whether the app runs with Clerk, in demo mode or with the development token is decided once, when the app is built (`next.config.ts` writes it in as `NEXT_PUBLIC_TEXTCREW_AUTH_MODE`, read with `builtAuthMode()` in `src/lib/auth-mode.ts`). `/billing` reads the session, so it is rendered per request.
+- **The proxy still runs before every page** (`src/proxy.ts`) and does what needs the request: it asks for a session, sends someone signed in away from the sign-in pages and, without accounts, sends the sign-in pages home. It and the API route read the environment on every request (`authMode()` in `src/lib/env.ts`); on Vercel and in the Dockerfile that is the environment the app was built with.
+- **The first page asks only for what it draws.** The shell asks for the account and the pending approvals; the chat for the channels, the messages and the agent's state; and the live stream opens. That is all a phone sends (5 calls and the stream). The sidebar, hidden on a phone, asks for the crew and the plans only on a wider screen (7), and the chat's side panel, hidden below 1100px, is only drawn from 1100px, where it adds activity, automations and the agent settings (10). Both follow `useMediaQuery` (`src/lib/media-query.ts`), which says no on the server and in the first render. The checkout watcher asks for the subscription, credits and plans only while a checkout is waiting.
+- **The live stream reconnects** every five minutes on Vercel (the function's time limit) and whenever the connection drops. The backend's stream has no event ids and replays nothing, so a reconnect asks again for the messages, the approvals and the agent's state; in a tab nobody is looking at they are only marked stale and asked for when the tab is shown again (`catchUpAfterReconnect` in `src/lib/api/stream.ts`).
 
 ## Sign-in
 
@@ -69,10 +78,10 @@ Clerk is the sign-in service: it holds the accounts, checks passwords and codes,
 
 - **Built for what the Clerk application has switched on** (read from its public `/v1/environment`): email as the only identifier, a password (at least 15 characters, checked against known leaks), a code by email (sign-in, verifying at sign-up, resetting the password), Google, optional first and last name, no second factor, bot protection at sign-up. Switching more on in the Clerk Dashboard (a phone number, a username, an authenticator app) needs the forms to change; until then the page says what it can't ask for. The social buttons come from `SOCIAL_PROVIDERS` in `src/lib/auth-flow.ts`.
 - **Clerk's refusals in plain words**: `describeAuthError` in `src/lib/auth-flow.ts` turns Clerk's error codes into a sentence, under the field it is about or above the form. A password rule keeps Clerk's own sentence, which carries the number.
-- **Where people land**: on the page the proxy sent them from (`redirect_url`, carried between the three pages), else on the home screen. Only addresses inside this app are followed (`afterAuthPath`). Someone already signed in who opens `/sign-in` or `/sign-up` goes straight there.
+- **Where people land**: on the page the proxy sent them from (`redirect_url`, carried between the three pages), else on the home screen. Only addresses inside this app are followed (`afterAuthPath`). Someone already signed in who opens `/sign-in` or `/sign-up` goes straight there: the proxy sends them, so the pages themselves are static and read `redirect_url` and `step` in the browser.
 - **The proxy** (`src/proxy.ts`) lets `/sign-in`, `/sign-up` and `/sso-callback` open without a session (exactly those paths, nothing under them) and sends people without one to `/sign-in`, not to Clerk's hosted page. The addresses are set in code (`SIGN_IN_PATH`, `SIGN_UP_PATH`), so no environment variable is needed for them.
 - **Bot protection**: Clerk draws its check in `<div id="clerk-captcha">` on the sign-up and callback pages when it wants one; most of the time it stays empty.
-- **Demo mode and the development token** have no accounts: the three pages forward to the home screen.
+- **Demo mode and the development token** have no accounts: the proxy sends the three pages to the home screen. A build made without the Clerk keys and run with them shows a note on these pages instead of sending the browser round in circles.
 
 ## What the backend decides
 
@@ -149,8 +158,8 @@ The plan buttons follow the backend's rules: a second plan can't be started whil
 
 `Dockerfile` builds the app for the backend's compose file, which runs it as the `web` service behind Caddy (`../beckend/infra/docker-compose.yml`).
 
-- **Build:** the Clerk publishable key is a build argument (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`), because `NEXT_PUBLIC_*` values are compiled into the browser bundle. The Clerk secret key is passed as a build secret (`clerk_secret_key`) so pages rendered at build time are built in sign-in mode; it is not kept in the image.
-- **Run:** `TEXTCREW_API_URL` (inside compose: `http://api:8080`), `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` as environment. Port 3000. `GET /api/health` answers when it is up.
+- **Build:** the Clerk publishable key is a build argument (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`), because `NEXT_PUBLIC_*` values are compiled into the browser bundle. The Clerk secret key is passed as a build secret (`clerk_secret_key`) so the pages, rendered at build time, are built in sign-in mode; it is not kept in the image. The mode is fixed at build (see [Loading](#loading)), so `TEXTCREW_DEMO` set only at run time doesn't turn the pages to demo mode.
+- **Run:** `TEXTCREW_API_URL` (inside compose: `http://api:8080`), `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` as environment. Port 3000. `GET /api/health` answers when it is up, with the server's auth mode (`mode`) and the one the pages were built in (`builtMode`); the two should match.
 - **The backend must know this app's address:** `WEB_APP_URL` and `CLERK_AUTHORIZED_PARTIES` in the backend's settings.
 
 ## Scripts
@@ -184,6 +193,8 @@ src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell
 src/lib/
   api/               generated types, typed client, TanStack Query hooks, SSE → cache
   auth-flow.ts       sign-in and sign-up: where to land, Clerk's refusals in words, what comes next
+  auth-mode.ts       demo, Clerk or the development token: fixed at build for the pages (env.ts reads it per request)
+  media-query.ts     whether a part of the shell that CSS hides is on screen, so it isn't drawn or fetched when it isn't
   demo/              the in-memory demo backend
   channels.ts        which chat apps to offer, from what the backend has switched on
   crew.ts            who is on the crew and what they are doing, from what the backend says
