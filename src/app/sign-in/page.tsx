@@ -1,27 +1,25 @@
-import { auth } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { AuthFrame } from "@/components/auth/auth-frame";
-import { SignInForm } from "@/components/auth/sign-in-form";
-import { afterAuthPath, firstParam, requestOrigin, signInEntryStep } from "@/lib/auth-flow";
-import { authMode } from "@/lib/env";
+import { Suspense } from "react";
+import { AuthFrame, NoSignIn } from "@/components/auth/auth-frame";
+import { SignInForm, SignInFromAddress } from "@/components/auth/sign-in-form";
+import { builtAuthMode } from "@/lib/auth-mode";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default async function SignInPage({ searchParams }: PageProps<"/sign-in">) {
+/**
+ * Static, served from the CDN. The proxy does what needs the request: it sends someone who is
+ * already signed in on to the page they came for, and leads home when there are no accounts.
+ */
+export default function SignInPage() {
   // Only Clerk mode has accounts to sign in to.
-  if (authMode() !== "clerk") redirect("/");
-
-  const query = await searchParams;
-  // The page the proxy sent the person here from; they land there once signed in.
-  const redirectUrl = firstParam(query.redirect_url);
-  // Someone who is signed in has nothing to do here.
-  if ((await auth()).userId) redirect(afterAuthPath(redirectUrl, requestOrigin(await headers())));
+  if (builtAuthMode() !== "clerk") return <NoSignIn />;
 
   return (
     <AuthFrame>
-      <SignInForm redirectUrl={redirectUrl} entry={signInEntryStep(firstParam(query.step))} />
+      {/* The address is read in the browser; until then the form stands in as it opens without one. */}
+      <Suspense fallback={<SignInForm redirectUrl={null} entry={null} />}>
+        <SignInFromAddress />
+      </Suspense>
     </AuthFrame>
   );
 }

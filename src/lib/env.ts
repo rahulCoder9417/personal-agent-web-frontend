@@ -1,38 +1,28 @@
-// Server-side configuration. Read at request time so one build works in every environment.
+// Server-side configuration, read at request time. The proxy and the API route use it; the pages
+// use the mode they were built in (`builtAuthMode()` in auth-mode.ts).
+
+import { decideAuthMode, devTokenFrom, type AuthMode } from "./auth-mode";
+
+export type { AuthMode } from "./auth-mode";
+
+/** The environment, with NODE_ENV as Next.js writes it into the build ("production" in a production build). */
+function serverEnv() {
+  return { ...process.env, NODE_ENV: process.env.NODE_ENV };
+}
 
 /** Base URL of the Textcrew backend (the `api` process), without a trailing slash. */
 export function apiBaseUrl(): string {
   return (process.env.TEXTCREW_API_URL ?? "http://localhost:8080").replace(/\/+$/, "");
 }
 
-/** True when both Clerk keys are set, so real sign-in can run. */
-export function hasClerkKeys(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
-}
-
-/**
- * A fixed session token for working against a local backend without Clerk (`pnpm backend:local`
- * prints one). It is ignored in a production build, so it can never stand in for real sign-in there.
- */
+/** The development token, if one is set and this isn't a production build. */
 export function devToken(): string | null {
-  const token = process.env.TEXTCREW_DEV_TOKEN?.trim();
-  if (!token || process.env.NODE_ENV === "production") return null;
-  return token;
+  return devTokenFrom(serverEnv());
 }
 
-/**
- * How requests are authenticated:
- * - "demo": the proxy answers from an in-memory account; no backend, no sign-in.
- *   On when asked for (`TEXTCREW_DEMO=1`) or when nothing else is configured.
- * - "dev-token": the real backend, as the one user `TEXTCREW_DEV_TOKEN` belongs to (development only).
- * - "clerk": the real backend with Clerk sign-in.
- */
-export type AuthMode = "demo" | "dev-token" | "clerk";
-
+/** How this request is authenticated (see `AuthMode`). */
 export function authMode(): AuthMode {
-  if (process.env.TEXTCREW_DEMO === "1") return "demo";
-  if (devToken()) return "dev-token";
-  return hasClerkKeys() ? "clerk" : "demo";
+  return decideAuthMode(serverEnv());
 }
 
 export function isDemoMode(): boolean {

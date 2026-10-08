@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Brand } from "@/components/shell/brand";
+import { ButtonLink, EmptyState } from "@/components/ui";
 
 /** The page around a sign-in form: the lockup at the top, the form in the middle. */
 export function AuthFrame({ children }: { children: ReactNode }) {
@@ -13,5 +14,28 @@ export function AuthFrame({ children }: { children: ReactNode }) {
         <div className="mx-auto my-auto w-full max-w-[380px]">{children}</div>
       </main>
     </div>
+  );
+}
+
+/**
+ * The sign-in pages of a build without sign-in (demo mode, the development token). The proxy leads
+ * to the home screen before this is shown; it is only seen when the server has the Clerk keys and
+ * the build didn't, and it says so instead of sending the browser round in circles.
+ */
+export function NoSignIn() {
+  return (
+    <AuthFrame>
+      <EmptyState
+        mood="paused"
+        title="Sign-in isn’t part of this build"
+        action={
+          <ButtonLink href="/" variant="primary" size="lg">
+            Open Textcrew
+          </ButtonLink>
+        }
+      >
+        The app was built without the Clerk keys. Build it again with them set to turn sign-in on.
+      </EmptyState>
+    </AuthFrame>
   );
 }

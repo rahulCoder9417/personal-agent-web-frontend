@@ -3,8 +3,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { ApiError } from "@/lib/api/client";
+import type { AuthMode } from "@/lib/auth-mode";
 
-export type AuthMode = "demo" | "dev-token" | "clerk";
+export type { AuthMode } from "@/lib/auth-mode";
 
 type AppConfig = {
   mode: AuthMode;

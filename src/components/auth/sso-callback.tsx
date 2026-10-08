@@ -1,7 +1,7 @@
 "use client";
 
 import { useClerk, useSignIn, useSignUp } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { ButtonLink, EmptyState, Spinner } from "@/components/ui";
 import {
@@ -15,6 +15,24 @@ import {
   withRedirect,
 } from "@/lib/auth-flow";
 import { CaptchaSlot, ok, useFinish } from "./parts";
+
+/** The spinner the page shows while Clerk finishes. */
+export function FinishingSignIn() {
+  return (
+    <p role="status" className="flex items-center gap-2.5 py-14 text-[14px] text-muted">
+      <Spinner />
+      Finishing sign-in…
+    </p>
+  );
+}
+
+/**
+ * The callback for the page in the address: `?redirect_url=` is the page to land on afterwards.
+ * Read in the browser, so the page itself can be static.
+ */
+export function SsoCallbackFromAddress() {
+  return <SsoCallback redirectUrl={useSearchParams().get("redirect_url")} />;
+}
 
 /**
  * Where the browser comes back to from Google when Clerk still needs this app: to turn a sign-in
@@ -139,10 +157,7 @@ export function SsoCallback({ redirectUrl }: { redirectUrl: string | null }) {
           <span role="alert">{shown}</span>
         </EmptyState>
       ) : (
-        <p role="status" className="flex items-center gap-2.5 py-14 text-[14px] text-muted">
-          <Spinner />
-          Finishing sign-in…
-        </p>
+        <FinishingSignIn />
       )}
       {/* Turning a sign-in into a new account may need the robot check. */}
       <CaptchaSlot />

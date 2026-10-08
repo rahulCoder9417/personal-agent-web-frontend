@@ -4,7 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/shell/providers";
 import { APP_BACKGROUND, APP_DESCRIPTION, APP_NAME } from "@/lib/app-meta";
 import { SIGN_IN_PATH, SIGN_UP_PATH } from "@/lib/auth-flow";
-import { authMode } from "@/lib/env";
+import { builtAuthMode } from "@/lib/auth-mode";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -30,11 +30,10 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-// The auth mode comes from the server's environment at request time, not from when the app is built.
-export const dynamic = "force-dynamic";
-
 export default function RootLayout({ children }: LayoutProps<"/">) {
-  const mode = authMode();
+  // Decided when the app is built (next.config.ts), so nothing here reads the request and the pages
+  // can be prerendered and served from the CDN. The proxy checks the session on every request.
+  const mode = builtAuthMode();
   const page = (
     // suppressHydrationWarning: browser extensions add attributes to <html> before React loads.
     <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>

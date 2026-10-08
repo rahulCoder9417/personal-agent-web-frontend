@@ -2,12 +2,14 @@
 
 import { useClerk, useSignIn } from "@clerk/nextjs";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { Button, Card, Field } from "@/components/ui";
 import {
   afterAuthPath,
   describeAuthError,
   SIGN_UP_PATH,
+  signInEntryStep,
   signInNextStep,
   SSO_CALLBACK_PATH,
   withRedirect,
@@ -54,6 +56,15 @@ const HEADING: Record<Step, { title: string; body: (email: string) => string }> 
   "reset-code": { title: "Reset your password", body: (email) => `We sent a ${CODE_LENGTH}-digit code to ${email}. Enter it to choose a new password.` },
   "new-password": { title: "Choose a new password", body: () => "Once it’s saved, you’re signed in." },
 };
+
+/**
+ * The form as the address asks for it: `?redirect_url=` is the page to land on afterwards and
+ * `?step=` the step to open on. Read in the browser, so the page itself can be static.
+ */
+export function SignInFromAddress() {
+  const params = useSearchParams();
+  return <SignInForm redirectUrl={params.get("redirect_url")} entry={signInEntryStep(params.get("step"))} />;
+}
 
 /**
  * Signing in, built on Clerk's `useSignIn()`: this app draws the form, Clerk checks the password

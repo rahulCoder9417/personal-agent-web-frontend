@@ -2,6 +2,7 @@
 
 import { useClerk, useSignUp } from "@clerk/nextjs";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { Button, Card, Field } from "@/components/ui";
 import {
@@ -39,6 +40,14 @@ type Step = "start" | "verify";
 type Busy = "submit" | "social" | "resend";
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
+
+/**
+ * The form as the address asks for it: `?redirect_url=` is the page to land on once the account
+ * exists. Read in the browser, so the page itself can be static.
+ */
+export function SignUpFromAddress() {
+  return <SignUpForm redirectUrl={useSearchParams().get("redirect_url")} />;
+}
 
 /**
  * Creating an account, built on Clerk's `useSignUp()`: this app draws the form, Clerk creates the
