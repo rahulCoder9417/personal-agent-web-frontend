@@ -27,9 +27,11 @@ export function usePendingCheckout(): PendingCheckout | null {
 export function CheckoutWatcher() {
   const qc = useQueryClient();
   const pending = usePendingCheckout();
-  const subscription = useSubscription();
-  const credits = useCredits();
-  const plans = usePlans();
+  // Asked for only while a checkout is waiting; the rest of the time the watcher costs nothing.
+  const watching = pending !== null;
+  const subscription = useSubscription(watching);
+  const credits = useCredits(watching);
+  const plans = usePlans(watching);
 
   useEffect(() => {
     if (!pending) return;

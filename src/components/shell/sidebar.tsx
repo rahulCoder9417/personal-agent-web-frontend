@@ -7,6 +7,7 @@ import { useAgentStatus, useApprovals, useCrew, useMe, usePlans } from "@/lib/ap
 import { describeAgent } from "@/lib/agent-state";
 import { crewNavNote } from "@/lib/crew";
 import { cn, formatAgo, formatDate, formatNumber, initials, titleCase } from "@/lib/format";
+import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { ActivityIcon, ApprovalsIcon, AppsIcon, AutomationsIcon, ChatIcon, CrewIcon, SettingsIcon } from "../icons";
 import { Brand } from "./brand";
 import { useAppConfig } from "./providers";
@@ -46,8 +47,8 @@ function Group({ label, children }: { label?: string; children: ReactNode }) {
 }
 
 /** Tex, and what it is doing right now. The one place the whole app looks to for the agent's state. */
-function AgentCard() {
-  const status = useAgentStatus();
+function AgentCard({ shown }: { shown: boolean }) {
+  const status = useAgentStatus(shown);
   const pending = useApprovals("pending").data?.length ?? 0;
   const agent = describeAgent(status.data?.state, pending);
   return (
@@ -65,9 +66,9 @@ function AgentCard() {
   );
 }
 
-function CreditsCard() {
+function CreditsCard({ shown }: { shown: boolean }) {
   const me = useMe();
-  const plans = usePlans();
+  const plans = usePlans(shown);
   if (!me.data) return <div aria-hidden className="h-[86px] animate-pulse rounded-xl bg-fg/[0.05]" />;
   const { balance, nextExpiry } = me.data.credits;
   const plan = plans.data?.plans.find((p) => p.id === me.data.plan);
@@ -86,12 +87,18 @@ function CreditsCard() {
   );
 }
 
-/** The left side of the page on wide screens: Tex's state, the places to go, credits and the account. */
+/**
+ * The left side of the page on wide screens: Tex's state, the places to go, credits and the account.
+ * On a phone it is hidden but still drawn, so a wide screen gets it without a jump. What only it
+ * shows (the agent's state away from the chat, the crew note, the plan's name) isn't asked for
+ * there; the account and approvals are, for the phone's own top bar and tabs.
+ */
 export function Sidebar() {
   const pathname = usePathname();
+  const shown = useMediaQuery(SHOWN_AT.sidebar);
   const pending = useApprovals("pending").data?.length ?? 0;
   const me = useMe();
-  const crew = useCrew();
+  const crew = useCrew(shown);
   const { mode } = useAppConfig();
 
   const work: Item[] = [
@@ -115,7 +122,7 @@ export function Sidebar() {
           <span className="rounded-full bg-fg/[0.06] px-2 py-px font-mono text-[10.5px] text-nav">{mode === "demo" ? "demo" : "local"}</span>
         )}
       </div>
-      <AgentCard />
+      <AgentCard shown={shown} />
       <Group>
         {work.map((item) => (
           <NavLink key={item.href} item={item} active={isActive(item.href)} />
@@ -128,7 +135,7 @@ export function Sidebar() {
       </Group>
 
       <div className="mt-auto flex flex-col gap-2.5">
-        <CreditsCard />
+        <CreditsCard shown={shown} />
         <Link href="/settings" className="flex items-center gap-2.5 rounded-[9px] px-1.5 py-1 transition-colors hover:bg-fg/[0.05]">
           <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full bg-fg text-[11px] font-semibold text-white">
             {me.data ? initials(me.data.name || me.data.email) : ""}

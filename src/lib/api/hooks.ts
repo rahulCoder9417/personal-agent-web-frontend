@@ -403,8 +403,9 @@ export function useDisablePrReview() {
 
 // ---------------------------------------------------------------- agent
 
-export function useAgentStatus() {
-  return useQuery({ queryKey: qk.agentStatus, queryFn: () => unwrap(api.GET("/v1/agent/status")) });
+/** `enabled: false` reads what is cached without asking (the sidebar's card, hidden on a phone). */
+export function useAgentStatus(enabled = true) {
+  return useQuery({ queryKey: qk.agentStatus, queryFn: () => unwrap(api.GET("/v1/agent/status")), enabled });
 }
 
 /**
@@ -438,12 +439,13 @@ export function useUpdateAgentSettings() {
 }
 
 /** The lead and the specialists, with who works on this deployment yet. It only changes with a deploy. */
-export function useCrew() {
+export function useCrew(enabled = true) {
   return useQuery({
     queryKey: qk.crew,
     queryFn: () => unwrap(api.GET("/v1/crew")),
     select: (data) => data.items,
     staleTime: 5 * 60_000,
+    enabled,
   });
 }
 
@@ -505,12 +507,12 @@ export function useDisconnectClaude() {
 
 // ---------------------------------------------------------------- billing
 
-export function usePlans() {
-  return useQuery({ queryKey: qk.plans, queryFn: () => unwrap(api.GET("/v1/billing/plans")), staleTime: 5 * 60_000 });
+export function usePlans(enabled = true) {
+  return useQuery({ queryKey: qk.plans, queryFn: () => unwrap(api.GET("/v1/billing/plans")), staleTime: 5 * 60_000, enabled });
 }
 
-export function useSubscription() {
-  return useQuery({ queryKey: qk.subscription, queryFn: () => unwrap(api.GET("/v1/billing/subscription")) });
+export function useSubscription(enabled = true) {
+  return useQuery({ queryKey: qk.subscription, queryFn: () => unwrap(api.GET("/v1/billing/subscription")), enabled });
 }
 
 export function useCreateCheckout() {
@@ -530,8 +532,8 @@ export function useCancelSubscription() {
 
 // ---------------------------------------------------------------- credits
 
-export function useCredits() {
-  return useQuery({ queryKey: qk.credits, queryFn: () => unwrap(api.GET("/v1/credits")) });
+export function useCredits(enabled = true) {
+  return useQuery({ queryKey: qk.credits, queryFn: () => unwrap(api.GET("/v1/credits")), enabled });
 }
 
 export function useLedger() {

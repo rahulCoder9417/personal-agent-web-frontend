@@ -15,6 +15,7 @@ import { describeAgent } from "@/lib/agent-state";
 import { approvalReason } from "@/lib/approvals";
 import { linkableChannels } from "@/lib/channels";
 import { CHANNEL_LABEL, cn, describeAutomationNext, describeAutomationSchedule, formatCredits, formatTime, listNames } from "@/lib/format";
+import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { AppIcon } from "../brand-icon";
 import { CheckIcon, ChevronRightIcon, ClockIcon } from "../icons";
 import { AgentFigure } from "../tex";
@@ -91,8 +92,22 @@ const MOOD_LINE: Record<string, string> = {
   paused: "Something needs fixing before it can work.",
 };
 
-/** The right-hand panel of the chat: Tex itself, what's waiting on you, what's done and what's next. */
+/**
+ * The right-hand panel of the chat: Tex itself, what's waiting on you, what's done and what's next.
+ * Below 1100px it is hidden, and then its contents aren't drawn at all, so a phone or a narrow
+ * window never asks for what it shows. The empty panel keeps its place on a wide screen until the
+ * browser has said how wide it is.
+ */
 export function SidePanel() {
+  const shown = useMediaQuery(SHOWN_AT.sidePanel);
+  return (
+    <aside aria-label="Right now" className="scroll-pane flex w-[320px] shrink-0 flex-col gap-6 overflow-y-auto border-l border-line px-5 pt-5 pb-5 max-[1100px]:hidden">
+      {shown && <SidePanelContents />}
+    </aside>
+  );
+}
+
+function SidePanelContents() {
   const status = useAgentStatus();
   const approvals = useApprovals("pending");
   const activity = useActivity();
@@ -119,7 +134,7 @@ export function SidePanel() {
   const needsAi = settings.data?.aiAccess === "none";
 
   return (
-    <aside aria-label="Right now" className="scroll-pane flex w-[320px] shrink-0 flex-col gap-6 overflow-y-auto border-l border-line px-5 pt-5 pb-5 max-[1100px]:hidden">
+    <>
       {/* Tex in person: the one place the mascot gets room. Its face follows the agent's real state. */}
       <div className="flex flex-col items-center rounded-2xl bg-accent-soft px-4 pt-3 pb-4 text-center">
         <AgentFigure who="tex" mood={agent.mood} size={124} label={agent.title} />
@@ -202,6 +217,6 @@ export function SidePanel() {
           ))
         )}
       </Section>
-    </aside>
+    </>
   );
 }
