@@ -2,9 +2,10 @@
 
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { CheckIcon, ExternalIcon } from "@/components/icons";
-import { Button, Card, InlineError, inputClass, Meta } from "@/components/ui";
-import type { AgentSettings, ClaudeLoginStart } from "@/lib/api/client";
-import { useCompleteClaudeLogin, useDisconnectClaude, useStartClaudeLogin } from "@/lib/api/hooks";
+import { Button, Card, Field, InlineError, inputClass, Meta } from "@/components/ui";
+import type { AgentSettings, ClaudeEffort, ClaudeLoginStart } from "@/lib/api/client";
+import { useCompleteClaudeLogin, useDisconnectClaude, useStartClaudeLogin, useUpdateClaudeCode } from "@/lib/api/hooks";
+import { choiceValue, effortOptions, modelOptions, type SelectOption } from "@/lib/claude-code";
 import { openInNewTab } from "@/lib/navigate";
 import { cn, formatDate, formatTime } from "@/lib/format";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -118,6 +119,60 @@ export function ClaudeConnectSteps() {
   );
 }
 
+function ChoiceSelect({ id, label, value, options, onChange }: { id: string; label: string; value: string | null; options: SelectOption[]; onChange: (value: string) => void }) {
+  return (
+    <Field label={label} htmlFor={id}>
+      <select id={id} value={value ?? ""} onChange={(event) => onChange(event.target.value)} className={cn(inputClass, "pr-2")}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+/**
+ * Which Claude model Claude Code uses and how hard it thinks. "Default" leaves it to Claude Code.
+ * Each change is saved as it is made; it applies to turns that run on Claude Code.
+ */
+function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
+  const update = useUpdateClaudeCode();
+  const id = useId();
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-line pt-4">
+      <p className="text-[13px] text-muted">Model and thinking effort apply when Claude Code is the engine.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <ChoiceSelect
+          id={`${id}-model`}
+          label="Model"
+          value={settings.claudeModel}
+          options={modelOptions(settings)}
+          onChange={(value) => update.mutate({ claudeModel: choiceValue(value) })}
+        />
+        <ChoiceSelect
+          id={`${id}-effort`}
+          label="Thinking effort"
+          value={settings.claudeEffort}
+          options={effortOptions(settings)}
+          onChange={(value) => update.mutate({ claudeEffort: choiceValue<ClaudeEffort>(value) })}
+        />
+      </div>
+      {update.isError ? (
+        <InlineError error={update.error} />
+      ) : (
+        update.isSuccess && (
+          <span role="status" className="text-[12.5px] text-success">
+            Saved
+          </span>
+        )
+      )}
+    </div>
+  );
+}
+
 /** What we never do with a Claude plan, said the same way wherever it can be connected. */
 export const CLAUDE_SIGN_IN_NOTE =
   "This is the unmodified Claude Code sign-in, started inside your private workspace. We never see or store your Claude credentials.";
@@ -163,6 +218,7 @@ export function ClaudePlanSection({ settings, state }: { settings: AgentSettings
                 : "Tex is running Hermes at the moment. Choose Claude Code under Agent to run on your plan."}
             </p>
             <InlineError error={disconnect.error} />
+            <ClaudeCodeChoices settings={settings} />
           </>
         ) : (
           <ClaudeConnectSteps />

@@ -26,6 +26,10 @@ export type AgentProgress = Schemas["AgentProgress"];
 export type AgentSettings = Schemas["AgentSettings"];
 export type AgentRuntime = Schemas["AgentRuntime"];
 export type AiPreference = Schemas["AiPreference"];
+/** How hard Claude Code thinks, when it runs (null in the settings is Claude Code's default). */
+export type ClaudeEffort = NonNullable<AgentSettings["claudeEffort"]>;
+/** What `PATCH /v1/agent/settings` takes. */
+export type AgentSettingsUpdate = NonNullable<paths["/v1/agent/settings"]["patch"]["requestBody"]>["content"]["application/json"];
 export type CrewMember = Schemas["CrewMember"];
 export type Memory = Schemas["Memory"];
 export type ClaudeLoginStart = Schemas["ClaudeLoginStart"];

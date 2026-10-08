@@ -455,6 +455,46 @@ describe("setup", () => {
     expect((await call("PATCH", "agent/settings", { aiPreference: "sometimes" })).status).toBe(400);
   });
 
+  it("offers Claude Code's models and efforts, with Claude Code's defaults to start", async () => {
+    const settings = (await call<AgentSettings>("GET", "agent/settings")).body;
+    expect(settings).toMatchObject({ claudeModel: null, claudeEffort: null });
+    expect(settings.claudeChoices).toEqual({
+      models: [
+        { id: "claude-opus-5-5", label: "Opus 5.5" },
+        { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
+        { id: "claude-haiku-4-5", label: "Haiku 4.5" },
+        { id: "claude-fable-5-1", label: "Fable 5.1" },
+      ],
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+    });
+  });
+
+  it("saves Claude Code's model and effort whatever runs now, and null goes back to the default", async () => {
+    // Hermes runs on the saved key and no Claude plan is connected: they are kept for when Claude Code runs.
+    const chosen = await call<AgentSettings>("PATCH", "agent/settings", { claudeModel: "claude-opus-5-5", claudeEffort: "xhigh" });
+    expect(chosen.status).toBe(200);
+    expect(chosen.body).toMatchObject({ claudeModel: "claude-opus-5-5", claudeEffort: "xhigh", effectiveRuntime: "hermes", aiAccess: "own_key" });
+
+    const effortOnly = await call<AgentSettings>("PATCH", "agent/settings", { claudeEffort: "low" });
+    expect(effortOnly.body).toMatchObject({ claudeModel: "claude-opus-5-5", claudeEffort: "low" });
+
+    const back = await call<AgentSettings>("PATCH", "agent/settings", { claudeModel: null, claudeEffort: null });
+    expect(back.body).toMatchObject({ claudeModel: null, claudeEffort: null });
+    // No credits move.
+    expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1884);
+  });
+
+  it("refuses a model or effort that isn't offered, and changes nothing when part of a change is refused", async () => {
+    for (const body of [{ claudeModel: "gpt-6.1-sol" }, { claudeModel: 5 }, { claudeEffort: "extreme" }, { claudeModel: "claude-opus-5-5", claudeEffort: "ultra" }]) {
+      const refused = await call<ErrorBody>("PATCH", "agent/settings", body);
+      expect(refused.status, JSON.stringify(body)).toBe(400);
+      expect(refused.body.error.code).toBe("invalid_request");
+    }
+    // Claude Code can't be chosen without a plan, so the model sent with it isn't saved either.
+    expect((await call("PATCH", "agent/settings", { runtime: "claude_code", claudeModel: "claude-haiku-4-5" })).status).toBe(409);
+    expect((await call<AgentSettings>("GET", "agent/settings")).body).toMatchObject({ claudeModel: null, claudeEffort: null });
+  });
+
   it("drops the Textcrew AI choice when a Claude plan is connected", async () => {
     await call("PATCH", "agent/settings", { aiPreference: "platform" });
     const login = await call<{ loginId: string }>("POST", "agent/claude/login");

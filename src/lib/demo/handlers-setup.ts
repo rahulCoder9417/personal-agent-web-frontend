@@ -1,6 +1,6 @@
 // Apps, own MCP servers, API keys, automations and agent settings for the demo account.
 
-import type { AgentRuntime, AgentSettings, AiPreference, ByokKey, ByokProvider, McpServer } from "@/lib/api/client";
+import type { AgentRuntime, AgentSettings, AiPreference, ByokKey, ByokProvider, ClaudeEffort, McpServer } from "@/lib/api/client";
 import { nowIso, type Handler } from "./context";
 import {
   badRequest,
@@ -190,15 +190,33 @@ export const getAgentSettings: Handler = ({ state }) => {
   return json(state.agentSettings);
 };
 
-/** The agent, the AI preference, or both. Textcrew AI can only be chosen while it is on offer. */
+const SETTINGS_FIELDS = ["runtime", "aiPreference", "claudeModel", "claudeEffort"];
+
+/**
+ * Claude Code's model or effort: absent leaves it, null goes back to Claude Code's default, and
+ * anything not in `claudeChoices` is refused.
+ */
+function claudeChoice<T extends string>(value: unknown, allowed: readonly T[], name: string): T | null | undefined {
+  if (value === undefined || value === null) return value;
+  return oneOf(value, allowed, name);
+}
+
+/**
+ * The agent, the AI preference, Claude Code's model and effort, or any of them. Textcrew AI can
+ * only be chosen while it is on offer. The model and effort can be set whatever runs now: they
+ * apply to turns on Claude Code.
+ */
 export const updateAgentSettings: Handler = async ({ state, request }) => {
   const body = await readJson(request);
   const names = Object.keys(body);
-  if (names.length === 0 || names.some((name) => name !== "runtime" && name !== "aiPreference")) {
-    throw badRequest("Send runtime, aiPreference or both");
+  if (names.length === 0 || names.some((name) => !SETTINGS_FIELDS.includes(name))) {
+    throw badRequest(`Send any of ${SETTINGS_FIELDS.join(", ")}`);
   }
   const runtime = body.runtime === undefined ? undefined : oneOf(body.runtime, RUNTIMES, "runtime");
   const aiPreference = body.aiPreference === undefined ? undefined : oneOf(body.aiPreference, AI_PREFERENCES, "aiPreference");
+  const choices = state.agentSettings.claudeChoices;
+  const claudeModel = claudeChoice(body.claudeModel, choices.models.map((model) => model.id), "claudeModel");
+  const claudeEffort = claudeChoice(body.claudeEffort, choices.efforts as ClaudeEffort[], "claudeEffort");
 
   syncAgentSettings(state);
   if (runtime === "claude_code" && !state.agentSettings.claude.connected) {
@@ -207,6 +225,8 @@ export const updateAgentSettings: Handler = async ({ state, request }) => {
   if (aiPreference === "platform" && !state.agentSettings.platformAvailable) {
     throw conflict("Textcrew AI isn't on offer here. Use your own API key or your Claude plan");
   }
+  if (claudeModel !== undefined) state.agentSettings.claudeModel = claudeModel;
+  if (claudeEffort !== undefined) state.agentSettings.claudeEffort = claudeEffort;
   if (runtime) state.agentSettings.runtime = runtime;
   if (aiPreference && aiPreference !== state.agentSettings.aiPreference) {
     state.agentSettings.aiPreference = aiPreference;

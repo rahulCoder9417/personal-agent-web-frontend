@@ -14,6 +14,7 @@ import {
   unwrap,
   type AgentRuntime,
   type AgentSettings,
+  type AgentSettingsUpdate,
   type AiPreference,
   type Approval,
   type ApprovalStatus,
@@ -462,6 +463,28 @@ export function useUpdateAgentSettings() {
   return useSettingsMutation((body: { runtime?: AgentRuntime; aiPreference?: AiPreference }) =>
     unwrap(api.PATCH("/v1/agent/settings", { body })),
   );
+}
+
+/**
+ * Claude Code's model and thinking effort (null is Claude Code's default). Shown as chosen at once;
+ * put back if the API says no.
+ */
+export function useUpdateClaudeCode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Pick<AgentSettingsUpdate, "claudeModel" | "claudeEffort">) =>
+      unwrap(api.PATCH("/v1/agent/settings", { body })),
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: qk.agentSettings });
+      const previous = qc.getQueryData<AgentSettings>(qk.agentSettings);
+      if (previous) qc.setQueryData<AgentSettings>(qk.agentSettings, { ...previous, ...body });
+      return { previous };
+    },
+    onError: (_error, _body, context) => {
+      if (context?.previous) qc.setQueryData(qk.agentSettings, context.previous);
+    },
+    onSuccess: (settings) => qc.setQueryData(qk.agentSettings, settings),
+  });
 }
 
 /** The lead and the specialists, with who works on this deployment yet. It only changes with a deploy. */
