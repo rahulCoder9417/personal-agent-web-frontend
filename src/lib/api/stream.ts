@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { addProgress, progressLine, type ProgressLine } from "../crew";
 import type { AgentProgress, AgentStatus, Approval, CreditBalance, Message, StreamEvent } from "./client";
@@ -20,9 +20,25 @@ const EVENT_TYPES: StreamEvent["type"][] = [
 export type StreamListener = (event: StreamEvent) => void;
 
 /**
+ * After the stream comes back (the hosting cuts it at the function's time limit, every five
+ * minutes on Vercel, and a phone drops it when it sleeps): catch up on what the events keep fresh.
+ * The backend's stream has no event ids and replays nothing, so whatever was sent while it was
+ * down is lost, and the lists have to be asked for again. In a tab nobody is looking at they are
+ * only marked stale, and asked for when the tab is shown again (`refetchOnWindowFocus`).
+ */
+export function catchUpAfterReconnect(qc: QueryClient, visible: boolean) {
+  const refetchType = visible ? "active" : "none";
+  void qc.invalidateQueries({ queryKey: ["messages"], refetchType });
+  void qc.invalidateQueries({ queryKey: ["approvals"], refetchType });
+  void qc.invalidateQueries({ queryKey: qk.agentStatus, refetchType });
+  // Progress is live only, so what was on screen may belong to a turn that has since ended.
+  qc.setQueryData<ProgressLine[]>(qk.agentProgress, []);
+}
+
+/**
  * Keeps one Server-Sent Events connection open and folds each event into the query cache,
  * so every screen updates live. `onEvent` also sees each event.
- * EventSource reconnects on its own; on every (re)connect the lists are refetched to catch up.
+ * EventSource reconnects on its own; each reconnect catches up (`catchUpAfterReconnect`).
  */
 export function useEventStream(onEvent?: StreamListener) {
   const qc = useQueryClient();
@@ -36,14 +52,9 @@ export function useEventStream(onEvent?: StreamListener) {
     let opened = false;
 
     const onReady = () => {
-      if (opened) {
-        // A reconnect: anything sent while we were away is missing.
-        void qc.invalidateQueries({ queryKey: ["messages"] });
-        void qc.invalidateQueries({ queryKey: ["approvals"] });
-        void qc.invalidateQueries({ queryKey: qk.agentStatus });
-        // Progress is live only, so what was on screen may belong to a turn that has since ended.
-        qc.setQueryData<ProgressLine[]>(qk.agentProgress, []);
-      }
+      // A reconnect: anything sent while we were away is missing. (The first connect needs
+      // nothing: the lists are being asked for the first time.)
+      if (opened) catchUpAfterReconnect(qc, document.visibilityState === "visible");
       opened = true;
     };
 
