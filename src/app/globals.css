@@ -121,6 +121,186 @@ body {
   }
 }
 
+/* Tex's replies, drawn from Markdown (src/components/chat/markdown.tsx). A reply is a chat message,
+   not a page: headings stay close to the size of the text, and the parts of a reply sit one line
+   apart, as paragraphs with a blank line between them do in a plain reply. In `components`, so a
+   utility class on something inside still wins. */
+@layer components {
+  .markdown {
+    white-space: normal;
+  }
+
+  .markdown > * + * {
+    margin-top: 1.45em;
+  }
+
+  /* A list, a quote, a table or a block of code (the last two are drawn in a div) sits close
+     under the sentence that leads to it. */
+  .markdown > p + :is(ul, ol, blockquote, div) {
+    margin-top: 0.7em;
+  }
+
+  /* A heading sits close above what it heads. */
+  .markdown > :is(h1, h2, h3, h4, h5, h6) + * {
+    margin-top: 0.45em;
+  }
+
+  .markdown blockquote > * + * {
+    margin-top: 0.85em;
+  }
+
+  .markdown :is(h1, h2, h3, h4, h5, h6) {
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+
+  .markdown h1 {
+    font-size: 1.2em;
+  }
+
+  .markdown h2 {
+    font-size: 1.1em;
+  }
+
+  .markdown :is(h3, h4, h5, h6) {
+    font-size: 1em;
+  }
+
+  .markdown strong {
+    font-weight: 600;
+  }
+
+  .markdown del {
+    color: var(--muted);
+  }
+
+  .markdown a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    text-underline-offset: 2px;
+  }
+
+  .markdown a:hover {
+    text-decoration-color: currentColor;
+  }
+
+  /* Code inside a sentence; where it wraps, each piece keeps its own rounded ends. A block of code
+     is drawn by CodeBlock, with its own classes. */
+  .markdown :not(pre) > code {
+    border-radius: 5px;
+    background: var(--line);
+    padding: 0.1em 0.35em;
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  .markdown ul {
+    list-style: disc;
+    padding-left: 1.3em;
+  }
+
+  .markdown ol {
+    list-style: decimal;
+    padding-left: 1.7em;
+  }
+
+  .markdown ul ul {
+    list-style: circle;
+  }
+
+  .markdown ul ul ul {
+    list-style: square;
+  }
+
+  .markdown li + li,
+  .markdown li > :is(ul, ol) {
+    margin-top: 0.25em;
+  }
+
+  /* An item written as paragraphs, or with a block of code under it: its parts sit a little
+     apart, and so do such items. */
+  .markdown li > * + *,
+  .markdown li + li:has(> p) {
+    margin-top: 0.55em;
+  }
+
+  .markdown li::marker {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A task list has boxes for bullets (the box is drawn by markdown.tsx). */
+  .markdown ul.contains-task-list {
+    padding-left: 0;
+  }
+
+  .markdown li.task-list-item {
+    position: relative;
+    list-style: none;
+    padding-left: 1.6em;
+  }
+
+  .markdown blockquote {
+    border-left: 2px solid var(--line-strong);
+    padding-left: 0.85em;
+    color: var(--fg-2);
+  }
+
+  .markdown hr {
+    border: 0;
+    border-top: 1px solid var(--line-strong);
+  }
+
+  /* A table is as wide as what is in it, up to the bubble's width, where its text starts to wrap. */
+  .markdown table {
+    width: max-content;
+    max-width: 100%;
+    border-collapse: collapse;
+    font-size: 0.93em;
+  }
+
+  /* On a phone that would squeeze a table of several columns into slivers. There a table of three
+     or more columns (markdown.tsx counts them) may be 11em a column wide before its text wraps,
+     and scrolls sideways inside the bubble. */
+  @media (max-width: 639px) {
+    .markdown table {
+      max-width: max(100%, calc(var(--columns, 0) * 11em));
+    }
+  }
+
+  .markdown :is(th, td) {
+    padding: 0.45em 0.85em;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .markdown th {
+    background: var(--surface-2);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .markdown tbody tr {
+    border-top: 1px solid var(--line);
+  }
+
+  .markdown thead tr {
+    border-bottom: 1px solid var(--line-strong);
+  }
+
+  /* Footnotes, under a line at the end of the reply. */
+  .markdown .footnotes {
+    border-top: 1px solid var(--line-strong);
+    padding-top: 0.7em;
+    color: var(--fg-2);
+    font-size: 0.93em;
+  }
+}
+
 /* Quiet scrollbars inside panes */
 .scroll-pane {
   scrollbar-width: thin;

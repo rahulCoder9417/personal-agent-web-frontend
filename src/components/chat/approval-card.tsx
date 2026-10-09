@@ -8,6 +8,7 @@ import { cn, formatTimeLeft, titleCase } from "@/lib/format";
 import { AppIcon } from "../brand-icon";
 import { CheckIcon, CloseIcon } from "../icons";
 import { Button, InlineError } from "../ui";
+import { AgentBubble } from "./agent-bubble";
 
 const STATUSES: ApprovalStatus[] = ["pending", "approved", "rejected", "expired"];
 
@@ -42,12 +43,8 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
   const decide = useDecideApproval();
 
   if (isLoading) return <div aria-hidden className="h-[150px] w-full max-w-[480px] animate-pulse rounded-2xl bg-surface-2" />;
-  // The approval can't be found (very old, or already cleaned up): show the message as plain text.
-  if (!approval) {
-    return fallbackText ? (
-      <div className="max-w-[560px] rounded-[18px] rounded-bl-[6px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.45] break-words whitespace-pre-wrap">{fallbackText}</div>
-    ) : null;
-  }
+  // The approval can't be found (very old, or already cleaned up): show the message as any other of Tex's.
+  if (!approval) return fallbackText ? <AgentBubble text={fallbackText} /> : null;
 
   const reason = approvalReason(approval.action);
   const { preview, fields } = splitDetails(approval.details);

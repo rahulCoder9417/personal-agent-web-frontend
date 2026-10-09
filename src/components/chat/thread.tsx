@@ -12,6 +12,7 @@ import { BrandIcon } from "../brand-icon";
 import { FileIcon } from "../icons";
 import { AgentFigure } from "../tex";
 import { Button, EmptyState, ErrorState, Spinner } from "../ui";
+import { AgentBubble } from "./agent-bubble";
 import { ApprovalCard } from "./approval-card";
 
 const STATUS_WORDS: Partial<Record<Message["status"], string>> = {
@@ -90,10 +91,10 @@ function Bubble({ message }: { message: Message }) {
           // The backend sends each ask as its own message ("Approval needed: …"); the card says it better.
           <ApprovalCard approvalId={message.approvalId} fallbackText={message.text} />
         ) : (
-          <div className="max-w-[560px] rounded-[18px] rounded-bl-[6px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.45] break-words whitespace-pre-wrap">
+          // What Tex wrote may be Markdown; what the person wrote, above, is always shown as typed.
+          <AgentBubble text={message.text}>
             <Attachments message={message} />
-            {message.text}
-          </div>
+          </AgentBubble>
         )}
         <MetaLine message={message} align="start" />
       </div>
