@@ -1,66 +1,90 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import type { ReactNode } from "react";
+import { Toaster as SonnerToaster, toast as sonner } from "sonner";
+import { errorMessage } from "@/lib/api/client";
 import { cn } from "@/lib/format";
-import { CheckIcon, CloseIcon } from "./icons";
+import { CheckIcon, CloseIcon, WarningIcon } from "./icons";
 
-// Short confirmations that something finished elsewhere (a payment landing, for instance).
+// Short notices in a corner of the page: something finished elsewhere (a payment landing), or
+// something the person asked for didn't work. sonner draws them; only this file knows that.
 
-type Toast = { id: number; title: string; body?: string };
+/** A button on a toast, for the way out of a refusal ("See plans"). */
+export type ToastAction = { label: string; onClick: () => void };
 
-let toasts: Toast[] = [];
-let nextId = 1;
-const listeners = new Set<() => void>();
-
-function emit() {
-  for (const listener of listeners) listener();
-}
-
-function dismiss(id: number) {
-  toasts = toasts.filter((t) => t.id !== id);
-  emit();
-}
+/** How long a toast stays. A failure stays longer: it has to be read. */
+export const TOAST_MS = 8000;
+export const TOAST_ERROR_MS = 10_000;
 
 /** Shows a confirmation in the corner of the page for a few seconds. */
-export function toast(message: { title: string; body?: string }) {
-  const id = nextId++;
-  toasts = [...toasts, { id, ...message }];
-  emit();
-  window.setTimeout(() => dismiss(id), 8000);
+export function toast(message: { title: string; body?: string; action?: ToastAction }) {
+  sonner.success(message.title, { description: message.body, duration: TOAST_MS, action: message.action });
 }
 
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+/** Why something failed, as a toast's second line: a sentence as given, an error's own message, or nothing. */
+export function errorDetail(detail: unknown): string | undefined {
+  if (detail === undefined || detail === null || detail === "") return undefined;
+  return typeof detail === "string" ? detail : errorMessage(detail);
 }
 
-const none: Toast[] = [];
+/**
+ * Says that something the person asked for didn't work. `title` is what failed ("Couldn’t connect
+ * Gmail"); `detail` is why: the error as caught (the API's own message is shown) or a sentence
+ * written for the case. The same failure twice in a row shows one toast, not a pile of them.
+ */
+export function toastError(title: string, detail?: unknown, action?: ToastAction) {
+  sonner.error(title, { id: `error:${title}`, description: errorDetail(detail), duration: TOAST_ERROR_MS, action });
+}
 
+function Badge({ className, children }: { className: string; children: ReactNode }) {
+  return <span className={cn("grid size-5 place-items-center rounded-full", className)}>{children}</span>;
+}
+
+/**
+ * Where the toasts are drawn. Mounted once, for every page (`Providers`). The look is the app's own:
+ * sonner's styles are switched off and each part is dressed in the design tokens, so it follows
+ * whatever the tokens say. `--toast-bottom` (globals.css) keeps it above the phone's tab bar.
+ */
 export function Toaster() {
-  const list = useSyncExternalStore(
-    subscribe,
-    () => toasts,
-    () => none,
-  );
   return (
-    <div className="pointer-events-none fixed right-5 bottom-5 z-50 flex w-[320px] flex-col gap-2 max-md:inset-x-4 max-md:bottom-[76px] max-md:w-auto" role="status" aria-live="polite">
-      {list.map((item) => (
-        <div
-          key={item.id}
-          className={cn("pointer-events-auto flex items-start gap-3 rounded-2xl border border-fg-2 bg-surface px-4 py-3 shadow-[var(--shadow-pop)]")}
-        >
-          <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-success-soft text-success">
+    <SonnerToaster
+      position="bottom-right"
+      expand
+      visibleToasts={4}
+      gap={8}
+      closeButton
+      offset={{ right: 20, bottom: "var(--toast-bottom)" }}
+      mobileOffset={{ left: 16, right: 16, bottom: "var(--toast-bottom)" }}
+      containerAriaLabel="Notices"
+      icons={{
+        success: (
+          <Badge className="bg-success-soft text-success">
             <CheckIcon size={12} />
-          </span>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <span className="text-[13.5px] font-semibold">{item.title}</span>
-            {item.body && <span className="text-[13px] text-muted">{item.body}</span>}
-          </div>
-          <button type="button" aria-label="Dismiss" onClick={() => dismiss(item.id)} className="grid size-6 shrink-0 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg">
-            <CloseIcon size={13} />
-          </button>
-        </div>
-      ))}
-    </div>
+          </Badge>
+        ),
+        error: (
+          <Badge className="bg-danger-soft text-danger">
+            <WarningIcon size={12} />
+          </Badge>
+        ),
+        close: <CloseIcon size={13} />,
+      }}
+      toastOptions={{
+        unstyled: true,
+        closeButtonAriaLabel: "Dismiss",
+        classNames: {
+          toast:
+            "flex w-[var(--width)] items-start gap-3 rounded-2xl border border-line-strong bg-surface px-4 py-3 font-sans text-fg shadow-[var(--shadow-pop)]",
+          icon: "mt-0.5 shrink-0",
+          content: "flex min-w-0 flex-1 flex-col gap-0.5",
+          title: "text-[13.5px] leading-snug font-semibold",
+          description: "text-[13px] leading-snug text-muted",
+          actionButton:
+            "inline-flex h-7 shrink-0 items-center self-center rounded-lg bg-fg px-2.5 text-[12.5px] font-medium whitespace-nowrap text-white transition-colors hover:bg-black",
+          closeButton:
+            "order-last -mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-fg",
+        },
+      }}
+    />
   );
 }

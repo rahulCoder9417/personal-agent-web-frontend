@@ -25,7 +25,16 @@
   --danger-soft: #fdecea;
   --scout: #11a39b;
   --tock: #ff6b2c;
+  /* How far toasts sit from the bottom of the window. */
+  --toast-bottom: 20px;
   color-scheme: only light;
+}
+
+/* A phone has the tab bar along the bottom: toasts sit above it. */
+@media (max-width: 767px) {
+  :root {
+    --toast-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 @theme inline {
