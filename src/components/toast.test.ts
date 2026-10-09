@@ -17,6 +17,7 @@ describe("toast", () => {
   it("shows a confirmation with its title and body", () => {
     toast({ title: "Gmail connected", body: "Tex can use it from now on." });
     expect(sonner.success).toHaveBeenCalledWith("Gmail connected", {
+      id: "done:Gmail connected",
       description: "Tex can use it from now on.",
       duration: TOAST_MS,
       action: undefined,

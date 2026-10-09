@@ -195,11 +195,16 @@ function Hero({ crew }: { crew: readonly CrewMember[] }) {
 /** How a job moves through the crew, in four steps. */
 function HowItWorks() {
   return (
-    <section id="how-the-crew-works" aria-labelledby="crew-how" className="flex scroll-mt-4 flex-col gap-4 rounded-2xl border border-line bg-chrome px-5 py-5 sm:px-6">
+    <section
+      id="how-the-crew-works"
+      aria-labelledby="crew-how"
+      className="@container flex scroll-mt-4 flex-col gap-4 rounded-2xl border border-line bg-chrome px-5 py-5 sm:px-6"
+    >
       <h2 id="crew-how" className="text-[15px] font-semibold">
         How the crew works
       </h2>
-      <ol className="grid grid-cols-[repeat(auto-fit,minmax(min(210px,100%),1fr))] gap-x-7 gap-y-4">
+      {/* Four in a row, two by two, or one under the other: never three and a straggler. */}
+      <ol className="grid grid-cols-1 gap-x-7 gap-y-4 @[520px]:grid-cols-2 @[960px]:grid-cols-4">
         {CREW_STEPS.map((step, index) => (
           <li key={step.title} className="flex gap-3">
             <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-full bg-fg text-[12px] font-semibold text-white">

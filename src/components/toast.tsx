@@ -32,9 +32,17 @@ export function toastButton(action: ToastAction | undefined): { label: string; o
   return { label: action.label, onClick: "href" in action ? () => navigate(action.href) : action.onClick };
 }
 
-/** Shows a confirmation in the corner of the page for a few seconds. */
+/**
+ * Shows a confirmation in the corner of the page for a few seconds. The same confirmation again
+ * while it is still up replaces it, so an effect that runs twice doesn't say it twice.
+ */
 export function toast(message: { title: string; body?: string; action?: ToastAction }) {
-  sonner.success(message.title, { description: message.body, duration: TOAST_MS, action: toastButton(message.action) });
+  sonner.success(message.title, {
+    id: `done:${message.title}`,
+    description: message.body,
+    duration: TOAST_MS,
+    action: toastButton(message.action),
+  });
 }
 
 /** Why something failed, as a toast's second line: a sentence as given, an error's own message, or nothing. */
@@ -74,7 +82,7 @@ export function Toaster() {
     <SonnerToaster
       position="bottom-right"
       expand
-      visibleToasts={4}
+      visibleToasts={3}
       gap={8}
       closeButton
       offset={{ right: 20, bottom: "var(--toast-bottom)" }}
@@ -96,17 +104,19 @@ export function Toaster() {
       toastOptions={{
         unstyled: true,
         closeButtonAriaLabel: "Dismiss",
+        // sonner draws the close button first, then the icon, the text and the action. The grid puts
+        // them where they read best: icon, text, close on one line, and the action under the text.
         classNames: {
           toast:
-            "flex w-[var(--width)] items-start gap-3 rounded-2xl border border-line-strong bg-surface px-4 py-3 font-sans text-fg shadow-[var(--shadow-pop)]",
-          icon: "mt-0.5 shrink-0",
-          content: "flex min-w-0 flex-1 flex-col gap-0.5",
+            "grid w-[var(--width)] grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2.5 rounded-2xl border border-line-strong bg-surface px-4 py-3 font-sans text-fg shadow-[var(--shadow-pop)]",
+          icon: "col-start-1 row-start-1 mt-0.5",
+          content: "col-start-2 row-start-1 flex min-w-0 flex-col gap-0.5",
           title: "text-[13.5px] leading-snug font-semibold",
           description: "text-[13px] leading-snug text-muted",
           actionButton:
-            "inline-flex h-7 shrink-0 items-center self-center rounded-lg bg-fg px-2.5 text-[12.5px] font-medium whitespace-nowrap text-white transition-colors hover:bg-black",
+            "col-start-2 row-start-2 inline-flex h-7 items-center justify-self-start rounded-lg bg-fg px-2.5 text-[12.5px] font-medium whitespace-nowrap text-white transition-colors hover:bg-black",
           closeButton:
-            "order-last -mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-fg",
+            "col-start-3 row-start-1 -mr-1 grid size-6 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-fg",
         },
       }}
     />
