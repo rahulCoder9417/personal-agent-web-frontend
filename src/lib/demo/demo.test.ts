@@ -7,6 +7,7 @@ import type {
   App,
   Automation,
   ChannelLink,
+  Conversation,
   CreditBalance,
   CrewMember,
   LedgerEntry,
@@ -144,18 +145,19 @@ describe("chat", () => {
     expect(getStore().ledger[0]).toMatchObject({ delta: -1, reason: "charge", description: "Usage: awake time 1" });
   });
 
-  it("shows Tex at work in the web thread and in all chats, not in the Telegram thread, while it answers a web message", async () => {
-    await call<Message>("POST", "messages", { text: "What's on my calendar today?", clientMessageId: uuid(40) });
-    const working = async (filter: "all" | "web" | "telegram") => {
+  it("shows Tex at work in the conversation it answers in, not in an earlier one or in Telegram's", async () => {
+    const sent = await call<Message>("POST", "messages", { text: "What's on my calendar today?", clientMessageId: uuid(40) });
+    expect(sent.body.conversationId).toBe("cnv_web_1");
+    const working = async (conversationId: string) => {
       const busy = (await call<{ state: string }>("GET", "agent/status")).body.state === "busy";
-      const thread = (await call<Page<Message>>("GET", filter === "all" ? "messages" : `messages?channel=${filter}`)).body.items;
-      return threadIsWorking(filter, busy, thread);
+      const thread = (await call<Page<Message>>("GET", `messages?conversationId=${conversationId}`)).body.items;
+      return threadIsWorking("web", busy, thread);
     };
 
     vi.advanceTimersByTime(500);
-    expect([await working("all"), await working("web"), await working("telegram")]).toEqual([true, true, false]);
+    expect([await working("cnv_web_1"), await working("cnv_web_0"), await working("cnv_tg_1")]).toEqual([true, false, false]);
     vi.advanceTimersByTime(1500);
-    expect([await working("all"), await working("web"), await working("telegram")]).toEqual([false, false, false]);
+    expect([await working("cnv_web_1"), await working("cnv_web_0"), await working("cnv_tg_1")]).toEqual([false, false, false]);
   });
 
   it("has Scout report what it is doing, charges its search and then answers", async () => {
@@ -221,42 +223,46 @@ describe("chat", () => {
     expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1884);
   });
 
-  it("starts a new web chat: the messages stay listed, the start is kept, logged and not charged", async () => {
+  it("keeps the earlier name for a new chat working: POST chats/new starts a conversation and says when", async () => {
     type Thread = Page<Message> & { chatStartedAt: string | null };
     const before = await call<Thread>("GET", "messages");
-    expect(before.body.chatStartedAt).toBeNull();
+    // The seeded web chat has been started afresh once already.
+    expect(before.body.chatStartedAt).toBe(getStore().conversations.find((item) => item.id === "cnv_web_1")?.startedAt);
 
     vi.advanceTimersByTime(60_000);
     const started = await call<{ chatStartedAt: string }>("POST", "chats/new");
     expect(started.status).toBe(200);
     expect(started.body.chatStartedAt).toBe(new Date(NOW.getTime() + 60_000).toISOString());
-    expect(getStore().webChat).toEqual({ epoch: 1, startedAt: started.body.chatStartedAt });
+    const active = getStore().conversations.filter((item) => item.channel === "web" && item.active);
+    expect(active).toHaveLength(1);
+    expect(active[0]).toMatchObject({ epoch: 2, startedAt: started.body.chatStartedAt, title: "New chat" });
 
     // Earlier messages are still there; every page and filter says when the new chat started.
     const after = await call<Thread>("GET", "messages");
     expect(after.body.items).toEqual(before.body.items);
     expect(after.body.chatStartedAt).toBe(started.body.chatStartedAt);
     expect((await call<Thread>("GET", "messages?channel=telegram")).body.chatStartedAt).toBe(started.body.chatStartedAt);
+    // The web chat itself now shows the new, empty conversation.
+    expect((await call<Thread>("GET", "messages?channel=web")).body.items).toEqual([]);
 
     // Logged with the channel and no text; no turn ran and nothing was charged.
     expect(getStore().activity[0]).toMatchObject({ actor: "user", action: "chat_started", summary: "Started a new chat in web chat", creditsCharged: null });
     expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1884);
     expect(getStore().agentStatus.state).toBe("awake");
-
-    const again = await call<{ chatStartedAt: string }>("POST", "chats/new");
-    expect(getStore().webChat.epoch).toBe(2);
-    expect(Date.parse(again.body.chatStartedAt)).toBeGreaterThanOrEqual(Date.parse(started.body.chatStartedAt));
   });
 
-  it("allows 30 new chats an hour", async () => {
-    for (let i = 0; i < 30; i++) expect((await call("POST", "chats/new")).status).toBe(200);
-    const limited = await call<ErrorBody>("POST", "chats/new");
-    expect(limited.status).toBe(429);
-    expect(limited.body.error.code).toBe("rate_limited");
-    expect(getStore().webChat.epoch).toBe(30);
+  it("allows 30 new chats an hour, whichever path asks", async () => {
+    for (let i = 0; i < 15; i++) expect((await call("POST", "chats/new")).status).toBe(200);
+    for (let i = 0; i < 15; i++) expect((await call("POST", "conversations")).status).toBe(201);
+    for (const path of ["chats/new", "conversations"]) {
+      const limited = await call<ErrorBody>("POST", path);
+      expect(limited.status).toBe(429);
+      expect(limited.body.error.code).toBe("rate_limited");
+    }
+    expect(getStore().conversations.filter((item) => item.channel === "web")).toHaveLength(32);
 
     vi.advanceTimersByTime(3_600_001);
-    expect((await call("POST", "chats/new")).status).toBe(200);
+    expect((await call("POST", "conversations")).status).toBe(201);
   });
 
   it("answers 402 when there are no credits left", async () => {
@@ -288,6 +294,221 @@ describe("chat", () => {
 
     abort.abort();
     expect(getStore().listeners.size).toBe(0);
+  });
+});
+
+describe("conversations", () => {
+  type Thread = Page<Message>;
+  const list = async (query = "") => (await call<Page<Conversation>>("GET", `conversations${query}`)).body;
+  const thread = async (conversationId: string) => (await call<Thread>("GET", `messages?conversationId=${conversationId}`)).body.items;
+  const events = () => {
+    const seen: StreamEvent[] = [];
+    subscribe(getStore(), (event) => seen.push(event));
+    return seen;
+  };
+
+  it("lists the history newest first, with what each conversation is called and which one is written in", async () => {
+    const all = await list();
+    expect(all.nextCursor).toBeNull();
+    expect(all.items.map((item) => [item.id, item.channel, item.epoch, item.active])).toEqual([
+      ["cnv_tg_1", "telegram", 1, true],
+      ["cnv_web_1", "web", 1, true],
+      ["cnv_web_0", "web", 0, false],
+      ["cnv_tg_0", "telegram", 0, false],
+    ]);
+    // The first incoming message names it, cut at a word to 60 characters.
+    expect(all.items.map((item) => item.title)).toEqual([
+      "Acme kickoff: budget signed off, launch moves to the 20th…",
+      "What did you get done for me yesterday?",
+      "Draft a short update for the team about Friday’s offsite",
+      "What’s on my calendar on Thursday?",
+    ]);
+    for (const item of all.items) {
+      expect(item.id.startsWith("cnv_")).toBe(true);
+      expect(item.title.length).toBeLessThanOrEqual(61);
+      expect(item.lastMessageAt).toBe((await thread(item.id))[0].createdAt);
+    }
+  });
+
+  it("filters by chat app and pages with a cursor", async () => {
+    expect((await list("?channel=web")).items.map((item) => item.id)).toEqual(["cnv_web_1", "cnv_web_0"]);
+    expect((await list("?channel=telegram")).items.map((item) => item.id)).toEqual(["cnv_tg_1", "cnv_tg_0"]);
+    expect((await call<ErrorBody>("GET", "conversations?channel=fax")).status).toBe(400);
+
+    const first = await list("?limit=3");
+    expect(first.items).toHaveLength(3);
+    expect(first.nextCursor).toBeTruthy();
+    const second = await list(`?limit=3&cursor=${encodeURIComponent(first.nextCursor ?? "")}`);
+    expect(second.items.map((item) => item.id)).toEqual(["cnv_tg_0"]);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it("gives every message its conversation, and lists one conversation's messages only", async () => {
+    const everything = (await call<Thread>("GET", "messages")).body.items;
+    const known = new Set((await list()).items.map((item) => item.id));
+    expect(everything.every((message) => known.has(message.conversationId))).toBe(true);
+
+    expect((await thread("cnv_web_0")).map((message) => message.id)).toEqual(["msg_w4", "msg_w3", "msg_w2", "msg_w1"]);
+    expect((await thread("cnv_tg_0")).every((message) => message.channel === "telegram" && message.conversationId === "cnv_tg_0")).toBe(true);
+    // Without a conversation, the web chat is its active conversation; a chat app is all of its messages.
+    expect((await call<Thread>("GET", "messages?channel=web")).body.items.map((message) => message.id)).toEqual(["msg_w6", "msg_w5"]);
+    expect((await call<Thread>("GET", "messages?channel=telegram")).body.items).toHaveLength(9);
+    expect((await call<ErrorBody>("GET", "messages?conversationId=cnv_nope")).status).toBe(404);
+  });
+
+  it("starts a new web conversation: empty, active, called New chat, and the earlier ones stay", async () => {
+    const seen = events();
+    vi.advanceTimersByTime(60_000);
+    const started = await call<Conversation>("POST", "conversations");
+    expect(started.status).toBe(201);
+    expect(started.body).toMatchObject({ channel: "web", epoch: 2, active: true, title: "New chat", startedAt: new Date(NOW.getTime() + 60_000).toISOString() });
+    expect(started.body.id.startsWith("cnv_")).toBe(true);
+    expect(await thread(started.body.id)).toEqual([]);
+
+    const all = (await list()).items;
+    expect(all[0].id).toBe(started.body.id);
+    expect(all.filter((item) => item.channel === "web" && item.active).map((item) => item.id)).toEqual([started.body.id]);
+    // Telegram's own latest conversation is untouched.
+    expect(all.find((item) => item.id === "cnv_tg_1")?.active).toBe(true);
+    expect((await thread("cnv_web_1")).map((message) => message.id)).toEqual(["msg_w6", "msg_w5"]);
+
+    // The stream says which one stopped being active and which one is new.
+    expect(seen.map((event) => [event.type, (event.data as Conversation).id, (event.data as Conversation).active])).toEqual([
+      ["conversation.updated", "cnv_web_1", false],
+      ["conversation.updated", started.body.id, true],
+    ]);
+    expect(getStore().activity[0]).toMatchObject({ actor: "user", action: "chat_started", creditsCharged: null });
+  });
+
+  it("names a new conversation after the first thing said in it, and Tex answers in that conversation", async () => {
+    const started = (await call<Conversation>("POST", "conversations")).body;
+    const seen = events();
+    const sent = await call<Message>("POST", "messages", { text: "Find  a quiet café near the office for Thursday’s catch-up with the design team", clientMessageId: uuid(50) });
+    expect(sent.body.conversationId).toBe(started.id);
+
+    vi.advanceTimersByTime(2000);
+    const named = (await list()).items[0];
+    expect(named).toMatchObject({ id: started.id, title: "Find a quiet café near the office for Thursday’s catch-up…", active: true });
+    const messages = await thread(started.id);
+    expect(messages.map((message) => message.direction)).toEqual(["out", "in"]);
+    expect(named.lastMessageAt).toBe(messages[0].createdAt);
+    // Each message that is saved moves its conversation, and the stream says so.
+    expect(seen.filter((event) => event.type === "conversation.updated").map((event) => (event.data as Conversation).id)).toEqual([started.id, started.id]);
+    expect(seen.filter((event) => event.type === "message.created").every((event) => (event.data as Message).conversationId === started.id)).toBe(true);
+  });
+
+  it("writes in an earlier web conversation when it is named, which makes it the active one", async () => {
+    vi.advanceTimersByTime(60_000);
+    const sent = await call<Message>("POST", "messages", { text: "Make it shorter", clientMessageId: uuid(51), conversationId: "cnv_web_0" });
+    expect(sent.status).toBe(202);
+    expect(sent.body.conversationId).toBe("cnv_web_0");
+
+    vi.advanceTimersByTime(2000);
+    const all = (await list()).items;
+    expect(all.map((item) => [item.id, item.active])).toEqual([["cnv_web_0", true], ["cnv_tg_1", true], ["cnv_web_1", false], ["cnv_tg_0", false]]);
+    // Its own title stays, Tex answers there, and the conversation that was active got nothing.
+    expect(all[0].title).toBe("Draft a short update for the team about Friday’s offsite");
+    expect((await thread("cnv_web_0")).slice(0, 2).map((message) => [message.direction, message.conversationId])).toEqual([["out", "cnv_web_0"], ["in", "cnv_web_0"]]);
+    expect(await thread("cnv_web_1")).toHaveLength(2);
+    // From now on a message without a conversation goes there too.
+    const next = await call<Message>("POST", "messages", { text: "Thanks", clientMessageId: uuid(52) });
+    expect(next.body.conversationId).toBe("cnv_web_0");
+  });
+
+  it("doesn't let the web write in a Telegram conversation, or in one that doesn't exist", async () => {
+    const telegram = await call<ErrorBody>("POST", "messages", { text: "hello", clientMessageId: uuid(53), conversationId: "cnv_tg_1" });
+    expect(telegram.status).toBe(409);
+    expect(telegram.body.error.message).toBe("Reply on Telegram to continue this chat");
+    expect((await call<ErrorBody>("POST", "messages", { text: "hello", clientMessageId: uuid(54), conversationId: "cnv_nope" })).status).toBe(404);
+    expect(await thread("cnv_tg_1")).toHaveLength(7);
+  });
+
+  it("renames a conversation, Telegram's too, and keeps the name when more is said", async () => {
+    const seen = events();
+    const renamed = await call<Conversation>("PATCH", "conversations/cnv_web_1", { title: "  Yesterday’s recap " });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body).toMatchObject({ id: "cnv_web_1", title: "Yesterday’s recap", active: true });
+    expect((await call<Conversation>("PATCH", "conversations/cnv_tg_0", { title: "Thursday" })).body.title).toBe("Thursday");
+    expect(seen.map((event) => [event.type, (event.data as Conversation).title])).toEqual([["conversation.updated", "Yesterday’s recap"], ["conversation.updated", "Thursday"]]);
+
+    await call<Message>("POST", "messages", { text: "And the day before?", clientMessageId: uuid(55) });
+    expect((await list()).items.find((item) => item.id === "cnv_web_1")?.title).toBe("Yesterday’s recap");
+
+    expect((await call<ErrorBody>("PATCH", "conversations/cnv_web_1", { title: "   " })).status).toBe(400);
+    expect((await call<ErrorBody>("PATCH", "conversations/cnv_web_1", { title: "x".repeat(81) })).status).toBe(400);
+    expect((await call<ErrorBody>("PATCH", "conversations/cnv_web_1", {})).status).toBe(400);
+    expect((await call<ErrorBody>("PATCH", "conversations/cnv_nope", { title: "x" })).status).toBe(404);
+  });
+
+  it("makes an earlier web conversation the active one when asked, and refuses that for Telegram", async () => {
+    const made = await call<Conversation>("PATCH", "conversations/cnv_web_0", { active: true });
+    expect(made.body).toMatchObject({ id: "cnv_web_0", active: true });
+    expect((await list("?channel=web")).items.map((item) => [item.id, item.active])).toEqual([["cnv_web_1", false], ["cnv_web_0", true]]);
+    expect((await call<Thread>("GET", "messages?channel=web")).body.items[0].id).toBe("msg_w4");
+
+    const refused = await call<ErrorBody>("PATCH", "conversations/cnv_tg_0", { active: true });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe("conflict");
+    expect((await call<ErrorBody>("PATCH", "conversations/cnv_web_0", { active: false })).status).toBe(400);
+  });
+
+  it("deletes a conversation with its messages and files, and logs it without any text", async () => {
+    const seen = events();
+    const before = (await call<Thread>("GET", "messages")).body.items.length;
+    const deleted = await call("DELETE", "conversations/cnv_tg_1");
+    expect(deleted.status).toBe(204);
+
+    expect((await list()).items.map((item) => item.id)).toEqual(["cnv_web_1", "cnv_web_0", "cnv_tg_0"]);
+    expect((await call<Thread>("GET", "messages")).body.items).toHaveLength(before - 7);
+    expect((await call<ErrorBody>("GET", "messages?conversationId=cnv_tg_1")).status).toBe(404);
+    expect(seen.map((event) => [event.type, (event.data as Conversation).id])).toEqual([["conversation.deleted", "cnv_tg_1"]]);
+
+    const logged = getStore().activity[0];
+    expect(logged).toMatchObject({ actor: "user", action: "conversation_deleted", summary: "Deleted a chat in Telegram", creditsCharged: null });
+    expect(logged.summary).not.toContain("Acme");
+    expect((await call("DELETE", "conversations/cnv_tg_1")).status).toBe(404);
+  });
+
+  it("forgets a sent message's files and its idempotency key with its conversation", async () => {
+    const form = new FormData();
+    form.append("file", new File(["hello"], "notes.txt", { type: "text/plain" }));
+    const upload = await handleDemoRequest(new Request(`${ORIGIN}/api/v1/attachments`, { method: "POST", body: form }), ["attachments"]);
+    const file = (await upload.json()) as { id: string };
+    await call<Message>("POST", "messages", { text: "File this", clientMessageId: uuid(56), attachmentIds: [file.id] });
+    expect(getStore().attachments[file.id]).toBeTruthy();
+
+    await call("DELETE", "conversations/cnv_web_1");
+    expect(getStore().attachments[file.id]).toBeUndefined();
+    expect(getStore().sentIds[uuid(56)]).toBeUndefined();
+    // Tex was about to answer there: nothing is said in a conversation that is gone.
+    vi.advanceTimersByTime(2000);
+    expect(getStore().messages.some((message) => message.conversationId === "cnv_web_1")).toBe(false);
+    expect(getStore().agentStatus.state).toBe("awake");
+  });
+
+  it("makes the newest web conversation left the active one when the active one is deleted, or starts an empty one", async () => {
+    const seen = events();
+    await call("DELETE", "conversations/cnv_web_1");
+    expect((await list("?channel=web")).items.map((item) => [item.id, item.active])).toEqual([["cnv_web_0", true]]);
+    expect(seen.map((event) => [event.type, (event.data as Conversation).id])).toEqual([["conversation.deleted", "cnv_web_1"], ["conversation.updated", "cnv_web_0"]]);
+
+    await call("DELETE", "conversations/cnv_web_0");
+    const left = (await list("?channel=web")).items;
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatchObject({ active: true, title: "New chat", epoch: 0 });
+    expect(await thread(left[0].id)).toEqual([]);
+    // Deleting one that isn't active leaves the active one alone.
+    await call<Conversation>("POST", "conversations");
+    await call("DELETE", `conversations/${left[0].id}`);
+    expect((await list("?channel=web")).items.filter((item) => item.active)).toHaveLength(1);
+  });
+
+  it("answers an approval in the conversation that asked, and where its chat writes now if that was deleted", async () => {
+    await call("DELETE", "conversations/cnv_tg_1");
+    await call<Approval>("POST", "approvals/ap_email/decision", { decision: "reject" });
+    vi.advanceTimersByTime(1000);
+    // The ask went with its conversation; the web chat is where the person is.
+    expect((await thread("cnv_web_1"))[0].text).toContain("I won’t send it");
   });
 });
 

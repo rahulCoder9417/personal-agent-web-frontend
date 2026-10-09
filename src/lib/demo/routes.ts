@@ -3,6 +3,7 @@
 import type { Handler } from "./context";
 import * as account from "./handlers-account";
 import * as chat from "./handlers-chat";
+import * as conversations from "./handlers-conversations";
 import * as crew from "./handlers-crew";
 import * as memory from "./handlers-memory";
 import * as setup from "./handlers-setup";
@@ -21,7 +22,11 @@ const ROUTES: Route[] = [
 
   route("GET", "messages", chat.listMessages),
   route("POST", "messages", chat.sendMessage),
-  route("POST", "chats/new", chat.startNewChat),
+  route("GET", "conversations", conversations.listConversations),
+  route("POST", "conversations", conversations.createConversation),
+  route("PATCH", "conversations/:conversationId", conversations.updateConversation),
+  route("DELETE", "conversations/:conversationId", conversations.deleteConversation),
+  route("POST", "chats/new", conversations.startNewChat),
   route("POST", "attachments", chat.uploadAttachment),
   route("GET", "stream", chat.openStream),
 

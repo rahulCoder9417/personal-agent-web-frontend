@@ -1,6 +1,7 @@
 // Chat, attachments and approvals for the demo account, including Tex's delayed answers.
 
-import type { Approval, ApprovalStatus, Attachment, ChannelType, Message } from "@/lib/api/client";
+import type { Approval, ApprovalStatus, Attachment, ChannelType, Conversation, Message } from "@/lib/api/client";
+import { CHANNEL_LABEL } from "@/lib/format";
 import { lowerFirst, nowIso, truncate, upperFirst, type Handler } from "./context";
 import {
   badRequest,
@@ -12,11 +13,12 @@ import {
   oneOf,
   outOfCredits,
   paginate,
-  rateLimited,
   readJson,
   requiredString,
+  stringField,
   type JsonObject,
 } from "./http";
+import { activeConversation, activeWebConversation, findConversation, makeActive, messageSaved, startWebConversation } from "./handlers-conversations";
 import { memoryRequestOf, rememberFact } from "./handlers-memory";
 import type { SpecialistId } from "./seed";
 import { balanceOf, chargeAppAction, chargePaidTool, chargeUsage, emit, logActivity, nextId, schedule, setAgentState, type DemoState } from "./store";
@@ -40,30 +42,28 @@ const TEXTCREW_AI_CREDITS = 2;
 
 // ---------------------------------------------------------------- messages
 
+/**
+ * One conversation's messages when `conversationId` is given. Without it: the active web
+ * conversation's for `channel=web`, a chat app's for another channel, and every message otherwise.
+ */
 export const listMessages: Handler = ({ state, url }) => {
   const raw = url.searchParams.get("channel");
   const channel = raw === null ? null : oneOf(raw, CHANNELS, "channel");
-  const items = channel ? state.messages.filter((message) => message.channel === channel) : state.messages;
-  return json({ ...paginate(items, url), chatStartedAt: state.webChat.startedAt });
-};
+  const conversationId = url.searchParams.get("conversationId");
+  const activeWeb = activeWebConversation(state);
 
-const NEW_CHATS_PER_HOUR = 30;
-const HOUR_MS = 3_600_000;
-
-/**
- * A new web chat, as the backend starts one: the chat's epoch goes up by one and the time is kept.
- * Tex then starts afresh in the web chat; its memories stay. No turn runs and nothing is charged.
- */
-export const startNewChat: Handler = ({ state }) => {
-  const now = Date.now();
-  state.newChatCalls = state.newChatCalls.filter((at) => now - at < HOUR_MS);
-  if (state.newChatCalls.length >= NEW_CHATS_PER_HOUR) throw rateLimited();
-  state.newChatCalls.push(now);
-
-  state.webChat = { epoch: state.webChat.epoch + 1, startedAt: new Date(now).toISOString() };
-  // The channel, never what was said.
-  logActivity(state, { actor: "user", action: "chat_started", summary: "Started a new chat in web chat" });
-  return json({ chatStartedAt: state.webChat.startedAt });
+  let items = state.messages;
+  if (conversationId !== null) {
+    if (!findConversation(state, conversationId)) throw notFound("That conversation doesn't exist");
+    items = items.filter((message) => message.conversationId === conversationId);
+  } else if (channel === "web") {
+    items = items.filter((message) => message.conversationId === activeWeb?.id);
+  } else if (channel) {
+    items = items.filter((message) => message.channel === channel);
+  }
+  // Kept for compatibility: when the web chat's latest new chat started, null if there never was one.
+  const chatStartedAt = activeWeb && activeWeb.epoch > 0 ? activeWeb.startedAt : null;
+  return json({ ...paginate(items, url), chatStartedAt });
 };
 
 function readAttachments(state: DemoState, body: JsonObject): Attachment[] {
@@ -85,10 +85,14 @@ function setMessageStatus(state: DemoState, id: string, status: Message["status"
   emit(state, "message.status", message);
 }
 
-function postFromTex(state: DemoState, channel: ChannelType, text: string, approvalId: string | null = null): Message {
+/** Tex says something in a conversation. Nothing is said in one that was deleted in the meantime. */
+function postFromTex(state: DemoState, conversationId: string, text: string, approvalId: string | null = null): void {
+  const conversation = findConversation(state, conversationId);
+  if (!conversation) return;
   const message: Message = {
     id: nextId(state, "msg"),
-    channel,
+    conversationId: conversation.id,
+    channel: conversation.channel,
     direction: "out",
     text,
     status: "sent",
@@ -97,7 +101,7 @@ function postFromTex(state: DemoState, channel: ChannelType, text: string, appro
   };
   state.messages.unshift(message);
   emit(state, "message.created", message);
-  return message;
+  messageSaved(state, message);
 }
 
 type Risk = { app: string; action: string; reason: string };
@@ -127,8 +131,8 @@ function askForApproval(state: DemoState, request: Message, risk: Risk): void {
   emit(state, "approval.created", approval);
   logActivity(state, { actor: "agent", action: "approval_requested", summary: `Asked to ${lowerFirst(approval.summary)}` });
   // As the backend does it: the ask is its own message carrying the approval, then Tex's words.
-  postFromTex(state, request.channel, `Approval needed: ${approval.summary}`, approval.id);
-  postFromTex(state, request.channel, "That one needs your OK before I do it.");
+  postFromTex(state, request.conversationId, `Approval needed: ${approval.summary}`, approval.id);
+  postFromTex(state, request.conversationId, "That one needs your OK before I do it.");
 }
 
 type CrewJob = { crew: SpecialistId; name: string; steps: string[]; reply: string };
@@ -173,12 +177,12 @@ function answer(state: DemoState, request: Message, job: CrewJob | null = null):
   const fact = memoryRequestOf(request.text);
   const risk = fact ? null : riskOf(request.text);
   if (fact) {
-    postFromTex(state, request.channel, rememberFact(state, fact));
+    postFromTex(state, request.conversationId, rememberFact(state, fact));
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
   } else if (risk) {
     askForApproval(state, request, risk);
   } else if (job) {
-    postFromTex(state, request.channel, job.reply);
+    postFromTex(state, request.conversationId, job.reply);
     if (job.crew === "scout") {
       // Scout's search is a paid tool: charged when it runs, on top of the time the agent ran.
       const charged = chargePaidTool(state, "Web search");
@@ -187,7 +191,7 @@ function answer(state: DemoState, request: Message, job: CrewJob | null = null):
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
   } else {
     const quote = truncate(request.text, 80);
-    postFromTex(state, request.channel, `Got it. In the demo account nothing is really done, but this is where I’d tell you how “${quote}” went.`);
+    postFromTex(state, request.conversationId, `Got it. In the demo account nothing is really done, but this is where I’d tell you how “${quote}” went.`);
     // The time Tex ran is charged, and the AI too when it ran on Textcrew AI. Nothing was changed in an app.
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
     logActivity(state, { actor: "agent", action: "run_app_action", summary: upperFirst(truncate(request.text, 70)), creditsCharged: 0 });
@@ -195,11 +199,25 @@ function answer(state: DemoState, request: Message, job: CrewJob | null = null):
   setAgentState(state, "awake");
 }
 
+/**
+ * The web conversation a message is written in: the one named, made the active one first if it
+ * wasn't, so Tex carries on with that conversation's own context; or the active one.
+ */
+function conversationToWriteIn(state: DemoState, conversationId: string | undefined): Conversation {
+  if (conversationId === undefined) return activeWebConversation(state) ?? startWebConversation(state);
+  const conversation = findConversation(state, conversationId);
+  if (!conversation) throw notFound("That conversation doesn't exist");
+  if (conversation.channel !== "web") throw conflict(`Reply on ${CHANNEL_LABEL[conversation.channel]} to continue this chat`);
+  makeActive(state, conversation);
+  return conversation;
+}
+
 export const sendMessage: Handler = async ({ state, request }) => {
   const body = await readJson(request);
   const text = requiredString(body, "text", { min: 1, max: 8000 });
   const clientMessageId = requiredString(body, "clientMessageId");
   if (!UUID.test(clientMessageId)) throw badRequest("clientMessageId must be a UUID");
+  const conversationId = stringField(body, "conversationId", { min: 1 });
   const attachments = readAttachments(state, body);
 
   // Sending the same id again returns the first message instead of making a second one.
@@ -208,9 +226,11 @@ export const sendMessage: Handler = async ({ state, request }) => {
 
   if (!state.availableChannels.includes("web")) throw channelDisabled("web", "Web chat is switched off right now");
   if (balanceOf(state) <= 0) throw outOfCredits();
+  const conversation = conversationToWriteIn(state, conversationId);
 
   const message: Message = {
     id: nextId(state, "msg"),
+    conversationId: conversation.id,
     channel: "web",
     direction: "in",
     text,
@@ -222,6 +242,7 @@ export const sendMessage: Handler = async ({ state, request }) => {
   state.messages.unshift(message);
   state.sentIds[clientMessageId] = message.id;
   emit(state, "message.created", message);
+  messageSaved(state, message);
 
   schedule(state, PICKUP_MS, () => {
     setAgentState(state, "busy");
@@ -286,14 +307,15 @@ export const listApprovals: Handler = ({ state, url }) => {
 
 function followUp(state: DemoState, approval: Approval): void {
   const replies = state.approvalReplies[approval.id] ?? { approved: "Done. That’s taken care of.", rejected: "Okay, I won’t do that." };
-  // Answer in the chat the request came from.
-  const channel = state.messages.find((message) => message.approvalId === approval.id)?.channel ?? "web";
+  // Answer in the conversation the ask is in; if that was deleted, where its chat writes now.
+  const ask = state.messages.find((message) => message.approvalId === approval.id);
+  const conversation = findConversation(state, ask?.conversationId) ?? activeConversation(state, ask?.channel ?? "web") ?? startWebConversation(state);
   if (approval.status === "approved") {
-    postFromTex(state, channel, replies.approved);
+    postFromTex(state, conversation.id, replies.approved);
     const charged = chargeAppAction(state, approval.action ?? "APP_ACTION");
     logActivity(state, { actor: "agent", action: "run_app_action", summary: approval.summary, creditsCharged: charged });
   } else {
-    postFromTex(state, channel, replies.rejected);
+    postFromTex(state, conversation.id, replies.rejected);
   }
 }
 

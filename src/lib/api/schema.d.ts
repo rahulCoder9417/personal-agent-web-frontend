@@ -110,11 +110,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Chat history (all channels, newest first)
-         * @description `chatStartedAt` is when the web chat's latest new chat started (`POST /v1/chats/new`), or
-         *     null if the user never started one. The list itself is unchanged: older messages are still
-         *     returned. The web app draws a "New chat" divider before the first web message after that
-         *     time.
+         * Chat history (newest first)
+         * @description With `conversationId`: the messages of that conversation only. Without it: the active web
+         *     conversation's messages when `channel=web`, that channel's messages for another `channel`,
+         *     and every message when no channel is given.
+         *
+         *     `chatStartedAt` is when the web chat's latest new chat started, or null if the user never
+         *     started one. It is kept for compatibility; the web app reads conversations instead.
          */
         get: operations["listMessages"];
         put?: never;
@@ -123,12 +125,68 @@ export interface paths {
          * @description Queued like any other channel message. The reply arrives on the SSE stream.
          *     Returns 402 when the balance is zero, and 403 `channel_disabled` when web chat is switched
          *     off (`web` is not in `available`, see `GET /v1/channels`).
+         *
+         *     The message is saved in the active web conversation, or in `conversationId` when it is
+         *     given: writing to a web conversation that is not the active one makes it active first, and
+         *     the agent continues that conversation's own context.
          */
         post: operations["sendMessage"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user's conversations (newest `lastMessageAt` first)
+         * @description A conversation is one stretch of a chat between two "New chat" actions, with its own
+         *     context for the agent. Web conversations can be opened and written in; conversations of
+         *     another chat app (Telegram) are listed for reading only.
+         */
+        get: operations["listConversations"];
+        put?: never;
+        /**
+         * Start a new web conversation
+         * @description Starts a new conversation in web chat and makes it the active one: the agent starts
+         *     afresh in it. Earlier conversations stay listed and can be opened again. Saved memories
+         *     (`/v1/memories`) are kept; they are the user's, not a chat's. No body. No turn runs and
+         *     no credits are charged. Rate limited to 30 an hour per user.
+         */
+        post: operations["createConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{conversationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a conversation with its messages and attachments
+         * @description Can't be undone. Deleting the active web conversation makes the newest remaining one
+         *     active, or starts an empty one. It is in the activity log as `conversation_deleted`,
+         *     without any text.
+         */
+        delete: operations["deleteConversation"];
+        options?: never;
+        head?: never;
+        /** Rename a conversation, or make a web conversation the active one */
+        patch: operations["updateConversation"];
         trace?: never;
     };
     "/v1/chats/new": {
@@ -141,8 +199,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Start a new web chat
-         * @description The agent starts a fresh conversation in web chat: it no longer sees what was said there
+         * Start a new web chat (the earlier name of `POST /v1/conversations`)
+         * @description Kept working as an alias of `POST /v1/conversations`; new code calls that.
+         *
+         *     The agent starts a fresh conversation in web chat: it no longer sees what was said there
          *     before. Saved memories (`/v1/memories`) are kept; they are not part of a chat. No body.
          *     Applies to web chat only (a Telegram chat starts a new one with the message `/new`).
          *     No turn runs and no credits are charged. Rate limited to 30 an hour per user.
@@ -184,8 +244,13 @@ export interface paths {
          * Live updates (Server-Sent Events)
          * @description One long-lived SSE connection per browser tab. Event types:
          *     `message.created`, `message.status`, `approval.created`, `approval.resolved`,
-         *     `agent.status`, `agent.progress`, `credits.updated`, `automation.updated`.
+         *     `agent.status`, `agent.progress`, `credits.updated`, `automation.updated`,
+         *     `conversation.updated`, `conversation.deleted`.
          *     Each event's `data` is JSON matching the `StreamEvent` schema.
+         *
+         *     `message.created` and `message.status` carry the message, with its `conversationId`.
+         *     `conversation.updated` carries a conversation whose title, `lastMessageAt` or `active`
+         *     changed (a new one too); `conversation.deleted` carries the one that was deleted.
          *
          *     `agent.progress` is a short line about what the agent is doing in the current turn (for
          *     example `Scout: reading 4 pages` or `using web_search`). It is live only: it isn't saved
@@ -1191,8 +1256,29 @@ export interface components {
              */
             deepLink?: string | null;
         };
+        /** @description One stretch of a chat between two "New chat" actions. The agent's context is separate for each. */
+        Conversation: {
+            /** @example cnv_01jb2k */
+            id: string;
+            channel: components["schemas"]["ChannelType"];
+            /** @description The chat's number for this conversation. It rises by 1 at each new chat. */
+            epoch: number;
+            /** Format: date-time */
+            startedAt: string;
+            /**
+             * Format: date-time
+             * @description When its newest message was saved. The list is ordered by it.
+             */
+            lastMessageAt: string;
+            /** @description The first incoming message's text, cut to 60 characters at a word, "New chat" while empty, or what the user renamed it to. */
+            title: string;
+            /** @description Whether new messages of its chat are saved in it. One web conversation is the active one for web chat. */
+            active: boolean;
+        };
         Message: {
             id: string;
+            /** @description The conversation this message belongs to. */
+            conversationId: string;
             channel: components["schemas"]["ChannelType"];
             /** @enum {string} */
             direction: "in" | "out";
@@ -1785,6 +1871,7 @@ export interface components {
              * @example memory_deleted
              * @example memories_cleared
              * @example chat_started
+             * @example conversation_deleted
              */
             action: string;
             summary: string;
@@ -1802,8 +1889,8 @@ export interface components {
         };
         StreamEvent: {
             /** @enum {string} */
-            type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated";
-            data: components["schemas"]["Message"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"];
+            type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated" | "conversation.updated" | "conversation.deleted";
+            data: components["schemas"]["Message"] | components["schemas"]["Conversation"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"];
         };
     };
     responses: {
@@ -1908,6 +1995,7 @@ export interface components {
         McpServerId: string;
         AutomationId: string;
         MemoryId: string;
+        ConversationId: string;
         Provider: components["schemas"]["ByokProvider"];
         /** @description The GitHub user or organisation that owns the repo. */
         RepoOwner: string;
@@ -2088,6 +2176,8 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
                 channel?: components["schemas"]["ChannelType"];
+                /** @description List only this conversation's messages (see `GET /v1/conversations`). */
+                conversationId?: string;
             };
             header?: never;
             path?: never;
@@ -2114,6 +2204,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     sendMessage: {
@@ -2133,6 +2224,8 @@ export interface operations {
                      */
                     clientMessageId: string;
                     attachmentIds?: string[];
+                    /** @description The web conversation to write in. Left out, it is the active one. */
+                    conversationId?: string;
                 };
             };
         };
@@ -2150,7 +2243,127 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             402: components["responses"]["OutOfCredits"];
             403: components["responses"]["ChannelDisabled"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
+        };
+    };
+    listConversations: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+                /** @description Only this chat app's conversations. Left out, all of them. */
+                channel?: components["schemas"]["ChannelType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Conversation"][];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Started */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    deleteConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title?: string;
+                    /**
+                     * @description Make this web conversation the active one for web chat.
+                     * @enum {boolean}
+                     */
+                    active?: true;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description A conversation of another chat app (Telegram) can't be made active from the web */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     startNewChat: {

@@ -12,6 +12,7 @@ import type {
   ByokKey,
   ChannelLink,
   ChannelType,
+  Conversation,
   CreditGrant,
   LedgerEntry,
   McpServer,
@@ -23,6 +24,7 @@ import type {
   Subscription,
   TopUpPack,
 } from "@/lib/api/client";
+import { conversationTitle } from "./context";
 
 const MINUTE = 60_000;
 const DAY = 86_400_000;
@@ -48,15 +50,16 @@ export type DemoData = {
   /** The channels that are switched on, like the backend's ENABLED_CHANNELS: Telegram and the web chat at launch. */
   availableChannels: ChannelType[];
   channels: ChannelLink[];
-  /** Newest first, like the API returns them. */
+  /**
+   * Every conversation, in no order (the API sorts them by `lastMessageAt`). As the backend keeps
+   * them: one per chat and epoch, the epoch rising by one at each new chat, and one web
+   * conversation `active` at a time.
+   */
+  conversations: Conversation[];
+  /** Newest first, like the API returns them. Each belongs to one conversation. */
   messages: Message[];
   /** clientMessageId → message id, for idempotent sends. */
   sentIds: Record<string, string>;
-  /**
-   * The web chat's chat epoch, as the backend keeps it: 0 until the first new chat, plus one for
-   * each, and when the latest one started (`chatStartedAt`, null if never).
-   */
-  webChat: { epoch: number; startedAt: string | null };
   /** When a new chat was last started, for the limit of 30 an hour. */
   newChatCalls: number[];
   attachments: Record<string, Attachment>;
@@ -515,43 +518,64 @@ function seedApprovals(now: Date): Approval[] {
   ];
 }
 
-function seedMessages(now: Date): Message[] {
-  const message = (id: string, minutesAgo: number, rest: Omit<Message, "id" | "createdAt">): Message => ({
-    id, createdAt: earlierToday(now, minutesAgo), ...rest,
-  });
-  const thread: Message[] = [
-    message("msg_1", 208, {
-      channel: "telegram", direction: "in", status: "read", approvalId: null,
+/**
+ * The chats so far: two on Telegram and two in the web chat, the later of each the active one.
+ * Each conversation's title and `lastMessageAt` come from its messages, as the backend derives them.
+ */
+function seedChats(now: Date): { conversations: Conversation[]; messages: Message[] } {
+  type Line = Omit<Message, "id" | "createdAt" | "conversationId" | "channel" | "approvalId"> & { approvalId?: string };
+  const conversations: Conversation[] = [];
+  const messages: Message[] = [];
+
+  /** One conversation, oldest message first. `at` is when each message was said. */
+  const chat = (id: string, channel: ChannelType, epoch: number, active: boolean, lines: [id: string, at: string, line: Line][]) => {
+    for (const [messageId, at, line] of lines) {
+      messages.push({ id: messageId, conversationId: id, channel, createdAt: at, approvalId: null, ...line });
+    }
+    const firstIncoming = lines.find(([, , line]) => line.direction === "in");
+    conversations.push({
+      id, channel, epoch, active,
+      startedAt: lines[0][1],
+      lastMessageAt: lines[lines.length - 1][1],
+      title: conversationTitle(firstIncoming?.[2].text ?? ""),
+    });
+  };
+
+  chat("cnv_tg_0", "telegram", 0, false, [
+    ["msg_t1", atDay(now, 6, 10, 5), { direction: "in", status: "read", text: "What’s on my calendar on Thursday?" }],
+    ["msg_t2", atDay(now, 6, 10, 6), { direction: "out", status: "delivered", text: "Thursday: “Roadmap sync” at 3pm and the dentist at 5:30. Nothing before noon." }],
+  ]);
+  chat("cnv_web_0", "web", 0, false, [
+    ["msg_w1", atDay(now, 2, 16, 20), { direction: "in", status: "read", text: "Draft a short update for the team about Friday’s offsite" }],
+    ["msg_w2", atDay(now, 2, 16, 21), { direction: "out", status: "sent", text: "Here’s a draft: “Offsite is Friday, 10 to 4, at the studio. Lunch is covered, bring a laptop.” Want it shorter?" }],
+    ["msg_w3", atDay(now, 2, 16, 24), { direction: "in", status: "read", text: "That works, thanks" }],
+    ["msg_w4", atDay(now, 2, 16, 24), { direction: "out", status: "sent", text: "Good. Say the word and I’ll post it in #team; that one will need your OK." }],
+  ]);
+  chat("cnv_tg_1", "telegram", 1, true, [
+    ["msg_1", earlierToday(now, 208), {
+      direction: "in", status: "read",
       text: "Acme kickoff: budget signed off, launch moves to the 20th, Dana owns the brief.",
       attachments: [{ id: "att_voice_1", name: "voice-note.ogg", mimeType: "audio/ogg" }],
-    }),
-    message("msg_2", 207, {
-      channel: "telegram", direction: "out", status: "delivered", approvalId: null,
-      text: "Filed. Tidy notes are on your “Acme kickoff” page in Notion.",
-    }),
-    message("msg_review", 92, {
-      channel: "telegram", direction: "out", status: "delivered", approvalId: null,
+    }],
+    ["msg_2", earlierToday(now, 207), { direction: "out", status: "delivered", text: "Filed. Tidy notes are on your “Acme kickoff” page in Notion." }],
+    ["msg_review", earlierToday(now, 92), {
+      direction: "out", status: "delivered",
       text: `Patch reviewed pull request #${REVIEWED.number} in ${REVIEWED.owner}/${REVIEWED.repo}. Two things to fix before you merge: the discount is applied twice when a coupon and a plan change land together, and the new webhook handler has no test. The details are on the pull request.`,
-    }),
-    message("msg_3", 17, {
-      channel: "telegram", direction: "in", status: "read", approvalId: null,
-      text: "Move my 3pm with Maya to tomorrow and let her know",
-    }),
-    message("msg_4", 16, {
-      channel: "telegram", direction: "out", status: "delivered", approvalId: null,
-      text: "On it. Your 3pm is “Roadmap sync”. Moving it to tomorrow, same time.",
-    }),
+    }],
+    ["msg_3", earlierToday(now, 17), { direction: "in", status: "read", text: "Move my 3pm with Maya to tomorrow and let her know" }],
+    ["msg_4", earlierToday(now, 16), { direction: "out", status: "delivered", text: "On it. Your 3pm is “Roadmap sync”. Moving it to tomorrow, same time." }],
     // As the backend does it: the ask is its own message carrying the approval, then Tex's words.
-    message("msg_5", 15, {
-      channel: "telegram", direction: "out", status: "delivered", approvalId: "ap_email",
-      text: "Approval needed: Send this email to Maya",
-    }),
-    message("msg_6", 15, {
-      channel: "telegram", direction: "out", status: "delivered", approvalId: null,
-      text: "The meeting is moved. I’ve drafted a note to Maya; it needs your OK before I send it.",
-    }),
-  ];
-  return thread.reverse();
+    ["msg_5", earlierToday(now, 15), { direction: "out", status: "delivered", approvalId: "ap_email", text: "Approval needed: Send this email to Maya" }],
+    ["msg_6", earlierToday(now, 15), { direction: "out", status: "delivered", text: "The meeting is moved. I’ve drafted a note to Maya; it needs your OK before I send it." }],
+  ]);
+  chat("cnv_web_1", "web", 1, true, [
+    ["msg_w5", earlierToday(now, 55), { direction: "in", status: "read", text: "What did you get done for me yesterday?" }],
+    ["msg_w6", earlierToday(now, 54), { direction: "out", status: "sent", text: "Yesterday I posted your update in #team once you gave the OK, and filed two sets of meeting notes in Notion. Nothing from then is waiting on you." }],
+  ]);
+
+  // The API lists messages newest first. Two said in the same minute keep the order they were said in.
+  messages.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  return { conversations, messages: messages.reverse() };
 }
 
 /** Ledger (newest first), activity (newest first), per-day usage and what's left of each grant. */
@@ -621,6 +645,7 @@ function seedMcpServers(plan: PlanId, now: Date): McpServer[] {
 
 export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
   const money = seedMoney(now);
+  const chats = seedChats(now);
   const aiMode = demoAiMode();
   const signedUp = atDay(now, SIGNUP_DAYS_AGO, 9, 40);
   return {
@@ -630,9 +655,9 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
     },
     availableChannels: ["telegram", "web"],
     channels: [{ id: "ch_telegram", channel: "telegram", displayId: "@aarav_s", linkedAt: iso(Date.parse(signedUp) + 5 * MINUTE) }],
-    messages: seedMessages(now),
+    conversations: chats.conversations,
+    messages: chats.messages,
     sentIds: {},
-    webChat: { epoch: 0, startedAt: null },
     newChatCalls: [],
     attachments: {},
     approvals: seedApprovals(now),

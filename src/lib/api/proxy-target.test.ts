@@ -28,6 +28,13 @@ describe("resolveUpstream", () => {
     expect(resolveUpstream(BASE, ["chats", "new"])?.toString()).toBe("http://localhost:8080/v1/chats/new");
   });
 
+  it("lets the chat history through: the list, one conversation, and its messages", () => {
+    expect(resolveUpstream(BASE, ["conversations"], "?limit=30&channel=web")?.toString()).toBe("http://localhost:8080/v1/conversations?limit=30&channel=web");
+    expect(resolveUpstream(BASE, ["conversations", "cnv_01jb2k"])?.toString()).toBe("http://localhost:8080/v1/conversations/cnv_01jb2k");
+    expect(resolveUpstream(BASE, ["messages"], "?conversationId=cnv_01jb2k")?.searchParams.get("conversationId")).toBe("cnv_01jb2k");
+    expect(resolveUpstream(BASE, ["conversations", ".."])).toBeNull();
+  });
+
   it("keeps the query string but drops a client-supplied token", () => {
     const url = resolveUpstream(BASE, ["messages"], "?limit=30&token=stolen&channel=web");
     expect(url?.searchParams.get("limit")).toBe("30");
