@@ -40,6 +40,7 @@ The demo account behaves like the backend at launch: Telegram and the web chat a
 Things to try in the demo:
 
 - **The crew at work**: ask Tex in the web chat to research something ("research what other tools charge"), fix code ("fix the bug in…") or review ("review my pull request"). Scout, Byte or Patch reports three lines while it works, then Tex answers. Scout's search costs 1 credit.
+- **Replies drawn as Markdown**: the web chat opens on an answer with a heading, a table, a block of code, a numbered list and a link. Ask Tex to research something and the answer has a table, a list and links; ask it to fix code and it has code with a Copy button. Every other reply is a plain sentence and looks as it always did, and so do the Telegram chats.
 - **Pull-request review** (Automations → Pull-request review): two repos are seeded, one on and one paused after failures. Pro allows five automations and four are used, so one more repo can be given review and the next one hits the plan limit. A repo owned by `octocat` stands in for one the GitHub account can't administer. Disconnect GitHub under Apps to see the screen without it.
 - **Choosing Textcrew AI** (Settings → Agent & AI): the demo has an Anthropic key saved, so "Use Textcrew AI" and the way back are both there.
 - **The chat history**: four chats are seeded, two in the web chat and two on Telegram. Open the Telegram one to read it (it can't be answered from here), open the earlier web one and write in it (it moves to the top and Tex answers there), and start a "New chat". Rename or delete one from the three dots on its row. The 31st new chat in an hour is refused with a toast.
@@ -70,6 +71,7 @@ That starts the backend from `../beckend` with embedded Postgres and a throwaway
 - **The pages are static.** Every screen except `/billing` is built ahead (`○` in `pnpm build`'s route table) and served from Vercel's CDN; the data comes afterwards from `/api/v1/*`. Nothing in the pages reads the request: whether the app runs with Clerk, in demo mode or with the development token is decided once, when the app is built (`next.config.ts` writes it in as `NEXT_PUBLIC_TEXTCREW_AUTH_MODE`, read with `builtAuthMode()` in `src/lib/auth-mode.ts`). `/billing` reads the session, so it is rendered per request.
 - **The proxy still runs before every page** (`src/proxy.ts`) and does what needs the request: it asks for a session, sends someone signed in away from the sign-in pages and, without accounts, sends the sign-in pages home. It and the API route read the environment on every request (`authMode()` in `src/lib/env.ts`); on Vercel and in the Dockerfile that is the environment the app was built with.
 - **The first page asks only for what it draws.** The shell asks for the account and the pending approvals; the chat for the channels, the chat history, the open conversation's messages and the agent's state; and the live stream opens. That is all a phone sends (6 calls and the stream). The messages are asked for once the history has said which conversation is open, so that one call waits for another. The sidebar, hidden on a phone, asks for the crew and the plans only on a wider screen (8), and the chat's side panel is only drawn where it shows (from 1100px, or from 1340px while the chat history is open beside the thread), where it adds activity, automations and the agent settings (11). Both follow `useMediaQuery` (`src/lib/media-query.ts`), which says no on the server and in the first render. The checkout watcher asks for the subscription, credits and plans only while a checkout is waiting.
+- **What draws Markdown is not part of the first page.** It is a chunk of its own (147 kB, 44 kB gzipped), fetched the first time a reply has something to draw. See [Tex's replies are drawn as Markdown](#texs-replies-are-drawn-as-markdown).
 - **The live stream reconnects** every five minutes on Vercel (the function's time limit) and whenever the connection drops. The backend's stream has no event ids and replays nothing, so a reconnect asks again for the open conversation's messages, the chat history, the approvals and the agent's state; in a tab nobody is looking at they are only marked stale and asked for when the tab is shown again (`catchUpAfterReconnect` in `src/lib/api/stream.ts`).
 
 ## Sign-in
@@ -129,6 +131,20 @@ The chat has a history, like ChatGPT or Claude.ai. A **conversation** is one str
 - **Live**: `message.created` and `message.status` carry the message with its `conversationId`, so it joins that conversation's thread and no other, and its conversation moves to the top of the history. `conversation.updated` (a new one, a new title, something said in it, or it became the active one) and `conversation.deleted` change the history as they arrive (`applyStreamEvent` in `src/lib/api/stream.ts`, `src/lib/conversations.ts`).
 - **Tex at work**: the "Tex is working" bubble and its progress lines show only in the conversation that has a turn going: its newest incoming message that has left the queue is `processing` (the backend sets that when the agent takes the message and moves it on when the turn ends) and the agent is busy (`src/lib/chat-thread.ts`). A turn in another web conversation or on Telegram doesn't show in the one that is open.
 - **Web chat switched off**: there is no "New chat" and no composer, and the chat opens on the newest conversation, to read.
+
+### Tex's replies are drawn as Markdown
+
+What Tex writes for the web chat may be Markdown; a chat app such as Telegram gets plain text (that is the agent's and the backend's part). The web chat draws it: headings, bold, italic, strikethrough, lists, numbered lists, lists inside lists, task lists, quotes, rules, tables, code inside a sentence, blocks of code with the language they were given and a Copy button, links and footnotes. What the person wrote is always shown as typed.
+
+- **Where**: `AgentBubble` (`src/components/chat/agent-bubble.tsx`) is the bubble for anything Tex wrote: its messages in the thread, and the message of an approval that can no longer be found. The rules are in `src/lib/markdown.ts`, the drawing in `src/components/chat/markdown.tsx`, the look in `globals.css` under `.markdown`. The approval card itself is not drawn as Markdown: its summary is one line, and its preview is the email or post as it will be sent, so it is shown as typed.
+- **A plain reply looks as it did.** A reply with nothing in it for Markdown to draw (`hasMarkdown`) is shown exactly as typed, line breaks and spaces kept. That is most short replies, and what Tex writes on Telegram. In a reply that is drawn, a single line break is still a line break and its parts sit one line apart, as paragraphs with a blank line between them do, so a reply reads the same with or without a bold word in it. A list, a table or a block of code sits close under the sentence that leads to it, and headings are only a little larger than the text: a reply is a chat message, not a page.
+- **What Tex wrote is not trusted.** A web page or an email it read can put words in its mouth. So:
+  - Raw HTML is shown as the text it was typed as, never drawn.
+  - A link leads only to an `http`, `https` or `mailto` address given in full, and opens in a new tab with `rel="noopener noreferrer"`. Anything else (`javascript:`, `data:`, a path inside this app) keeps its words and is not a link (`safeLink`).
+  - A picture is not fetched, because its address could be used to track the reader or to carry something out. It shows as a link that says "Image: …".
+- **Width**: a bubble is 560px wide at most, a comfortable line to read. A reply with a table or a block of code may take the thread's whole width instead (654px on a wide screen). A table or a block of code wider than its bubble scrolls sideways inside it; the page and the thread never do. On a phone, a table of three or more columns may be 11em a column wide before its text wraps, so its columns aren't squeezed into slivers.
+- **Loaded when needed**: the renderer is a chunk of its own, fetched the first time a reply has something to draw; a chat of plain replies never asks for it. Until it arrives the reply reads as typed, and it stays that way if the chunk can't be fetched or a reply can't be drawn.
+- **The libraries**: `react-markdown` with `remark-gfm` (tables, task lists, strikethrough, bare addresses as links) and `remark-breaks` (a line break stays a line break). `react-markdown` builds React elements from the text and never sets HTML. `rehype-raw`, which would draw raw HTML, must not be added.
 
 ## Toasts and errors
 
@@ -259,6 +275,8 @@ src/app/
 src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell/…, auth/ for the sign-in forms)
   toast.tsx          toasts, drawn by sonner: a confirmation, or an action that failed
   page.tsx           a screen's header and full-width body, columns of cards, the reading width
+  chat/agent-bubble.tsx  the bubble for what Tex wrote: as typed, or drawn as Markdown
+  chat/markdown.tsx      draws Markdown; loaded the first time a reply needs it
 src/lib/
   api/               generated types, typed client, TanStack Query hooks, SSE → cache
   auth-flow.ts       sign-in and sign-up: where to land, Clerk's refusals in words, what comes next
@@ -274,6 +292,7 @@ src/lib/
   pr-review.ts       reading a repo as typed, a repo's state and the API's refusals in words
   conversations.ts   the chat history: which conversation is open, what can be done with it, and the list kept in order as things happen
   chat-thread.ts     the chat thread: whether Tex is at work in the open conversation
+  markdown.ts        Markdown in Tex's replies: whether a reply has any, and where a link may lead
   in-view.ts         asks for the next page when the end of a list scrolls into view
   stored-flag.ts     a yes or no this browser remembers (the chat history folded away)
   claude-code.ts     Claude Code's model and thinking effort as the selects offer them
@@ -290,6 +309,8 @@ src/lib/
 - The demo doesn't make an automation when one is asked for in chat, so a template can be followed as far as the chat and no further.
 - The chat's two error lines (a message that didn't send, an approval that didn't go through) are not toasts yet.
 - Voice notes from the composer (files and text only).
+- Code in a reply has no colours for its syntax, and maths written as LaTeX is shown as typed.
+- Markdown is drawn only in Tex's chat messages. Memories, the activity log and an approval's preview are shown as typed.
 - Scout's browser: the contract says it isn't built (`browser.available: false`), so there is nothing to show but the note. `browserSeconds` is in the usage and not shown yet.
 - What the screens would like and the contract doesn't offer:
   - A pull-request review repo has no history: which pull requests were reviewed, the verdicts, or why a review failed. The screen shows only when the last one ran.
