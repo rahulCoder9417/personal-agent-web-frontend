@@ -14,7 +14,7 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
 - **Installable on a phone**: "Add to Home Screen" on Android and iPhone opens it in its own window. See [Installing on a phone](#installing-on-a-phone).
 - **The pages only talk to this app's own `/api/v1/*`.** `src/app/api/v1/[...path]/route.ts` forwards to the backend and adds the Clerk session token on the server, so the token never sits in page JavaScript or in an `EventSource` URL. Only user-facing paths are allowed through (no admin, waitlist or webhook routes).
 
-This is the address the backend calls `WEB_APP_URL`: Polar returns here after checkout, app sign-in screens return here, and Tex's messages link here. The desktop app (`../user-frontend-desktop`) is a separate codebase built from the same screens.
+This is the address the backend calls `WEB_APP_URL`: Polar returns here after checkout, app sign-in screens return here, and Tex's messages link here. The desktop app (`../user-frontend-desktop`) is a small window around this live web app, so it has no screens of its own: what is deployed here is what it shows.
 
 API contract: `openapi/openapi.yaml`, copied from `../beckend/openapi/openapi.yaml`. One field was written into the copy by hand ahead of the backend: `App.connectable` (see [Apps](#what-the-backend-decides)). The next `pnpm openapi:sync` should bring the same field from the backend; if it doesn't, the two have drifted.
 
