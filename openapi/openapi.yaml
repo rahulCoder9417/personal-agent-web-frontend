@@ -2018,7 +2018,17 @@ components:
           description: The conversation this message belongs to.
         channel: { $ref: "#/components/schemas/ChannelType" }
         direction: { type: string, enum: [in, out] }
-        text: { type: string }
+        text:
+          type: string
+          description: |
+            The message as it was written.
+
+            An agent's message (`direction: out`) may contain Markdown: CommonMark plus tables.
+            Clients render it as Markdown and never treat it as HTML. This holds on every
+            channel: a reply to a chat app is sent there as plain text, and the message keeps
+            the agent's original text.
+
+            A user's message (`direction: in`) is plain text. Show it as typed.
         attachments:
           type: array
           items:

@@ -1315,6 +1315,16 @@ export interface components {
             channel: components["schemas"]["ChannelType"];
             /** @enum {string} */
             direction: "in" | "out";
+            /**
+             * @description The message as it was written.
+             *
+             *     An agent's message (`direction: out`) may contain Markdown: CommonMark plus tables.
+             *     Clients render it as Markdown and never treat it as HTML. This holds on every
+             *     channel: a reply to a chat app is sent there as plain text, and the message keeps
+             *     the agent's original text.
+             *
+             *     A user's message (`direction: in`) is plain text. Show it as typed.
+             */
             text: string;
             attachments?: {
                 id?: string;
