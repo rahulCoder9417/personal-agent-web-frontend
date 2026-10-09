@@ -7,6 +7,7 @@ const app = (slug: string, name: string, category: string, connected = false): A
   name,
   category,
   availableOnPlan: true,
+  connectable: true,
   connections: connected ? [{ id: `c_${slug}`, status: "active" }] : [],
 });
 

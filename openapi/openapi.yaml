@@ -1861,13 +1861,18 @@ components:
 
     App:
       type: object
-      required: [slug, name, category, availableOnPlan, connections]
+      required: [slug, name, category, availableOnPlan, connectable, connections]
       properties:
         slug: { type: string, examples: [gmail] }
         name: { type: string, examples: [Gmail] }
         iconUrl: { type: [string, "null"], format: uri }
         category: { type: string, examples: [email, calendar, notes, tasks, crm, dev, research] }
         availableOnPlan: { type: boolean }
+        connectable:
+          type: boolean
+          description: |
+            Whether this app can be connected on this deployment: true when the server has a
+            Composio setup for it. False: show it as not available yet and offer no Connect.
         connections:
           type: array
           items:

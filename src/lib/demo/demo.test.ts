@@ -395,6 +395,21 @@ describe("setup", () => {
     expect((await call("POST", "apps/linear/connect", { returnUrl: "https://evil.example/" })).status).toBe(400);
   });
 
+  it("lists a few apps as not connectable yet, and refuses to connect them the way the backend does", async () => {
+    const apps = (await call<{ items: App[] }>("GET", "apps")).body.items;
+    const off = apps.filter((app) => !app.connectable).map((app) => app.slug);
+    expect(off).toEqual(["hubspot", "asana", "airtable"]);
+    // Nothing that is already connected, and most of the catalog, stays connectable.
+    expect(apps.filter((app) => app.connections.length > 0).every((app) => app.connectable)).toBe(true);
+    expect(apps.filter((app) => app.connectable).length).toBeGreaterThan(off.length);
+
+    const refused = await call<{ error: { code: string; message: string } }>("POST", "apps/hubspot/connect", { returnUrl: `${ORIGIN}/apps` });
+    expect(refused.status).toBe(404);
+    expect(refused.body.error).toMatchObject({ code: "not_found", message: "HubSpot isn't configured yet" });
+    const after = (await call<{ items: App[] }>("GET", "apps")).body.items;
+    expect(after.find((app) => app.slug === "hubspot")?.connections).toEqual([]);
+  });
+
   it("needs a connected Claude plan before Claude Code can run", async () => {
     expect((await call("PATCH", "agent/settings", { runtime: "claude_code" })).status).toBe(409);
 

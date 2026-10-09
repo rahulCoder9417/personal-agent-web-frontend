@@ -33,6 +33,8 @@ export const connectApp: Handler = async ({ state, request, params, url }) => {
   const app = state.apps.find((item) => item.slug === params.appSlug);
   if (!app) throw notFound("That app isn't in the catalog");
   if (!app.availableOnPlan) throw planLimit(`${app.name} isn't included in your plan`);
+  // The backend's answer for an app the server has no setup for.
+  if (!app.connectable) throw notFound(`${app.name} isn't configured yet`);
 
   const body = await readJson(request, { optional: true });
   const redirectUrl = readReturnUrl(body.returnUrl, url.origin);
