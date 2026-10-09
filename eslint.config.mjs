@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Generated from openapi/openapi.yaml
     "src/lib/api/schema.d.ts",
+    // Other checkouts of this repo (agent worktrees), with their own build output
+    ".claude/**",
   ]),
 ]);
 
