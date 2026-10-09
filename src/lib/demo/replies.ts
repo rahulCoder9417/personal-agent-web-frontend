@@ -1,0 +1,92 @@
+// The demo's longer answers, written in Markdown as the agent writes for the web chat: a heading,
+// a table, a list, a block of code, a link. The chat draws them (src/components/chat/markdown.tsx).
+// Nothing in them is real, and every address ends in .example, which leads nowhere.
+
+const lines = (...parts: string[]) => parts.join("\n");
+
+/** Seeded in the web chat: what Patch found in the pull request it reviewed today. */
+export const prFindingsReply = (pullRequest: number) =>
+  lines(
+    `## Pull request #${pullRequest}: two things to fix`,
+    "",
+    "| File | What’s wrong | Fix before merging? |",
+    "|---|---|---|",
+    "| `lib/checkout/discount.ts` | The discount is applied twice when a coupon and a plan change land together | Yes |",
+    "| `app/api/webhooks/route.ts` | The new webhook handler has no test | Yes |",
+    "",
+    "**Fix the discount first.** It changes what a customer pays; the missing test only makes the next mistake easier to miss.",
+    "",
+    "Patch suggests taking one discount, not both:",
+    "",
+    "```ts",
+    "// lib/checkout/discount.ts",
+    "export function discountFor(order: Order): number {",
+    "  if (order.coupon) return order.coupon.amount;",
+    "  return order.planChange?.credit ?? 0;",
+    "}",
+    "```",
+    "",
+    "Then:",
+    "",
+    "1. Add a test for a coupon and a plan change in the same order.",
+    "2. Add a test for the webhook handler.",
+    "3. Push. Patch reviews the pull request again on its own.",
+    "",
+    `You can try the checkout on the preview of the branch: [pr-${pullRequest}.northwind.example/checkout](https://pr-${pullRequest}.northwind.example/checkout)`,
+  );
+
+/** Tex's answer when Scout was asked to research something. */
+export const SCOUT_REPLY = lines(
+  "Scout looked into it. In the demo account nothing is really searched, so what follows is made up, to show how I’d write up what it found.",
+  "",
+  "## Three rooms for Friday’s offsite",
+  "",
+  "| Room | Seats | Price for the day | From the office |",
+  "|---|--:|--:|---|",
+  "| The Studio | 20 | $450 | 10 minutes on foot |",
+  "| Harbour Rooms | 35 | $700 | 25 minutes by train |",
+  "| Number Nine | 12 | $300 | 5 minutes on foot |",
+  "",
+  "**My pick is The Studio.** It seats the whole team, and it is the only one where lunch is part of the price.",
+  "",
+  "- Harbour Rooms is the one to take if more than 20 people come.",
+  "- Number Nine is too small once the two contractors join.",
+  "- All three are free this Friday. ~~The Loft~~ is booked.",
+  "",
+  "What I read: [thestudio.example/hire](https://thestudio.example/hire), [harbourrooms.example](https://harbourrooms.example) and [numbernine.example/rooms](https://numbernine.example/rooms). To hold the date, write to bookings@thestudio.example.",
+);
+
+/** Tex's answer when Byte was handed some code to write or fix. */
+export const BYTE_REPLY = lines(
+  "Byte took that one. In the demo account no code is really written, so what follows is made up, to show how I’d tell you what it changed.",
+  "",
+  "## What Byte changed",
+  "",
+  "The sign-up form took an email address with a space after it, and that account then couldn’t sign in.",
+  "",
+  "| File | Change |",
+  "|---|---|",
+  "| `components/signup-form.tsx` | Cleans the address before it is sent |",
+  "| `lib/validate.ts` | One rule for an email address, used by both forms |",
+  "| `lib/validate.test.ts` | New: four cases, one of them the space after the address |",
+  "",
+  "```ts",
+  "// lib/validate.ts",
+  "export function cleanEmail(typed: string): string | null {",
+  "  const email = typed.trim().toLowerCase();",
+  "  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) ? email : null;",
+  "}",
+  "```",
+  "",
+  "To try it yourself:",
+  "",
+  "1. Get the branch and run its tests:",
+  "",
+  "   ```bash",
+  "   git switch fix/signup-email && pnpm test validate",
+  "   ```",
+  "",
+  "2. Sign up with a space after the address. It goes through.",
+  "",
+  "It is up as pull request #129, so Patch reviews it next. The preview: [pr-129.northwind.example/sign-up](https://pr-129.northwind.example/sign-up)",
+);

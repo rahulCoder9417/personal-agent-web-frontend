@@ -20,6 +20,7 @@ import type {
   UsageTotals,
 } from "@/lib/api/client";
 import { threadIsWorking } from "@/lib/chat-thread";
+import { hasMarkdown } from "@/lib/markdown";
 import { handleDemoRequest, resetDemoStore } from "./index";
 import { getStore, subscribe } from "./store";
 
@@ -210,6 +211,42 @@ describe("chat", () => {
     expect((await call<Page<Message>>("GET", "messages?channel=web")).body.items[0].text).toContain("Got it.");
   });
 
+  it("answers in Markdown where an answer is worth formatting: one seeded reply, and Scout's and Byte's", async () => {
+    /** A heading, a table, a list, a block of code with its language, a link. */
+    const parts = (text: string) => ({
+      heading: /^## \S/m.test(text),
+      table: /^\|.+\|\n\|[-:| ]+\|\n\|.+\|$/m.test(text),
+      list: /^(?:- |1\. )\S/m.test(text),
+      code: /^ *```[a-z]+\n[^]+?\n *```$/m.test(text),
+      link: /\[[^\]]+\]\(https:\/\/[^)\s]+\.example[^)\s]*\)/.test(text),
+    });
+    const all = { heading: true, table: true, list: true, code: true, link: true };
+    const newest = async () => (await call<Page<Message>>("GET", "messages?channel=web")).body.items[0];
+
+    const seeded = await newest();
+    expect(seeded).toMatchObject({ id: "msg_w8", direction: "out", conversationId: "cnv_web_1" });
+    expect(parts(seeded.text)).toEqual(all);
+    // Every other seeded message is plain text, shown as typed.
+    expect(getStore().messages.filter((message) => hasMarkdown(message.text)).map((message) => message.id)).toEqual(["msg_w8"]);
+
+    await call<Message>("POST", "messages", { text: "Fix the bug in the signup form", clientMessageId: uuid(24) });
+    vi.advanceTimersByTime(5000);
+    const fromByte = await newest();
+    expect(fromByte.text.startsWith("Byte took that one. In the demo account no code is really written")).toBe(true);
+    expect(parts(fromByte.text)).toEqual(all);
+
+    await call<Message>("POST", "messages", { text: "Research rooms for the offsite", clientMessageId: uuid(25) });
+    vi.advanceTimersByTime(5000);
+    const fromScout = await newest();
+    expect(fromScout.text.startsWith("Scout looked into it. In the demo account nothing is really searched")).toBe(true);
+    expect(parts(fromScout.text)).toEqual({ ...all, code: false });
+
+    // The answer to anything else stays a plain sentence.
+    await call<Message>("POST", "messages", { text: "Thanks", clientMessageId: uuid(26) });
+    vi.advanceTimersByTime(2000);
+    expect(hasMarkdown((await newest()).text)).toBe(false);
+  });
+
   it("asks for an OK instead of acting when the request is risky", async () => {
     await call<Message>("POST", "messages", { text: "Email Maya the kickoff notes", clientMessageId: uuid(2) });
     vi.advanceTimersByTime(2000);
@@ -351,7 +388,7 @@ describe("conversations", () => {
     expect((await thread("cnv_web_0")).map((message) => message.id)).toEqual(["msg_w4", "msg_w3", "msg_w2", "msg_w1"]);
     expect((await thread("cnv_tg_0")).every((message) => message.channel === "telegram" && message.conversationId === "cnv_tg_0")).toBe(true);
     // Without a conversation, the web chat is its active conversation; a chat app is all of its messages.
-    expect((await call<Thread>("GET", "messages?channel=web")).body.items.map((message) => message.id)).toEqual(["msg_w6", "msg_w5"]);
+    expect((await call<Thread>("GET", "messages?channel=web")).body.items.map((message) => message.id)).toEqual(["msg_w8", "msg_w7", "msg_w6", "msg_w5"]);
     expect((await call<Thread>("GET", "messages?channel=telegram")).body.items).toHaveLength(9);
     expect((await call<ErrorBody>("GET", "messages?conversationId=cnv_nope")).status).toBe(404);
   });
@@ -370,7 +407,7 @@ describe("conversations", () => {
     expect(all.filter((item) => item.channel === "web" && item.active).map((item) => item.id)).toEqual([started.body.id]);
     // Telegram's own latest conversation is untouched.
     expect(all.find((item) => item.id === "cnv_tg_1")?.active).toBe(true);
-    expect((await thread("cnv_web_1")).map((message) => message.id)).toEqual(["msg_w6", "msg_w5"]);
+    expect((await thread("cnv_web_1")).map((message) => message.id)).toEqual(["msg_w8", "msg_w7", "msg_w6", "msg_w5"]);
 
     // The stream says which one stopped being active and which one is new.
     expect(seen.map((event) => [event.type, (event.data as Conversation).id, (event.data as Conversation).active])).toEqual([
@@ -409,7 +446,7 @@ describe("conversations", () => {
     // Its own title stays, Tex answers there, and the conversation that was active got nothing.
     expect(all[0].title).toBe("Draft a short update for the team about Friday’s offsite");
     expect((await thread("cnv_web_0")).slice(0, 2).map((message) => [message.direction, message.conversationId])).toEqual([["out", "cnv_web_0"], ["in", "cnv_web_0"]]);
-    expect(await thread("cnv_web_1")).toHaveLength(2);
+    expect(await thread("cnv_web_1")).toHaveLength(4);
     // From now on a message without a conversation goes there too.
     const next = await call<Message>("POST", "messages", { text: "Thanks", clientMessageId: uuid(52) });
     expect(next.body.conversationId).toBe("cnv_web_0");

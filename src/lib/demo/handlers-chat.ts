@@ -20,6 +20,7 @@ import {
 } from "./http";
 import { activeConversation, activeWebConversation, findConversation, makeActive, messageSaved, startWebConversation } from "./handlers-conversations";
 import { memoryRequestOf, rememberFact } from "./handlers-memory";
+import { BYTE_REPLY, SCOUT_REPLY } from "./replies";
 import type { SpecialistId } from "./seed";
 import { balanceOf, chargeAppAction, chargePaidTool, chargeUsage, emit, logActivity, nextId, schedule, setAgentState, type DemoState } from "./store";
 import { streamResponse } from "./stream";
@@ -138,11 +139,12 @@ function askForApproval(state: DemoState, request: Message, risk: Risk): void {
 type CrewJob = { crew: SpecialistId; name: string; steps: string[]; reply: string };
 
 // What each specialist is handed in the demo, the lines it reports while it works, and how Tex answers.
+// Scout's and Byte's answers are written in Markdown (replies.ts); Patch's is a plain sentence.
 const CREW_JOBS: readonly (CrewJob & { when: RegExp })[] = [
   {
     crew: "scout", name: "Scout", when: /\b(research|look up|look into|find out|search|compare)\b/i,
     steps: ["searching the web", "reading 3 pages", "done"],
-    reply: "Scout looked into it. In the demo account nothing is really searched, but this is where I’d tell you what it found.",
+    reply: SCOUT_REPLY,
   },
   {
     crew: "patch", name: "Patch", when: /\b(review|pull request|pr)\b/i,
@@ -152,7 +154,7 @@ const CREW_JOBS: readonly (CrewJob & { when: RegExp })[] = [
   {
     crew: "byte", name: "Byte", when: /\b(code|bug|fix|script|refactor)\b/i,
     steps: ["reading the code", "writing the change", "done"],
-    reply: "Byte took that one. In the demo account no code is really written, but this is where I’d tell you what it changed.",
+    reply: BYTE_REPLY,
   },
 ];
 

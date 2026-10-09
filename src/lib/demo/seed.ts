@@ -25,6 +25,7 @@ import type {
   TopUpPack,
 } from "@/lib/api/client";
 import { conversationTitle } from "./context";
+import { prFindingsReply } from "./replies";
 
 const MINUTE = 60_000;
 const DAY = 86_400_000;
@@ -526,6 +527,7 @@ function seedApprovals(now: Date): Approval[] {
 
 /**
  * The chats so far: two on Telegram and two in the web chat, the later of each the active one.
+ * All of Tex's replies are plain text but one, in the active web chat, which is written in Markdown.
  * Each conversation's title and `lastMessageAt` come from its messages, as the backend derives them.
  */
 function seedChats(now: Date): { conversations: Conversation[]; messages: Message[] } {
@@ -577,6 +579,9 @@ function seedChats(now: Date): { conversations: Conversation[]; messages: Messag
   chat("cnv_web_1", "web", 1, true, [
     ["msg_w5", earlierToday(now, 55), { direction: "in", status: "read", text: "What did you get done for me yesterday?" }],
     ["msg_w6", earlierToday(now, 54), { direction: "out", status: "sent", text: "Yesterday I posted your update in #team once you gave the OK, and filed two sets of meeting notes in Notion. Nothing from then is waiting on you." }],
+    ["msg_w7", earlierToday(now, 41), { direction: "in", status: "read", text: `What did Patch find in pull request #${REVIEWED.number}? What should I fix first?` }],
+    // An answer written in Markdown, as Tex writes for the web chat: a heading, a table, code, a list, a link.
+    ["msg_w8", earlierToday(now, 40), { direction: "out", status: "sent", text: prFindingsReply(REVIEWED.number) }],
   ]);
 
   // The API lists messages newest first. Two said in the same minute keep the order they were said in.
