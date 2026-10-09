@@ -10,12 +10,13 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
 
 - **Screens**: chat, approvals, automations and pull-request review, activity, apps and your own MCP servers, crew, settings (general, agent and AI, memory, credits, plans), onboarding, sign-in and sign-up.
 - **One layout, two shapes**: on a wide screen a sidebar sits beside the current screen; on a phone there is a top bar, the screen edge to edge and five tabs along the bottom (the rest is under More).
+- **Every screen takes the whole width.** See [Width](#width).
 - **Installable on a phone**: "Add to Home Screen" on Android and iPhone opens it in its own window. See [Installing on a phone](#installing-on-a-phone).
 - **The pages only talk to this app's own `/api/v1/*`.** `src/app/api/v1/[...path]/route.ts` forwards to the backend and adds the Clerk session token on the server, so the token never sits in page JavaScript or in an `EventSource` URL. Only user-facing paths are allowed through (no admin, waitlist or webhook routes).
 
 This is the address the backend calls `WEB_APP_URL`: Polar returns here after checkout, app sign-in screens return here, and Tex's messages link here. The desktop app (`../user-frontend-desktop`) is a separate codebase built from the same screens.
 
-API contract: `openapi/openapi.yaml`, copied from `../beckend/openapi/openapi.yaml`.
+API contract: `openapi/openapi.yaml`, copied from `../beckend/openapi/openapi.yaml`. One field was written into the copy by hand ahead of the backend: `App.connectable` (see [Apps](#what-the-backend-decides)). The next `pnpm openapi:sync` should bring the same field from the backend; if it doesn't, the two have drifted.
 
 ## Quick start (demo mode, no backend needed)
 
@@ -44,6 +45,9 @@ Things to try in the demo:
 - **The chat history**: four chats are seeded, two in the web chat and two on Telegram. Open the Telegram one to read it (it can't be answered from here), open the earlier web one and write in it (it moves to the top and Tex answers there), and start a "New chat". Rename or delete one from the three dots on its row. The 31st new chat in an hour is refused with a toast.
 - **Claude Code's model and effort** (Settings → Agent & AI): connect the Claude plan with any code of four characters or more, then pick a model and a thinking effort.
 - **Memory** (Settings → Memory): eight memories are seeded. Tell Tex "remember that I send invoices on the 1st" in the web chat and it is saved; "remember that my password is…" is refused. Both are in the activity log.
+- **Apps that can't be connected yet** (Apps): HubSpot, Asana and Airtable say "Not available yet" and have no Connect button, the way an app without a setup on the server does.
+- **Toasts**: on Pull-request review, turn review on for one more repo (five of five), then for another. The refusal is a toast with "See plans". A repo owned by `octocat` is refused under the field instead, because that one is about what was typed.
+- **Automations**: click a template or a "Try it in chat" link and the chat opens with the request typed in. The demo's canned reply doesn't make an automation, so the list stays as seeded.
 
 ## Against the real backend
 
@@ -104,7 +108,9 @@ The screens don't know which chat apps or which AI are on offer. They ask.
 - `claudeModel` and `claudeEffort` are what Claude Code runs with (null is its default), and `claudeChoices` (`models` with an id and label each, `efforts`) is what they can be set to, in the order the selects offer them (`src/lib/claude-code.ts`). A change is saved as it is made (`PATCH /v1/agent/settings` with `claudeModel` or `claudeEffort`; "Default" sends null), shown at once and put back if refused. They can be set whatever runs now and apply to turns on Claude Code; a value not offered is 400 `invalid_request`.
 - `aiPreference` (`auto` or `platform`) is what the person chose. Someone with a key saved or a Claude plan connected can choose Textcrew AI anyway ("Use Textcrew AI" sends `{ aiPreference: "platform" }`) and go back ("Go back to your Anthropic key" sends `{ runtime: "hermes", aiPreference: "auto" }`; to the Claude plan, `{ runtime: "claude_code", aiPreference: "auto" }`). The key and the plan stay saved either way. With Textcrew AI chosen the agent shown as running is Hermes, and picking Claude Code goes back to the plan.
 
-**The crew.** `GET /v1/crew` lists Tex and the specialists with a name, role and description each, whether each one works on this deployment yet (`available`), and for Scout which plan the real browser needs and whether it is built yet (`browser`). The crew page, the "soon" note in the navigation and the browser note on the Plans screen are built from it (`src/lib/crew.ts`). The app keeps only the figures and their colours.
+**Apps.** `GET /v1/apps` lists the catalog with each app's connections, whether the plan includes it (`availableOnPlan`) and whether it can be connected on this server at all (`connectable`: the server has a Composio setup for it; today that is Gmail and GitHub). An app that isn't connectable is listed after the ones that are, says "Not available yet" and has no Connect button; a connected one loses "Add account" and "Reconnect". Onboarding offers only apps that are on the plan and connectable. A backend from before the field existed doesn't send it, and that reads as connectable (`isConnectable` in `src/components/apps/apps-logic.ts`), so an older server doesn't switch every app off.
+
+**The crew.** `GET /v1/crew` lists Tex and the specialists with a name, role and description each, whether each one works on this deployment yet (`available`), and for Scout which plan the real browser needs and whether it is built yet (`browser`). The crew page, the "soon" note in the navigation and the browser note on the Plans screen are built from it (`src/lib/crew.ts`). The app keeps the figures and their colours, and what the backend doesn't say: three lines on what each member does, a request to try, and the four steps of how the crew works (`CREW_GUIDE` and `CREW_STEPS` in the same file).
 
 **Credits.** What credits pay for is written once, in `src/lib/credit-costs.ts`: Textcrew AI if you use it, the agent's running time (1 credit per 10 minutes), app actions that change something (1 credit each; reading and searching are free), paid tools such as Scout's web search (about 1 credit per search) and browser use on the Max plan (2 credits per minute). The usage chart shows the same five parts from `GET /v1/usage`: browser use (`browserCredits`) and paid tools (`toolCredits`) are separate numbers. In the history (`GET /v1/credits/ledger`) browser use is part of a usage line and a paid tool is its own line, known by its name ("Web search"), because the ledger has no field for the kind of charge. Whether a plan includes browser use is `limits.browser`.
 
@@ -124,6 +130,38 @@ The chat has a history, like ChatGPT or Claude.ai. A **conversation** is one str
 - **Tex at work**: the "Tex is working" bubble and its progress lines show only in the conversation that has a turn going: its newest incoming message that has left the queue is `processing` (the backend sets that when the agent takes the message and moves it on when the turn ends) and the agent is busy (`src/lib/chat-thread.ts`). A turn in another web conversation or on Telegram doesn't show in the one that is open.
 - **Web chat switched off**: there is no "New chat" and no composer, and the chat opens on the newest conversation, to read.
 
+## Toasts and errors
+
+When something the person asked for doesn't work, a toast says so in the corner of the page (above the tab bar on a phone): what failed, why in the API's own words, and a button for the way out where there is one ("See plans"). The same goes for confirmations that arrive on their own, such as a payment landing.
+
+- **One place draws them**: `src/components/toast.tsx`, on the `sonner` library. `toast({ title, body })` is a confirmation, `toastError(title, why, action?)` a failure. The toaster is mounted once, in `Providers`, so setup and sign-in can raise toasts too. sonner's own look is switched off and each part wears the app's design tokens.
+- **What stays under a field** is validation: what the form checks itself (an empty name, a URL that isn't https), and the API's verdict on a value that was typed, which is a 400: a coupon code, the code from Anthropic, an API key the provider rejects, a repo that doesn't exist (`refusedTypedValue` in `src/lib/action-errors.ts`). Everything else is a toast: a plan limit, a missing connection, too many tries, the server being down.
+- **A list that fails to load** still shows the full "That didn't load" state with "Try again". That is a screen with nothing to show, not an action.
+- **The same failure twice** shows one toast, and at most three are up at once.
+- The chat's own two messages (a message that didn't send, an approval that didn't go through) are still red lines; the chat is being reworked separately.
+
+## Width
+
+Every screen under the shell takes the whole width of the sheet. `PageBody` (`src/components/page.tsx`) no longer caps it.
+
+- **Lists and tables** fill the width: activity, the credit history, the automations.
+- **Cards** sit in as many columns as fit. Apps, plans and templates use a grid; Settings → General and Memory use `Columns`, which fills each column top to bottom so cards of different heights leave no gaps (one column on a phone, two on a laptop, three on a wide monitor).
+- **Text that is read**, not scanned, keeps a comfortable line with the `READING` class (72 characters): the intro paragraphs, the message in an approval.
+- **Approvals** show the list and the open approval side by side from 1024px, the list taking about a third; below that they stack, which includes a tablet with the sidebar showing.
+- Checked at 1440, 1100, 768 and 390 pixels wide.
+
+## Automations
+
+Automations → All automations (`/automations`). An automation is made by asking Tex in chat; there is no form. The page explains that, offers a way to start, and lists what exists.
+
+- **The three kinds**, each with one line on when it runs and a request that makes one: once, on repeat, and when something happens in a connected app. "Try it in chat" opens the chat with the request typed in.
+- **Templates**: eight ready-made requests. A click opens the chat with the request typed in, to change and send; "Review every pull request" opens the Pull-request review tab instead. A template that needs an app shows only when that app can be connected here, and says "Connect Gmail first" when it isn't connected yet.
+- **How the chat gets the text**: the link is `/?draft=<the request>` (`chatDraftHref` in `src/lib/chat-link.ts`). The composer reads `draft` once, puts it in the box and tidies the address. Nothing is sent until the person presses Send. The crew page's "Try it" links and onboarding's examples use the same address.
+- **Each automation in plain words** (`src/lib/automations.ts`): "Every weekday at 8:00 AM, your time", "Once, tomorrow at 10:00 AM", "When a new email arrives in Gmail". A schedule in the person's own time zone reads "your time"; in another it names the place ("London time"). A cron line that isn't one of the usual shapes is shown as it is rather than guessed at, and an app trigger the app doesn't know keeps the app's own name for it, in quotes.
+- **With each one**: on or paused and why (with the way out), the next run, the last run, a note that it uses credits, the switch to pause or resume, and Delete, which asks once more.
+- **An empty list** says how one comes to exist, in three steps.
+- **The plan's limit** is in the header ("4 of 5 on Pro", with Upgrade once it is full) and beside the list. When the plan is full, the templates say so before anyone tries.
+
 ## Pull-request review
 
 Automations → Pull-request review (`/automations/reviews`). The person turns review on per GitHub repo. When a pull request in that repo opens or gets new commits, Patch reviews it, comments on the pull request and Tex sends a short verdict to the person's chat. It never merges.
@@ -131,10 +169,20 @@ Automations → Pull-request review (`/automations/reviews`). The person turns r
 - **Where it lives**: with the automations, because each repo with review on *is* an automation (`preset: pr_review`) and counts against the plan's limit. The two share a header and a plan meter. The crew page links there from Patch.
 - **The API**: `GET /v1/pr-reviews`, `PUT` and `DELETE /v1/pr-reviews/{owner}/{repo}`. A repo is paused and resumed as the automation it is (`PATCH /v1/automations/{id}`, the `id` of the review). "Turn off" deletes it.
 - **Typing a repo**: `owner/repo`, a GitHub link (also one to a pull request or a branch) or a clone address all work (`parseRepo` in `src/lib/pr-review.ts`).
-- **Refusals**, each with its own words (`describeEnableError`): 400 names the repo and says to check that it exists and that the connected GitHub account has admin access; 403 `plan_limit` names the plan's number of automations and links to Plans; 409 says GitHub isn't connected and links to Apps; 429 asks for patience. When the Apps list shows GitHub isn't connected, the screen says so before anything is typed.
+- **Refusals**, each with its own words (`describeEnableError`): 400 names the repo and says to check that it exists and that the connected GitHub account has admin access; 403 `plan_limit` names the plan's number of automations and links to Plans; 409 says GitHub isn't connected and links to Apps; 429 asks for patience. The 400 is about the repo as typed, so it stays under the field; the others are toasts, with their link as the toast's button. When the Apps list shows GitHub isn't connected, the screen says so before anything is typed.
 - **Each row** shows on or paused and why (by you, out of credits, after failures, each with its way out), where the verdict goes (`channel`) and when the last review ran.
-- **In the automations list** a repo with review on is labelled "Pull-request review" and shows its repo name; "Manage" leads to the review screen instead of a switch and a delete.
+- **In the automations list** a repo with review on is labelled "Pull-request review" and shows its repo name; "Manage" leads to the review screen instead of a switch and a delete. Among the templates, "Review every pull request" leads here too.
 - Turning review on is the person's standing OK for Patch to comment on pull requests in that repo; the form says so. Everything else risky still asks.
+
+## The crew page
+
+`/crew` says what the crew is and what to ask it.
+
+- **A hero**: the four faces and one sentence. You text Tex; Tex plans the job, hands each part to the specialist best at it and answers. Each member's name and role is a link to its card.
+- **A card per member**, in the order the backend lists them: the face on the member's own colour, name and role, whether it works here yet ("Leads your crew", "On your crew", "Coming soon"), the backend's description, three lines on what it does, and a request to try. "Try it" opens the chat with the request typed in (`/?draft=`, as on the automations page). A member that isn't switched on here yet is shown asleep, with no link.
+- **Scout's card** says where the real browser stands: part of your plan, needs the Max plan (with a link to Plans), or not ready yet. **Patch's card** leads to pull-request review and says how many repos have it on.
+- **How the crew works**: four steps, from texting Tex to Tex answering.
+- One column on a phone, two beside the sidebar, four where they fit. The members' colours are design tokens (`--byte`, `--patch`, `--scout`, and the accent for Tex), mixed into the card's surface.
 
 ## The crew at work
 
@@ -209,6 +257,8 @@ src/app/
   onboarding, sign-in, sign-up, sso-callback, billing, connected
   manifest.ts        the web manifest ("Add to Home Screen")
 src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell/…, auth/ for the sign-in forms)
+  toast.tsx          toasts, drawn by sonner: a confirmation, or an action that failed
+  page.tsx           a screen's header and full-width body, columns of cards, the reading width
 src/lib/
   api/               generated types, typed client, TanStack Query hooks, SSE → cache
   auth-flow.ts       sign-in and sign-up: where to land, Clerk's refusals in words, what comes next
@@ -216,7 +266,10 @@ src/lib/
   media-query.ts     whether a part of the shell that CSS hides is on screen, so it isn't drawn or fetched when it isn't
   demo/              the in-memory demo backend
   channels.ts        which chat apps to offer, from what the backend has switched on
-  crew.ts            who is on the crew and what they are doing, from what the backend says
+  crew.ts            who is on the crew and what they are doing, from what the backend says; what each one does, in the app's words
+  automations.ts     automations in plain words: the three kinds, the templates, when one runs, its status, runs and cost
+  chat-link.ts       the link that opens the chat with a request typed in
+  action-errors.ts   which failures stay under a field (the API's verdict on a typed value) and which are toasts
   memory.ts          what Tex remembers: the kinds, their order and how a memory's dates read
   pr-review.ts       reading a repo as typed, a repo's state and the API's refusals in words
   conversations.ts   the chat history: which conversation is open, what can be done with it, and the list kept in order as things happen
@@ -233,6 +286,9 @@ src/lib/
 ## Not done yet
 
 - Admin screens (`/v1/admin/*`).
+- A dark theme. The app is light only, on purpose (`color-scheme: only light` in `globals.css`). The toasts, the crew page and the automations page take every colour from the design tokens, so they would follow a dark set of tokens; the primary button (white text on the ink colour) and the figures' own colours would still need one.
+- The demo doesn't make an automation when one is asked for in chat, so a template can be followed as far as the chat and no further.
+- The chat's two error lines (a message that didn't send, an approval that didn't go through) are not toasts yet.
 - Voice notes from the composer (files and text only).
 - Scout's browser: the contract says it isn't built (`browser.available: false`), so there is nothing to show but the note. `browserSeconds` is in the usage and not shown yet.
 - What the screens would like and the contract doesn't offer:

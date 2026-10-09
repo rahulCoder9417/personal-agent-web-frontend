@@ -2,7 +2,9 @@
 
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { CheckIcon, ExternalIcon } from "@/components/icons";
-import { Button, Card, Field, InlineError, inputClass, Meta } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { Button, Card, Field, inputClass, Meta } from "@/components/ui";
+import { refusedTypedValue } from "@/lib/action-errors";
 import type { AgentSettings, ClaudeEffort, ClaudeLoginStart } from "@/lib/api/client";
 import { useCompleteClaudeLogin, useDisconnectClaude, useStartClaudeLogin, useUpdateClaudeCode } from "@/lib/api/hooks";
 import { choiceValue, effortOptions, modelOptions, type SelectOption } from "@/lib/claude-code";
@@ -46,6 +48,9 @@ export function ClaudeConnectSteps() {
   const [code, setCode] = useState("");
   const codeId = useId();
 
+  // The API's verdict on the pasted code is said under the field; any other failure is a toast.
+  const codeError = refusedTypedValue(complete.error) ? complete.error.message : null;
+
   const begin = () => {
     complete.reset();
     start.mutate(undefined, {
@@ -53,7 +58,9 @@ export function ClaudeConnectSteps() {
         setLogin(started);
         setCode("");
         openInNewTab(started.authorizeUrl);
-      } });
+      },
+      onError: (error) => toastError("Couldn’t open Anthropic’s sign-in", error),
+    });
   };
 
   const finish = (event: FormEvent) => {
@@ -65,7 +72,11 @@ export function ClaudeConnectSteps() {
         onSuccess: () => {
           setLogin(null);
           setCode("");
-        } },
+        },
+        onError: (error) => {
+          if (!refusedTypedValue(error)) toastError("Couldn’t connect your Claude plan", error);
+        },
+      },
     );
   };
 
@@ -92,7 +103,6 @@ export function ClaudeConnectSteps() {
             <ExternalIcon size={13} />
           </Button>
         )}
-        <InlineError error={start.error} />
       </Step>
 
       <Step n={2} state={login ? "now" : "todo"} title={<label htmlFor={codeId}>Paste the code Anthropic shows you</label>}>
@@ -104,16 +114,25 @@ export function ClaudeConnectSteps() {
               autoComplete="off"
               spellCheck={false}
               value={code}
-              onChange={(event) => setCode(event.target.value)}
+              onChange={(event) => {
+                setCode(event.target.value);
+                if (complete.isError) complete.reset();
+              }}
               placeholder="Paste code"
-              className={cn(inputClass, "min-w-40 flex-1 font-mono text-[12.5px]")}
+              aria-invalid={codeError ? true : undefined}
+              aria-describedby={codeError ? `${codeId}-error` : undefined}
+              className={cn(inputClass, "min-w-40 flex-1 font-mono text-[12.5px]", codeError && "border-danger")}
             />
             <Button type="submit" variant="primary" className="h-[38px]" disabled={code.trim().length < 4} pending={complete.isPending}>
               Finish connecting
             </Button>
           </form>
         )}
-        <InlineError error={complete.error} />
+        {login && codeError && (
+          <p id={`${codeId}-error`} role="alert" className="text-[12.5px] text-danger">
+            {codeError}
+          </p>
+        )}
       </Step>
     </ol>
   );
@@ -140,6 +159,8 @@ function ChoiceSelect({ id, label, value, options, onChange }: { id: string; lab
 function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
   const update = useUpdateClaudeCode();
   const id = useId();
+  // The select goes back to what is saved when a change is refused; the toast says why.
+  const refused = { onError: (error: unknown) => toastError("Couldn’t save that choice", error) };
 
   return (
     <div className="flex flex-col gap-3 border-t border-line pt-4">
@@ -150,24 +171,20 @@ function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
           label="Model"
           value={settings.claudeModel}
           options={modelOptions(settings)}
-          onChange={(value) => update.mutate({ claudeModel: choiceValue(value) })}
+          onChange={(value) => update.mutate({ claudeModel: choiceValue(value) }, refused)}
         />
         <ChoiceSelect
           id={`${id}-effort`}
           label="Thinking effort"
           value={settings.claudeEffort}
           options={effortOptions(settings)}
-          onChange={(value) => update.mutate({ claudeEffort: choiceValue<ClaudeEffort>(value) })}
+          onChange={(value) => update.mutate({ claudeEffort: choiceValue<ClaudeEffort>(value) }, refused)}
         />
       </div>
-      {update.isError ? (
-        <InlineError error={update.error} />
-      ) : (
-        update.isSuccess && (
-          <span role="status" className="text-[12.5px] text-success">
-            Saved
-          </span>
-        )
+      {update.isSuccess && (
+        <span role="status" className="text-[12.5px] text-success">
+          Saved
+        </span>
       )}
     </div>
   );
@@ -205,7 +222,7 @@ export function ClaudePlanSection({ settings, state }: { settings: AgentSettings
               confirmLabel="Disconnect plan"
               ariaLabel="Disconnect your Claude plan"
               pending={disconnect.isPending}
-              onConfirm={() => disconnect.mutate()}
+              onConfirm={() => disconnect.mutate(undefined, { onError: (error) => toastError("Couldn’t disconnect your Claude plan", error) })}
             />
           )}
         </div>
@@ -217,7 +234,6 @@ export function ClaudePlanSection({ settings, state }: { settings: AgentSettings
                 ? "Disconnecting signs Claude Code out in your workspace, and Tex goes back to Hermes."
                 : "Tex is running Hermes at the moment. Choose Claude Code under Agent to run on your plan."}
             </p>
-            <InlineError error={disconnect.error} />
             <ClaudeCodeChoices settings={settings} />
           </>
         ) : (

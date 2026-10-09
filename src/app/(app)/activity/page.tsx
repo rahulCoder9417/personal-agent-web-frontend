@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { ActivityRow } from "@/components/activity/activity-row";
 import { creditsToday, groupByDay, matchesFilter, type ActivityFilter } from "@/components/activity/group";
 import { Page, PageBody, PageHeader } from "@/components/page";
-import { Button, Card, EmptyState, ErrorState, FilterPills, InlineError, SkeletonRows, type FilterOption } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { Button, Card, EmptyState, ErrorState, FilterPills, SkeletonRows, type FilterOption } from "@/components/ui";
 import { useActivity, useMe, useMemories } from "@/lib/api/hooks";
 import { formatCredits, initials } from "@/lib/format";
 
@@ -31,6 +32,11 @@ export default function ActivityPage() {
   const days = groupByDay(shown);
   const userInitials = me.data ? initials(me.data.name) : "";
   const today = creditsToday(loaded);
+  // The button stays, so a failed page can be asked for again; the toast says why it failed.
+  const loadOlder = () =>
+    void activity.fetchNextPage().then((result) => {
+      if (result.isFetchNextPageError) toastError("Couldn’t load older activity", result.error);
+    });
 
   return (
     <Page>
@@ -83,16 +89,13 @@ export default function ActivityPage() {
         )}
 
         {activity.data && loaded.length > 0 && (
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex items-center justify-center gap-3.5">
-              {activity.hasNextPage && (
-                <Button pending={activity.isFetchingNextPage} onClick={() => void activity.fetchNextPage()}>
-                  Load older
-                </Button>
-              )}
-              <span className="text-[12px] text-muted">newest first · kept until you delete your account</span>
-            </div>
-            {activity.isFetchNextPageError && <InlineError error={activity.error} />}
+          <div className="flex items-center justify-center gap-3.5">
+            {activity.hasNextPage && (
+              <Button pending={activity.isFetchingNextPage} onClick={loadOlder}>
+                Load older
+              </Button>
+            )}
+            <span className="text-[12px] text-muted">newest first · kept until you delete your account</span>
           </div>
         )}
       </PageBody>

@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useId, useState, type FormEvent } from "react";
 import { ApiError, errorMessage, type CouponRedemption, type TopUpPack } from "@/lib/api/client";
 import { useCreateCheckout, useRedeemCoupon } from "@/lib/api/hooks";
+import { toastError } from "@/components/toast";
 import { Button, ButtonLink, Card, inputClass, SectionLabel } from "@/components/ui";
 import { usePendingCheckout } from "@/components/checkout-watcher";
+import { refusedTypedValue } from "@/lib/action-errors";
 import { startPendingCheckout } from "@/lib/checkout";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
 import { leaveTo } from "@/lib/navigate";
@@ -22,16 +24,15 @@ function TopUpOption({ pack }: { pack: TopUpPack }) {
           startPendingCheckout({ kind: "topup", topUpId: pack.id, credits: pack.credits, startedAt: new Date().toISOString() });
           leaveTo(checkoutUrl);
         },
+        onError: (error) => {
+          if (error instanceof ApiError && (error.planLimit || error.status === 403)) {
+            toastError("Top-ups aren’t part of your plan", "Upgrade to buy one.", { label: "See plans", href: "/settings/plans" });
+          } else {
+            toastError("Couldn’t start the top-up checkout", error);
+          }
+        },
       },
     );
-
-  const error = checkout.error;
-  const message =
-    error instanceof ApiError && (error.planLimit || error.status === 403)
-      ? "Top-ups aren’t part of your plan. Upgrade to buy one."
-      : error
-        ? errorMessage(error)
-        : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -43,11 +44,6 @@ function TopUpOption({ pack }: { pack: TopUpPack }) {
       <Button variant="primary" pending={checkout.isPending} onClick={buy}>
         Buy a top-up
       </Button>
-      {message && (
-        <p role="alert" className="text-[12.5px] text-danger">
-          {message}
-        </p>
-      )}
     </div>
   );
 }
@@ -87,11 +83,11 @@ export function TopUpCard({ packs, allowed }: { packs: TopUpPack[]; allowed: boo
 }
 
 /** One message for every refused code, whatever the reason: the API is deliberately vague so codes can't be probed. */
+const REFUSED_CODE = "This code is invalid or has expired";
+
+/** Why redeeming didn't happen when the code itself wasn't the problem. */
 function redeemError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 429) return "Too many tries. Wait a little and try again.";
-    if (error.status === 400) return "This code is invalid or has expired";
-  }
+  if (error instanceof ApiError && error.status === 429) return "Too many tries. Wait a little and try again.";
   return errorMessage(error);
 }
 
@@ -111,8 +107,13 @@ export function RedeemCard() {
         setDone(result);
         setCode("");
       },
+      onError: (error) => {
+        if (!refusedTypedValue(error)) toastError("Couldn’t redeem the code", redeemError(error));
+      },
     });
   };
+  // A refused code is said under the field; anything else (too many tries, the server) is a toast.
+  const refused = refusedTypedValue(redeem.error);
 
   return (
     <Card role="group" aria-label="Redeem a code" className="p-5">
@@ -135,13 +136,13 @@ export function RedeemCard() {
             if (redeem.isError) redeem.reset();
           }}
           aria-describedby={`${id}-msg`}
-          aria-invalid={redeem.isError || undefined}
-          className={cn(inputClass, "font-mono text-[13px]", redeem.isError && "border-danger")}
+          aria-invalid={refused || undefined}
+          className={cn(inputClass, "font-mono text-[13px]", refused && "border-danger")}
         />
         <div id={`${id}-msg`} className="empty:hidden">
-          {redeem.isError && (
+          {refused && (
             <p role="alert" className="text-[12.5px] text-danger">
-              {redeemError(redeem.error)}
+              {REFUSED_CODE}
             </p>
           )}
           {done && !redeem.isError && (

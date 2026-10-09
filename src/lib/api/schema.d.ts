@@ -1333,6 +1333,11 @@ export interface components {
              */
             category: string;
             availableOnPlan: boolean;
+            /**
+             * @description Whether this app can be connected on this deployment: true when the server has a
+             *     Composio setup for it. False: show it as not available yet and offer no Connect.
+             */
+            connectable: boolean;
             connections: {
                 id: string;
                 /** @example work@acme.com */

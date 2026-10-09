@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { ConfirmButton } from "@/components/confirm-button";
-import { Card, InlineError, Meta, SectionLabel } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { Card, Meta, SectionLabel } from "@/components/ui";
 import { ApiError, type Memory } from "@/lib/api/client";
 import { useDeleteAllMemories, useDeleteMemory } from "@/lib/api/hooks";
 import { cn, formatNumber } from "@/lib/format";
@@ -12,8 +13,6 @@ import { describeMemorySaved, describeMemoryUse, memoryCapacity, type MemoryGrou
 function MemoryRow({ memory, highlighted }: { memory: Memory; highlighted: boolean }) {
   const remove = useDeleteMemory();
   const row = useRef<HTMLLIElement>(null);
-  // A memory that was already gone (404) is not worth an error: the list is asked again and drops it.
-  const gone = remove.error instanceof ApiError && remove.error.status === 404;
 
   // Opened from the activity log on this memory: bring it into view.
   useEffect(() => {
@@ -38,10 +37,16 @@ function MemoryRow({ memory, highlighted }: { memory: Memory; highlighted: boole
           confirmLabel="Delete memory"
           ariaLabel={`Delete the memory “${memory.content}”`}
           pending={remove.isPending}
-          onConfirm={() => remove.mutate(memory.id)}
+          onConfirm={() =>
+            remove.mutate(memory.id, {
+              // A memory that was already gone (404) is not worth an error: the list is asked again and drops it.
+              onError: (error) => {
+                if (!(error instanceof ApiError && error.status === 404)) toastError("Couldn’t delete that memory", error);
+              },
+            })
+          }
         />
       </div>
-      {!gone && <InlineError error={remove.error} />}
     </li>
   );
 }
@@ -93,7 +98,7 @@ export function MemoryCapacity({ count, max }: { count: number; max: number }) {
             confirmLabel={`Delete all ${formatNumber(count)} ${count === 1 ? "memory" : "memories"}`}
             ariaLabel="Delete every memory"
             pending={clear.isPending}
-            onConfirm={() => clear.mutate()}
+            onConfirm={() => clear.mutate(undefined, { onError: (error) => toastError("Couldn’t delete your memories", error) })}
           />
         )}
       </div>
@@ -107,7 +112,6 @@ export function MemoryCapacity({ count, max }: { count: number; max: number }) {
           Deleted {formatNumber(clear.data.deleted)} {clear.data.deleted === 1 ? "memory" : "memories"}. Tex starts again with nothing saved about you.
         </p>
       )}
-      <InlineError error={clear.error} />
     </div>
   );
 }

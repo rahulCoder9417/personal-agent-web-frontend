@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { PageBody } from "@/components/page";
+import { COLUMN_ITEM, Columns, PageBody, READING } from "@/components/page";
 import { MemoryCapacity, MemoryGroupCard } from "@/components/settings/memory-list";
 import { Card, EmptyState, ErrorState, Meta, SkeletonRows } from "@/components/ui";
 import { useMemories } from "@/lib/api/hooks";
@@ -24,10 +24,10 @@ function MemoryScreen() {
   const asked = highlightedId !== null && memories.isSuccess && !items.some((memory) => memory.id === highlightedId);
 
   return (
-    <div className="flex max-w-[760px] flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
         <h2 className="text-[17px] font-semibold tracking-[-0.01em]">What Tex remembers about you</h2>
-        <p className="text-[13.5px] text-muted">
+        <p className={`text-[13.5px] text-muted ${READING}`}>
           Tex saves lasting facts you tell it: your preferences, the people and projects you mention, and standing instructions. Whichever AI runs
           Tex shares them. It never saves passwords or keys, and you can remove anything here.
         </p>
@@ -52,10 +52,17 @@ function MemoryScreen() {
               Tell Tex something worth keeping, like “remember that I prefer short replies”, and it shows up here.
             </EmptyState>
           ) : (
-            groupMemories(items).map((group) => <MemoryGroupCard key={group.kind} group={group} highlightedId={highlightedId} />)
+            // The kinds sit side by side where there is room: two columns on a laptop, more on a wide monitor.
+            <Columns min={420}>
+              {groupMemories(items).map((group) => (
+                <div key={group.kind} className={COLUMN_ITEM}>
+                  <MemoryGroupCard group={group} highlightedId={highlightedId} />
+                </div>
+              ))}
+            </Columns>
           )}
 
-          <Meta className="text-[12px]">
+          <Meta className={`text-[12px] ${READING}`}>
             There is nothing to add or edit here: tell Tex (“remember that…”, “that’s wrong, it’s…”). “Looked up” counts the times Tex searched its
             memory and found that fact.
           </Meta>

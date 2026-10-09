@@ -3,7 +3,9 @@
 import { ApiError, type Approval } from "@/lib/api/client";
 import { useDecideApproval } from "@/lib/api/hooks";
 import { cn, formatDateTime, titleCase } from "@/lib/format";
-import { Button, IconTile, InlineError, Pill, type PillTone } from "../ui";
+import { READING } from "../page";
+import { toastError } from "../toast";
+import { Button, IconTile, Pill, type PillTone } from "../ui";
 import { ApprovalIcon } from "./approval-list";
 import { approvalReason, splitDetails, type ApprovalReason } from "@/lib/approvals";
 
@@ -48,13 +50,24 @@ export function ApprovalDetail({ approval, onDecided }: { approval: Approval; on
   const { preview, fields } = splitDetails(approval.details);
   const pending = approval.status === "pending";
   const choosing = decide.isPending ? decide.variables?.decision : undefined;
-  const alreadyDecided = decide.error instanceof ApiError && decide.error.status === 409;
 
   const run = (decision: Decision) =>
-    decide.mutate({ approvalId: approval.id, decision }, { onSuccess: () => onDecided(decision) });
+    decide.mutate(
+      { approvalId: approval.id, decision },
+      {
+        onSuccess: () => onDecided(decision),
+        onError: (error) => {
+          const title = decision === "approve" ? "Couldn’t approve that" : "Couldn’t reject that";
+          // 409: someone (or the clock) got there first. The list has been asked for again.
+          const settled = error instanceof ApiError && error.status === 409;
+          toastError(title, settled ? "This was already decided or has expired. The list is up to date now." : error);
+        },
+      },
+    );
 
   return (
-    <article aria-label={approval.summary} className="flex max-w-[620px] flex-col gap-5 rounded-[20px] border border-line bg-surface p-6">
+    // The card takes the pane's whole width; what is read (the message itself) keeps a comfortable line.
+    <article aria-label={approval.summary} className="flex flex-col gap-5 rounded-[20px] border border-line bg-surface p-6">
       <div className="flex items-center gap-3.5">
         <IconTile size={46}>
           <ApprovalIcon app={approval.app} size={22} />
@@ -89,12 +102,15 @@ export function ApprovalDetail({ approval, onDecided }: { approval: Approval; on
       )}
 
       {preview && (
-        <p className="rounded-xl bg-surface-2 px-4 py-3.5 text-[14.5px] leading-relaxed whitespace-pre-wrap text-fg-2">{preview}</p>
+        <div className="rounded-xl bg-surface-2 px-4 py-3.5">
+          <p className={cn("text-[14.5px] leading-relaxed whitespace-pre-wrap text-fg-2", READING)}>{preview}</p>
+        </div>
       )}
 
       {pending ? (
-        <div className="flex flex-col gap-2.5">
-          <div className="grid grid-cols-2 gap-2.5">
+        // The two buttons keep a size a thumb or a pointer can aim at, however wide the card is.
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
+          <div className="grid w-full max-w-[440px] grid-cols-2 gap-2.5">
             <Button size="lg" variant="secondary" pending={choosing === "reject"} disabled={decide.isPending} onClick={() => run("reject")}>
               Reject
             </Button>
@@ -102,14 +118,7 @@ export function ApprovalDetail({ approval, onDecided }: { approval: Approval; on
               Approve
             </Button>
           </div>
-          {alreadyDecided ? (
-            <p role="alert" className="text-center text-[12.5px] text-danger">
-              This was already decided or has expired. The list is up to date now.
-            </p>
-          ) : (
-            <InlineError error={decide.error} className="text-center" />
-          )}
-          <p className="text-center text-[12.5px] text-muted">The same buttons are waiting in your chat. Either place works.</p>
+          <p className="text-[12.5px] text-muted">The same buttons are waiting in your chat. Either place works.</p>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-3">

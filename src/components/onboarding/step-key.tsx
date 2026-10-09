@@ -14,7 +14,9 @@ import {
   type AiChoice,
   type AiChoiceState,
 } from "@/components/settings/agent-summary";
-import { Button, Card, ErrorState, Field, InlineError, inputClass, SkeletonRows } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { Button, Card, ErrorState, Field, inputClass, SkeletonRows } from "@/components/ui";
+import { refusedTypedValue } from "@/lib/action-errors";
 import { cn, listNames } from "@/lib/format";
 
 const KEY_PLACEHOLDER: Record<ByokProvider, string> = { anthropic: "sk-ant-…", openai: "sk-…", openrouter: "sk-or-…" };
@@ -88,9 +90,14 @@ function KeyForm({ onDone }: { onDone: () => void }) {
           setApiKey("");
           onDone();
         },
+        onError: (error) => {
+          if (!refusedTypedValue(error)) toastError(`Couldn’t save your ${PROVIDER_LABEL[provider]} key`, error);
+        },
       },
     );
   };
+  // The provider's verdict on the key (the test call) is said under the field; anything else is a toast.
+  const refused = refusedTypedValue(save.error) ? save.error.message : null;
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
@@ -115,7 +122,7 @@ function KeyForm({ onDone }: { onDone: () => void }) {
       <Field
         label="API key"
         htmlFor={`${id}-key`}
-        error={tooShort ? "That looks too short to be a key." : null}
+        error={tooShort ? "That looks too short to be a key." : refused}
         hint="We make one test call before saving. The key is encrypted and never shown again; only its last 4 characters appear in settings."
       >
         <input
@@ -132,8 +139,6 @@ function KeyForm({ onDone }: { onDone: () => void }) {
           className={cn(inputClass, "text-[13px]")}
         />
       </Field>
-
-      <InlineError error={save.error} />
 
       <Button type="submit" variant="primary" size="lg" className="self-start" pending={save.isPending} disabled={apiKey.trim().length < 10}>
         Test and save
@@ -181,14 +186,18 @@ function TextcrewPanel({ settings, onDone }: { settings: AgentSettings; onDone: 
           saved, so you can go back under Agent &amp; AI.
         </p>
         <div className="flex flex-wrap items-center gap-2.5">
-          <Button variant="primary" size="lg" pending={update.isPending} onClick={() => update.mutate(offer.patch, { onSuccess: onDone })}>
+          <Button
+            variant="primary"
+            size="lg"
+            pending={update.isPending}
+            onClick={() => update.mutate(offer.patch, { onSuccess: onDone, onError: (error) => toastError("Couldn’t switch to Textcrew AI", error) })}
+          >
             Use Textcrew AI
           </Button>
           <Button variant="ghost" size="lg" disabled={update.isPending} onClick={onDone}>
             Keep your own AI
           </Button>
         </div>
-        <InlineError error={update.error} />
       </div>
     );
   }

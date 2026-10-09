@@ -309,7 +309,10 @@ export function SkeletonRows({ rows = 4, className }: { rows?: number; className
   );
 }
 
-/** Inline error under a control, for failed actions. */
+/**
+ * An error in a red line under a control. A failed action is a toast now (`toastError` in
+ * toast.tsx), so only the chat still draws this; don't reach for it in new code.
+ */
 export function InlineError({ error, className }: { error: unknown; className?: string }) {
   if (!error) return null;
   return (

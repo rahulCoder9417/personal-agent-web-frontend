@@ -3,7 +3,8 @@
 import { useId, useState, type FormEvent } from "react";
 import { LockIcon, WarningIcon } from "@/components/icons";
 import { ConfirmButton } from "@/components/confirm-button";
-import { Button, ButtonLink, Card, Field, IconTile, InlineError, inputClass, Meta, Pill, Switch } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { Button, ButtonLink, Card, Field, IconTile, inputClass, Meta, Pill, Switch } from "@/components/ui";
 import type { McpServer } from "@/lib/api/client";
 import { useCreateMcpServer, useDeleteMcpServer, useUpdateMcpServer } from "@/lib/api/hooks";
 import { cn, formatDate } from "@/lib/format";
@@ -59,7 +60,10 @@ export function McpServerRow({ server }: { server: McpServer }) {
   const saveName = (event: FormEvent) => {
     event.preventDefault();
     if (!canRename) return;
-    update.mutate({ mcpServerId: server.id, name: trimmed }, { onSuccess: () => setRenaming(false) });
+    update.mutate(
+      { mcpServerId: server.id, name: trimmed },
+      { onSuccess: () => setRenaming(false), onError: (error) => toastError(`Couldn’t rename ${server.name}`, error) },
+    );
   };
 
   return (
@@ -108,7 +112,12 @@ export function McpServerRow({ server }: { server: McpServer }) {
           on={enabled}
           disabled={update.isPending}
           label={`${enabled ? "Turn off" : "Turn on"} ${server.name}`}
-          onToggle={() => update.mutate({ mcpServerId: server.id, enabled: !enabled })}
+          onToggle={() =>
+            update.mutate(
+              { mcpServerId: server.id, enabled: !enabled },
+              { onError: (error) => toastError(`Couldn’t turn ${server.name} ${enabled ? "off" : "on"}`, error) },
+            )
+          }
         />
       </div>
 
@@ -135,11 +144,10 @@ export function McpServerRow({ server }: { server: McpServer }) {
             confirmLabel="Remove server"
             ariaLabel={`Remove ${server.name}`}
             pending={remove.isPending}
-            onConfirm={() => remove.mutate(server.id)}
+            onConfirm={() => remove.mutate(server.id, { onError: (error) => toastError(`Couldn’t remove ${server.name}`, error) })}
           />
         </div>
       </div>
-      <InlineError error={update.error ?? remove.error} />
     </Card>
   );
 }
@@ -162,7 +170,11 @@ export function AddMcpServerForm() {
     const found = validateMcpServer(draft);
     setErrors(found);
     if (Object.keys(found).length > 0) return;
-    create.mutate(toMcpServerCreate(draft), { onSuccess: () => setDraft(EMPTY_DRAFT) });
+    // What the form can check is said under the fields; a refusal from the server is a toast.
+    create.mutate(toMcpServerCreate(draft), {
+      onSuccess: () => setDraft(EMPTY_DRAFT),
+      onError: (error) => toastError("Couldn’t add the server", error),
+    });
   };
 
   return (
@@ -231,7 +243,6 @@ export function AddMcpServerForm() {
           </svg>
           <span>The server’s domain is added to your agent’s allowlist, so Tex can reach it and nothing else new.</span>
         </p>
-        <InlineError error={create.error} />
         <Button type="submit" variant="primary" pending={create.isPending}>
           Add server
         </Button>

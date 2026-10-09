@@ -1,7 +1,8 @@
 "use client";
 
 import { AppIcon } from "@/components/brand-icon";
-import { ButtonLink, Card, ErrorState, InlineError, Meta, Pill, SectionLabel, SkeletonRows } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { ButtonLink, Card, ErrorState, Meta, Pill, SectionLabel, SkeletonRows } from "@/components/ui";
 import type { ChannelLink } from "@/lib/api/client";
 import { useAvailableChannels, useChannels, useUnlinkChannel } from "@/lib/api/hooks";
 import { linkableChannels, type LinkableChannel } from "@/lib/channels";
@@ -13,37 +14,34 @@ function LinkedRow({ link, off }: { link: ChannelLink; off: boolean }) {
   const unlink = useUnlinkChannel();
   const label = CHANNEL_LABEL[link.channel];
   return (
-    <li className="flex flex-col gap-1 border-b border-line px-5 py-3.5 last:border-b-0">
-      <div className="flex items-center gap-3">
-        <AppIcon name={link.channel} size={36} className={off ? "opacity-70" : undefined} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center gap-2">
-            <span className="text-[14px] font-semibold">{label}</span>
-            {off ? (
-              <span title={`${label} is switched off for now, so messages from it don’t reach Tex`}>
-                <Pill>Switched off</Pill>
+    <li className="flex items-center gap-3 border-b border-line px-5 py-3.5 last:border-b-0">
+      <AppIcon name={link.channel} size={36} className={off ? "opacity-70" : undefined} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-2">
+          <span className="text-[14px] font-semibold">{label}</span>
+          {off ? (
+            <span title={`${label} is switched off for now, so messages from it don’t reach Tex`}>
+              <Pill>Switched off</Pill>
+            </span>
+          ) : (
+            link.within24hWindow && (
+              <span title="Inside WhatsApp's 24-hour window, so Tex can reply freely">
+                <Pill tone="done">Replies open</Pill>
               </span>
-            ) : (
-              link.within24hWindow && (
-                <span title="Inside WhatsApp's 24-hour window, so Tex can reply freely">
-                  <Pill tone="done">Replies open</Pill>
-                </span>
-              )
-            )}
-          </div>
-          <Meta className="truncate">
-            {link.displayId} · linked {formatDate(link.linkedAt)}
-          </Meta>
+            )
+          )}
         </div>
-        <ConfirmButton
-          label="Unlink"
-          confirmLabel="Unlink chat"
-          ariaLabel={`Unlink ${label} ${link.displayId}`}
-          pending={unlink.isPending}
-          onConfirm={() => unlink.mutate(link.id)}
-        />
+        <Meta className="truncate">
+          {link.displayId} · linked {formatDate(link.linkedAt)}
+        </Meta>
       </div>
-      <InlineError error={unlink.error} className="pl-12" />
+      <ConfirmButton
+        label="Unlink"
+        confirmLabel="Unlink chat"
+        ariaLabel={`Unlink ${label} ${link.displayId}`}
+        pending={unlink.isPending}
+        onConfirm={() => unlink.mutate(link.id, { onError: (error) => toastError(`Couldn’t unlink ${label}`, error) })}
+      />
     </li>
   );
 }

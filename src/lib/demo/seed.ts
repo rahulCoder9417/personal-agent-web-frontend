@@ -427,10 +427,16 @@ function seedPlans(): Plan[] {
   ];
 }
 
+/**
+ * Apps the demo has no setup for, the way a server only has a Composio setup for some of the
+ * catalog (`connectable: false`). They are listed, and can't be connected yet.
+ */
+export const NOT_CONNECTABLE: readonly string[] = ["hubspot", "asana", "airtable"];
+
 function seedApps(): App[] {
   const active = (id: string, accountLabel: string) => ({ id, accountLabel, status: "active" as const });
   const app = (slug: string, name: string, category: string, connections: App["connections"] = []): App => ({
-    slug, name, iconUrl: null, category, availableOnPlan: true, connections,
+    slug, name, iconUrl: null, category, availableOnPlan: true, connectable: !NOT_CONNECTABLE.includes(slug), connections,
   });
   return [
     app("gmail", "Gmail", "email", [active("con_gmail_1", "aarav@northwind.studio"), active("con_gmail_2", "aarav.shah@gmail.com")]),

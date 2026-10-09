@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { ApiError } from "@/lib/api/client";
 import type { AuthMode } from "@/lib/auth-mode";
+import { Toaster } from "../toast";
 
 export type { AuthMode } from "@/lib/auth-mode";
 
@@ -39,7 +40,11 @@ export function Providers({ mode, children }: { mode: AuthMode; children: ReactN
   const [config] = useState<AppConfig>(() => ({ mode, demo: mode === "demo", clerk: mode === "clerk" }));
   return (
     <AppConfigContext.Provider value={config}>
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <QueryClientProvider client={client}>
+        {children}
+        {/* Once, for every page: the signed-in screens, setup and sign-in all raise toasts. */}
+        <Toaster />
+      </QueryClientProvider>
     </AppConfigContext.Provider>
   );
 }

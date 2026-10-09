@@ -1,8 +1,19 @@
-import type { App } from "@/lib/api/client";
+import { ApiError, type App } from "@/lib/api/client";
 
 // Pure rules behind the Apps screens, kept apart from React so they can be tested.
 
 export const ALL_CATEGORIES = "all";
+
+/**
+ * What the toast says when Connect was refused. A plan's app limit gets its own words and a way
+ * to the plans (`plans`); anything else is named after the app, with the API's reason under it.
+ */
+export function describeConnectError(appName: string, error: unknown): { title: string; detail: unknown; plans: boolean } {
+  if (error instanceof ApiError && (error.planLimit || error.status === 403)) {
+    return { title: "Your plan’s app limit is reached", detail: "Disconnect an app or upgrade to add more.", plans: true };
+  }
+  return { title: `Couldn’t connect ${appName}`, detail: error, plans: false };
+}
 
 /** The categories that actually occur in the catalog, in first-seen order. */
 export function categoriesOf(apps: readonly App[]): string[] {
@@ -19,12 +30,33 @@ export function filterApps(apps: readonly App[], search: string, category: strin
   );
 }
 
-/** Splits the catalog into apps with at least one connection and the rest. */
+/**
+ * Whether Connect can be offered for an app: the server says it has a setup for it (`connectable`).
+ * A backend from before the field existed doesn't send it, and that reads as yes, so an older
+ * server doesn't turn the whole catalog off.
+ */
+export function isConnectable(app: Pick<App, "connectable">): boolean {
+  return (app.connectable as boolean | undefined) !== false;
+}
+
+/** What an app that can't be connected says in place of the Connect button. */
+export const NOT_AVAILABLE_LABEL = "Not available yet";
+
+/**
+ * Splits the catalog into apps with at least one connection and the rest. In the rest, the apps
+ * that can be connected come first and the ones not available yet go last, each in catalog order.
+ */
 export function splitApps(apps: readonly App[]): { connected: App[]; available: App[] } {
+  const rest = apps.filter((app) => app.connections.length === 0);
   return {
     connected: apps.filter((app) => app.connections.length > 0),
-    available: apps.filter((app) => app.connections.length === 0),
+    available: [...rest.filter(isConnectable), ...rest.filter((app) => !isConnectable(app))],
   };
+}
+
+/** The first few apps onboarding offers: on the plan and ready to connect. */
+export function appsToOffer(apps: readonly App[], count: number): App[] {
+  return apps.filter((app) => app.availableOnPlan && isConnectable(app)).slice(0, count);
 }
 
 export type McpServerDraft = {

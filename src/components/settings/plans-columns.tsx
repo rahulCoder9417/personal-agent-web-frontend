@@ -2,6 +2,7 @@
 
 import { usePendingCheckout } from "@/components/checkout-watcher";
 import { CheckIcon } from "@/components/icons";
+import { toastError } from "@/components/toast";
 import { Button, Pill } from "@/components/ui";
 import { ApiError, errorMessage, type Plan, type Subscription, type TopUpPack } from "@/lib/api/client";
 import { useCreateCheckout, useCrew } from "@/lib/api/hooks";
@@ -60,6 +61,7 @@ function PlanColumn({
           startPendingCheckout({ kind: "plan", planId: plan.id, discountApplied, startedAt: new Date().toISOString() });
           leaveTo(checkoutUrl);
         },
+        onError: (error) => toastError(`Couldn’t start checkout for ${plan.name}`, checkoutError(error)),
       },
     );
 
@@ -123,11 +125,6 @@ function PlanColumn({
         )}
         {action.type === "free" && <p className="text-[12.5px] text-muted">Where you land when a paid plan ends. Cancel above to move here.</p>}
 
-        {checkout.isError && (
-          <p role="alert" className="text-[12.5px] text-danger">
-            {checkoutError(checkout.error)}
-          </p>
-        )}
         {waiting && (
           <p role="status" className="rounded-[10px] bg-accent-soft px-3 py-2 text-[12.5px] text-accent-dark">
             Waiting for Polar to confirm your payment. Your plan changes here by itself; if you didn’t finish paying, start again.

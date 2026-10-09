@@ -25,7 +25,19 @@
   --danger-soft: #fdecea;
   --scout: #11a39b;
   --tock: #ff6b2c;
+  /* The crew's own colours (Tex wears the accent, Scout has --scout above). */
+  --byte: #7b4dff;
+  --patch: #f5a623;
+  /* How far toasts sit from the bottom of the window. */
+  --toast-bottom: 20px;
   color-scheme: only light;
+}
+
+/* A phone has the tab bar along the bottom: toasts sit above it. */
+@media (max-width: 767px) {
+  :root {
+    --toast-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 @theme inline {
@@ -50,6 +62,8 @@
   --color-danger-soft: var(--danger-soft);
   --color-scout: var(--scout);
   --color-tock: var(--tock);
+  --color-byte: var(--byte);
+  --color-patch: var(--patch);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
   --shadow-soft: 0 1px 2px rgb(21 21 21 / 0.04), 0 8px 24px -12px rgb(21 21 21 / 0.12);

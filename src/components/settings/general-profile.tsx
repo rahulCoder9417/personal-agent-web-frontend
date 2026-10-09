@@ -1,7 +1,8 @@
 "use client";
 
 import { useId, useMemo, useState, type FormEvent } from "react";
-import { Button, Card, Field, InlineError, inputClass, Pill, SectionLabel } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { Button, Card, Field, inputClass, Pill, SectionLabel } from "@/components/ui";
 import type { Me } from "@/lib/api/client";
 import { useUpdateMe } from "@/lib/api/hooks";
 import { cn } from "@/lib/format";
@@ -29,7 +30,7 @@ export function ProfileSection({ me }: { me: Me }) {
         ...(trimmed !== me.name ? { name: trimmed } : {}),
         ...(timezone !== me.timezone ? { timezone } : {}),
       },
-      { onSuccess: () => setName(trimmed) },
+      { onSuccess: () => setName(trimmed), onError: (error) => toastError("Couldn’t save your profile", error) },
     );
   };
 
@@ -83,7 +84,6 @@ export function ProfileSection({ me }: { me: Me }) {
                 Saved
               </span>
             )}
-            <InlineError error={update.error} />
           </div>
         </form>
       </Card>

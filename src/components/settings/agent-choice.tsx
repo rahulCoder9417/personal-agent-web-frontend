@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AgentFigure } from "@/components/tex";
+import { toastError } from "@/components/toast";
 import { Button, Card, Meta, Pill, SectionLabel } from "@/components/ui";
 import { ApiError, errorMessage, type AgentSettings } from "@/lib/api/client";
 import { useUpdateAgentSettings } from "@/lib/api/hooks";
@@ -110,15 +111,15 @@ export function TextcrewAiSection({ settings, state }: { settings: AgentSettings
             variant={offer.action === "choose" ? "primary" : "secondary"}
             className="self-start"
             pending={update.isPending}
-            onClick={() => update.mutate(offer.patch)}
+            onClick={() =>
+              update.mutate(offer.patch, {
+                onError: (error) =>
+                  toastError(offer.action === "choose" ? "Couldn’t switch to Textcrew AI" : `Couldn’t go back to ${offer.to}`, switchError(error)),
+              })
+            }
           >
             {offer.action === "choose" ? "Use Textcrew AI" : `Go back to ${offer.to}`}
           </Button>
-        )}
-        {update.isError && (
-          <p role="alert" className="text-[12.5px] text-danger">
-            {switchError(update.error)}
-          </p>
         )}
         {state === "in_use" && (
           <Link href="/settings/credits" className="self-start text-[13px] font-medium text-accent hover:text-accent-dark">
