@@ -176,12 +176,18 @@ paths:
       tags: [chat]
       summary: Chat history (newest first)
       description: |
-        With `conversationId`: the messages of that conversation only. Without it: the active web
-        conversation's messages when `channel=web`, that channel's messages for another `channel`,
-        and every message when no channel is given.
+        Which messages are listed:
+        - with `conversationId`: that conversation's messages (any channel; 404 if it isn't this
+          user's);
+        - with `channel=web` and no `conversationId`: the messages of the web chat's active
+          conversation (none if web chat has no conversation yet);
+        - with another `channel` and no `conversationId`: every message of that channel;
+        - with neither: every message of every channel.
 
-        `chatStartedAt` is when the web chat's latest new chat started, or null if the user never
-        started one. It is kept for compatibility; the web app reads conversations instead.
+        Every message carries its `conversationId`.
+
+        `chatStartedAt` is kept for older clients: when the web chat's newest conversation started,
+        or null if the user never started a new chat in web chat.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -192,8 +198,8 @@ paths:
         - name: conversationId
           in: query
           required: false
-          description: List only this conversation's messages (see `GET /v1/conversations`).
-          schema: { type: string }
+          description: List only this conversation's messages.
+          schema: { type: string, examples: [cnv_01jz3m8q4kd2v7x9w0t5b6c8ya] }
       responses:
         "200":
           description: OK
@@ -210,7 +216,9 @@ paths:
                   chatStartedAt:
                     type: [string, "null"]
                     format: date-time
-                    description: When the web chat's latest new chat started. Null if never.
+                    description: |
+                      For older clients. When the web chat's newest conversation started; null if
+                      the user never started a new chat there.
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -223,9 +231,11 @@ paths:
         Returns 402 when the balance is zero, and 403 `channel_disabled` when web chat is switched
         off (`web` is not in `available`, see `GET /v1/channels`).
 
-        The message is saved in the active web conversation, or in `conversationId` when it is
-        given: writing to a web conversation that is not the active one makes it active first, and
-        the agent continues that conversation's own context.
+        The message goes into the web chat's active conversation. With `conversationId` it goes
+        into that web conversation instead, which becomes the active one first: the agent then
+        continues that conversation's own context, not the latest one's. 404 if the conversation
+        isn't this user's; 409 if it is not a web conversation (a Telegram conversation can only be
+        read in the web app).
       requestBody:
         required: true
         content:
@@ -245,7 +255,9 @@ paths:
                   maxItems: 5
                 conversationId:
                   type: string
-                  description: The web conversation to write in. Left out, it is the active one.
+                  description: |
+                    The web conversation to write in. Left out: the active one. A conversation that
+                    is not active becomes the active one first.
       responses:
         "202":
           description: Accepted and queued
@@ -257,6 +269,7 @@ paths:
         "402": { $ref: "#/components/responses/OutOfCredits" }
         "403": { $ref: "#/components/responses/ChannelDisabled" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /v1/conversations:
@@ -265,16 +278,19 @@ paths:
       tags: [chat]
       summary: The user's conversations (newest `lastMessageAt` first)
       description: |
-        A conversation is one stretch of a chat between two "New chat" actions, with its own
-        context for the agent. Web conversations can be opened and written in; conversations of
-        another chat app (Telegram) are listed for reading only.
+        A chat is one channel thread (web chat, or one Telegram chat). A conversation is one
+        stretch of a chat between two "New chat" actions; the agent keeps a separate context for
+        each. Saved memories (`/v1/memories`) are shared by all of them.
+
+        Without `channel`, every channel's conversations are listed. Web conversations can be
+        opened and written in; Telegram conversations are listed for reading only (Telegram always
+        writes in its chat's latest one, and `/new` there starts a new one).
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
         - name: channel
           in: query
           required: false
-          description: Only this chat app's conversations. Left out, all of them.
           schema: { $ref: "#/components/schemas/ChannelType" }
       responses:
         "200":
@@ -296,13 +312,16 @@ paths:
       tags: [chat]
       summary: Start a new web conversation
       description: |
-        Starts a new conversation in web chat and makes it the active one: the agent starts
-        afresh in it. Earlier conversations stay listed and can be opened again. Saved memories
-        (`/v1/memories`) are kept; they are the user's, not a chat's. No body. No turn runs and
-        no credits are charged. Rate limited to 30 an hour per user.
+        Starts a new, empty conversation in web chat and makes it the active one. The agent starts
+        with a fresh context there: it does not see what was said in other conversations. Saved
+        memories are kept; they are not part of a conversation. No body.
+
+        Web chat only (a Telegram chat starts a new one with the message `/new`). No turn runs and
+        no credits are charged. Rate limited to 30 an hour per user, counted together with
+        `POST /v1/chats/new`.
       responses:
         "201":
-          description: Started
+          description: Started; it is the active web conversation now
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Conversation" }
@@ -314,6 +333,11 @@ paths:
       operationId: updateConversation
       tags: [chat]
       summary: Rename a conversation, or make a web conversation the active one
+      description: |
+        `title` renames it (any channel). `active: true` makes a web conversation the active one:
+        web chat's next message goes there and the agent continues that conversation's own
+        context. A Telegram conversation cannot be made active from the web (409). At least one of
+        the two fields is required.
       parameters:
         - $ref: "#/components/parameters/ConversationId"
       requestBody:
@@ -323,12 +347,10 @@ paths:
             schema:
               type: object
               minProperties: 1
+              additionalProperties: false
               properties:
                 title: { type: string, minLength: 1, maxLength: 80 }
-                active:
-                  type: boolean
-                  enum: [true]
-                  description: Make this web conversation the active one for web chat.
+                active: { type: boolean, const: true }
       responses:
         "200":
           description: Updated
@@ -338,19 +360,17 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409":
-          description: A conversation of another chat app (Telegram) can't be made active from the web
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
     delete:
       operationId: deleteConversation
       tags: [chat]
-      summary: Delete a conversation with its messages and attachments
+      summary: Delete a conversation with its messages and files
       description: |
-        Can't be undone. Deleting the active web conversation makes the newest remaining one
-        active, or starts an empty one. It is in the activity log as `conversation_deleted`,
-        without any text.
+        Removes the conversation, its messages and their attachments. The activity log gets
+        `conversation_deleted` (the channel, never any text). Deleting the active web conversation
+        makes the newest remaining web conversation the active one, or starts an empty one when
+        none is left. After the active conversation of a Telegram chat is deleted, the next message
+        from that chat starts a new one.
       parameters:
         - $ref: "#/components/parameters/ConversationId"
       responses:
@@ -362,16 +382,14 @@ paths:
     post:
       operationId: startNewChat
       tags: [chat]
-      summary: Start a new web chat (the earlier name of `POST /v1/conversations`)
+      summary: Start a new web chat (older name of `POST /v1/conversations`)
+      deprecated: true
       description: |
-        Kept working as an alias of `POST /v1/conversations`; new code calls that.
+        Kept for older clients; it does what `POST /v1/conversations` does and shares its limit of
+        30 an hour per user. No body.
 
-        The agent starts a fresh conversation in web chat: it no longer sees what was said there
-        before. Saved memories (`/v1/memories`) are kept; they are not part of a chat. No body.
-        Applies to web chat only (a Telegram chat starts a new one with the message `/new`).
-        No turn runs and no credits are charged. Rate limited to 30 an hour per user.
-
-        The answer's `chatStartedAt` is the same value `GET /v1/messages` returns from now on.
+        The answer's `chatStartedAt` is when the new conversation started, the same value
+        `GET /v1/messages` returns from now on.
       responses:
         "200":
           description: Started
@@ -432,9 +450,10 @@ paths:
         `conversation.updated`, `conversation.deleted`.
         Each event's `data` is JSON matching the `StreamEvent` schema.
 
-        `message.created` and `message.status` carry the message, with its `conversationId`.
-        `conversation.updated` carries a conversation whose title, `lastMessageAt` or `active`
-        changed (a new one too); `conversation.deleted` carries the one that was deleted.
+        `message.created` and `message.status` carry the whole message, so its `conversationId`
+        comes with it. `conversation.updated` carries the whole conversation: it is sent when one
+        starts, and when its `title`, `lastMessageAt` or `active` changes. `conversation.deleted`
+        carries the deleted conversation's `id` only.
 
         `agent.progress` is a short line about what the agent is doing in the current turn (for
         example `Scout: reading 4 pages` or `using web_search`). It is live only: it isn't saved
@@ -1773,7 +1792,7 @@ components:
       name: conversationId
       in: path
       required: true
-      schema: { type: string }
+      schema: { type: string, examples: [cnv_01jz3m8q4kd2v7x9w0t5b6c8ya] }
     Provider:
       name: provider
       in: path
@@ -1818,6 +1837,11 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     NotFound:
       description: Not found (or not owned by this user)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: The request can't be applied to this item as it is now
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -1950,32 +1974,48 @@ components:
 
     Conversation:
       type: object
-      description: One stretch of a chat between two "New chat" actions. The agent's context is separate for each.
+      description: One stretch of a chat between two "New chat" actions. The agent keeps a context of its own for each.
       required: [id, channel, epoch, startedAt, lastMessageAt, title, active]
       properties:
-        id: { type: string, examples: [cnv_01jb2k] }
+        id: { type: string, examples: [cnv_01jz3m8q4kd2v7x9w0t5b6c8ya] }
         channel: { $ref: "#/components/schemas/ChannelType" }
         epoch:
           type: integer
-          description: The chat's number for this conversation. It rises by 1 at each new chat.
+          minimum: 0
+          description: The conversation's number within its chat. It never changes and is never used again.
         startedAt: { type: string, format: date-time }
         lastMessageAt:
           type: string
           format: date-time
-          description: When its newest message was saved. The list is ordered by it.
+          description: When its newest message was saved; `startedAt` while it has none.
         title:
           type: string
-          description: The first incoming message's text, cut to 60 characters at a word, "New chat" while empty, or what the user renamed it to.
+          description: |
+            The name the user gave it, else the first incoming message's text cut to 60 characters
+            at a word, else "New chat" while it has no such message.
+          examples: [Plan a trip to Goa]
         active:
           type: boolean
-          description: Whether new messages of its chat are saved in it. One web conversation is the active one for web chat.
+          description: |
+            True for the one conversation of its chat that the next message goes into. Web chat:
+            the one the user has open to write in. Telegram: the chat's latest one.
+
+    ConversationDeleted:
+      type: object
+      description: The `data` of a `conversation.deleted` stream event.
+      required: [id]
+      additionalProperties: false
+      properties:
+        id: { type: string }
 
     Message:
       type: object
       required: [id, conversationId, channel, direction, text, status, createdAt]
       properties:
         id: { type: string }
-        conversationId: { type: string, description: The conversation this message belongs to. }
+        conversationId:
+          type: string
+          description: The conversation this message belongs to.
         channel: { $ref: "#/components/schemas/ChannelType" }
         direction: { type: string, enum: [in, out] }
         text: { type: string }
@@ -2021,8 +2061,9 @@ components:
         connectable:
           type: boolean
           description: |
-            Whether this app can be connected on this deployment: true when the server has a
-            Composio setup for it. False: show it as not available yet and offer no Connect.
+            True when this server has a Composio setup for the app, so it can be connected. False:
+            the app is listed but cannot be connected yet (`POST /v1/apps/{appSlug}/connect`
+            answers 404 for it); show it as "Not available yet", without a Connect button.
         connections:
           type: array
           items:
@@ -2572,6 +2613,7 @@ components:
           oneOf:
             - { $ref: "#/components/schemas/Message" }
             - { $ref: "#/components/schemas/Conversation" }
+            - { $ref: "#/components/schemas/ConversationDeleted" }
             - { $ref: "#/components/schemas/Approval" }
             - { $ref: "#/components/schemas/AgentStatus" }
             - { $ref: "#/components/schemas/AgentProgress" }

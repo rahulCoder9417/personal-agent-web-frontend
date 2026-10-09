@@ -111,12 +111,18 @@ export interface paths {
         };
         /**
          * Chat history (newest first)
-         * @description With `conversationId`: the messages of that conversation only. Without it: the active web
-         *     conversation's messages when `channel=web`, that channel's messages for another `channel`,
-         *     and every message when no channel is given.
+         * @description Which messages are listed:
+         *     - with `conversationId`: that conversation's messages (any channel; 404 if it isn't this
+         *       user's);
+         *     - with `channel=web` and no `conversationId`: the messages of the web chat's active
+         *       conversation (none if web chat has no conversation yet);
+         *     - with another `channel` and no `conversationId`: every message of that channel;
+         *     - with neither: every message of every channel.
          *
-         *     `chatStartedAt` is when the web chat's latest new chat started, or null if the user never
-         *     started one. It is kept for compatibility; the web app reads conversations instead.
+         *     Every message carries its `conversationId`.
+         *
+         *     `chatStartedAt` is kept for older clients: when the web chat's newest conversation started,
+         *     or null if the user never started a new chat in web chat.
          */
         get: operations["listMessages"];
         put?: never;
@@ -126,9 +132,11 @@ export interface paths {
          *     Returns 402 when the balance is zero, and 403 `channel_disabled` when web chat is switched
          *     off (`web` is not in `available`, see `GET /v1/channels`).
          *
-         *     The message is saved in the active web conversation, or in `conversationId` when it is
-         *     given: writing to a web conversation that is not the active one makes it active first, and
-         *     the agent continues that conversation's own context.
+         *     The message goes into the web chat's active conversation. With `conversationId` it goes
+         *     into that web conversation instead, which becomes the active one first: the agent then
+         *     continues that conversation's own context, not the latest one's. 404 if the conversation
+         *     isn't this user's; 409 if it is not a web conversation (a Telegram conversation can only be
+         *     read in the web app).
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -146,18 +154,25 @@ export interface paths {
         };
         /**
          * The user's conversations (newest `lastMessageAt` first)
-         * @description A conversation is one stretch of a chat between two "New chat" actions, with its own
-         *     context for the agent. Web conversations can be opened and written in; conversations of
-         *     another chat app (Telegram) are listed for reading only.
+         * @description A chat is one channel thread (web chat, or one Telegram chat). A conversation is one
+         *     stretch of a chat between two "New chat" actions; the agent keeps a separate context for
+         *     each. Saved memories (`/v1/memories`) are shared by all of them.
+         *
+         *     Without `channel`, every channel's conversations are listed. Web conversations can be
+         *     opened and written in; Telegram conversations are listed for reading only (Telegram always
+         *     writes in its chat's latest one, and `/new` there starts a new one).
          */
         get: operations["listConversations"];
         put?: never;
         /**
          * Start a new web conversation
-         * @description Starts a new conversation in web chat and makes it the active one: the agent starts
-         *     afresh in it. Earlier conversations stay listed and can be opened again. Saved memories
-         *     (`/v1/memories`) are kept; they are the user's, not a chat's. No body. No turn runs and
-         *     no credits are charged. Rate limited to 30 an hour per user.
+         * @description Starts a new, empty conversation in web chat and makes it the active one. The agent starts
+         *     with a fresh context there: it does not see what was said in other conversations. Saved
+         *     memories are kept; they are not part of a conversation. No body.
+         *
+         *     Web chat only (a Telegram chat starts a new one with the message `/new`). No turn runs and
+         *     no credits are charged. Rate limited to 30 an hour per user, counted together with
+         *     `POST /v1/chats/new`.
          */
         post: operations["createConversation"];
         delete?: never;
@@ -177,15 +192,23 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete a conversation with its messages and attachments
-         * @description Can't be undone. Deleting the active web conversation makes the newest remaining one
-         *     active, or starts an empty one. It is in the activity log as `conversation_deleted`,
-         *     without any text.
+         * Delete a conversation with its messages and files
+         * @description Removes the conversation, its messages and their attachments. The activity log gets
+         *     `conversation_deleted` (the channel, never any text). Deleting the active web conversation
+         *     makes the newest remaining web conversation the active one, or starts an empty one when
+         *     none is left. After the active conversation of a Telegram chat is deleted, the next message
+         *     from that chat starts a new one.
          */
         delete: operations["deleteConversation"];
         options?: never;
         head?: never;
-        /** Rename a conversation, or make a web conversation the active one */
+        /**
+         * Rename a conversation, or make a web conversation the active one
+         * @description `title` renames it (any channel). `active: true` makes a web conversation the active one:
+         *     web chat's next message goes there and the agent continues that conversation's own
+         *     context. A Telegram conversation cannot be made active from the web (409). At least one of
+         *     the two fields is required.
+         */
         patch: operations["updateConversation"];
         trace?: never;
     };
@@ -199,15 +222,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Start a new web chat (the earlier name of `POST /v1/conversations`)
-         * @description Kept working as an alias of `POST /v1/conversations`; new code calls that.
+         * Start a new web chat (older name of `POST /v1/conversations`)
+         * @deprecated
+         * @description Kept for older clients; it does what `POST /v1/conversations` does and shares its limit of
+         *     30 an hour per user. No body.
          *
-         *     The agent starts a fresh conversation in web chat: it no longer sees what was said there
-         *     before. Saved memories (`/v1/memories`) are kept; they are not part of a chat. No body.
-         *     Applies to web chat only (a Telegram chat starts a new one with the message `/new`).
-         *     No turn runs and no credits are charged. Rate limited to 30 an hour per user.
-         *
-         *     The answer's `chatStartedAt` is the same value `GET /v1/messages` returns from now on.
+         *     The answer's `chatStartedAt` is when the new conversation started, the same value
+         *     `GET /v1/messages` returns from now on.
          */
         post: operations["startNewChat"];
         delete?: never;
@@ -248,9 +269,10 @@ export interface paths {
          *     `conversation.updated`, `conversation.deleted`.
          *     Each event's `data` is JSON matching the `StreamEvent` schema.
          *
-         *     `message.created` and `message.status` carry the message, with its `conversationId`.
-         *     `conversation.updated` carries a conversation whose title, `lastMessageAt` or `active`
-         *     changed (a new one too); `conversation.deleted` carries the one that was deleted.
+         *     `message.created` and `message.status` carry the whole message, so its `conversationId`
+         *     comes with it. `conversation.updated` carries the whole conversation: it is sent when one
+         *     starts, and when its `title`, `lastMessageAt` or `active` changes. `conversation.deleted`
+         *     carries the deleted conversation's `id` only.
          *
          *     `agent.progress` is a short line about what the agent is doing in the current turn (for
          *     example `Scout: reading 4 pages` or `using web_search`). It is live only: it isn't saved
@@ -1256,24 +1278,35 @@ export interface components {
              */
             deepLink?: string | null;
         };
-        /** @description One stretch of a chat between two "New chat" actions. The agent's context is separate for each. */
+        /** @description One stretch of a chat between two "New chat" actions. The agent keeps a context of its own for each. */
         Conversation: {
-            /** @example cnv_01jb2k */
+            /** @example cnv_01jz3m8q4kd2v7x9w0t5b6c8ya */
             id: string;
             channel: components["schemas"]["ChannelType"];
-            /** @description The chat's number for this conversation. It rises by 1 at each new chat. */
+            /** @description The conversation's number within its chat. It never changes and is never used again. */
             epoch: number;
             /** Format: date-time */
             startedAt: string;
             /**
              * Format: date-time
-             * @description When its newest message was saved. The list is ordered by it.
+             * @description When its newest message was saved; `startedAt` while it has none.
              */
             lastMessageAt: string;
-            /** @description The first incoming message's text, cut to 60 characters at a word, "New chat" while empty, or what the user renamed it to. */
+            /**
+             * @description The name the user gave it, else the first incoming message's text cut to 60 characters
+             *     at a word, else "New chat" while it has no such message.
+             * @example Plan a trip to Goa
+             */
             title: string;
-            /** @description Whether new messages of its chat are saved in it. One web conversation is the active one for web chat. */
+            /**
+             * @description True for the one conversation of its chat that the next message goes into. Web chat:
+             *     the one the user has open to write in. Telegram: the chat's latest one.
+             */
             active: boolean;
+        };
+        /** @description The `data` of a `conversation.deleted` stream event. */
+        ConversationDeleted: {
+            id: string;
         };
         Message: {
             id: string;
@@ -1334,8 +1367,9 @@ export interface components {
             category: string;
             availableOnPlan: boolean;
             /**
-             * @description Whether this app can be connected on this deployment: true when the server has a
-             *     Composio setup for it. False: show it as not available yet and offer no Connect.
+             * @description True when this server has a Composio setup for the app, so it can be connected. False:
+             *     the app is listed but cannot be connected yet (`POST /v1/apps/{appSlug}/connect`
+             *     answers 404 for it); show it as "Not available yet", without a Connect button.
              */
             connectable: boolean;
             connections: {
@@ -1895,7 +1929,7 @@ export interface components {
         StreamEvent: {
             /** @enum {string} */
             type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated" | "conversation.updated" | "conversation.deleted";
-            data: components["schemas"]["Message"] | components["schemas"]["Conversation"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"];
+            data: components["schemas"]["Message"] | components["schemas"]["Conversation"] | components["schemas"]["ConversationDeleted"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"];
         };
     };
     responses: {
@@ -1928,6 +1962,15 @@ export interface components {
         };
         /** @description Not found (or not owned by this user) */
         NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The request can't be applied to this item as it is now */
+        Conflict: {
             headers: {
                 [name: string]: unknown;
             };
@@ -2181,7 +2224,7 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
                 channel?: components["schemas"]["ChannelType"];
-                /** @description List only this conversation's messages (see `GET /v1/conversations`). */
+                /** @description List only this conversation's messages. */
                 conversationId?: string;
             };
             header?: never;
@@ -2201,7 +2244,8 @@ export interface operations {
                         nextCursor: string | null;
                         /**
                          * Format: date-time
-                         * @description When the web chat's latest new chat started. Null if never.
+                         * @description For older clients. When the web chat's newest conversation started; null if
+                         *     the user never started a new chat there.
                          */
                         chatStartedAt: string | null;
                     };
@@ -2229,7 +2273,10 @@ export interface operations {
                      */
                     clientMessageId: string;
                     attachmentIds?: string[];
-                    /** @description The web conversation to write in. Left out, it is the active one. */
+                    /**
+                     * @description The web conversation to write in. Left out: the active one. A conversation that
+                     *     is not active becomes the active one first.
+                     */
                     conversationId?: string;
                 };
             };
@@ -2249,6 +2296,7 @@ export interface operations {
             402: components["responses"]["OutOfCredits"];
             403: components["responses"]["ChannelDisabled"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -2257,7 +2305,6 @@ export interface operations {
             query?: {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
-                /** @description Only this chat app's conversations. Left out, all of them. */
                 channel?: components["schemas"]["ChannelType"];
             };
             header?: never;
@@ -2291,7 +2338,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Started */
+            /** @description Started; it is the active web conversation now */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -2339,10 +2386,7 @@ export interface operations {
             content: {
                 "application/json": {
                     title?: string;
-                    /**
-                     * @description Make this web conversation the active one for web chat.
-                     * @enum {boolean}
-                     */
+                    /** @constant */
                     active?: true;
                 };
             };
@@ -2360,15 +2404,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description A conversation of another chat app (Telegram) can't be made active from the web */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            409: components["responses"]["Conflict"];
         };
     };
     startNewChat: {
