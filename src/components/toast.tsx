@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
 import { Toaster as SonnerToaster, toast as sonner } from "sonner";
 import { errorMessage } from "@/lib/api/client";
 import { cn } from "@/lib/format";
@@ -9,16 +10,31 @@ import { CheckIcon, CloseIcon, WarningIcon } from "./icons";
 // Short notices in a corner of the page: something finished elsewhere (a payment landing), or
 // something the person asked for didn't work. sonner draws them; only this file knows that.
 
-/** A button on a toast, for the way out of a refusal ("See plans"). */
-export type ToastAction = { label: string; onClick: () => void };
+/**
+ * A button on a toast, for the way out of a refusal ("See plans"): a page of this app to open
+ * (`href`), or something to do (`onClick`).
+ */
+export type ToastAction = { label: string } & ({ href: string } | { onClick: () => void });
 
 /** How long a toast stays. A failure stays longer: it has to be read. */
 export const TOAST_MS = 8000;
 export const TOAST_ERROR_MS = 10_000;
 
+// How a toast's link opens a page. The Toaster swaps in the app's router once it is mounted, so
+// the page changes without a reload; before that (and in tests) the browser does it.
+type Navigate = (href: string) => void;
+const leave: Navigate = (href) => window.location.assign(href);
+let navigate: Navigate = leave;
+
+/** A toast button as sonner takes it. */
+export function toastButton(action: ToastAction | undefined): { label: string; onClick: () => void } | undefined {
+  if (!action) return undefined;
+  return { label: action.label, onClick: "href" in action ? () => navigate(action.href) : action.onClick };
+}
+
 /** Shows a confirmation in the corner of the page for a few seconds. */
 export function toast(message: { title: string; body?: string; action?: ToastAction }) {
-  sonner.success(message.title, { description: message.body, duration: TOAST_MS, action: message.action });
+  sonner.success(message.title, { description: message.body, duration: TOAST_MS, action: toastButton(message.action) });
 }
 
 /** Why something failed, as a toast's second line: a sentence as given, an error's own message, or nothing. */
@@ -33,7 +49,7 @@ export function errorDetail(detail: unknown): string | undefined {
  * written for the case. The same failure twice in a row shows one toast, not a pile of them.
  */
 export function toastError(title: string, detail?: unknown, action?: ToastAction) {
-  sonner.error(title, { id: `error:${title}`, description: errorDetail(detail), duration: TOAST_ERROR_MS, action });
+  sonner.error(title, { id: `error:${title}`, description: errorDetail(detail), duration: TOAST_ERROR_MS, action: toastButton(action) });
 }
 
 function Badge({ className, children }: { className: string; children: ReactNode }) {
@@ -46,6 +62,14 @@ function Badge({ className, children }: { className: string; children: ReactNode
  * whatever the tokens say. `--toast-bottom` (globals.css) keeps it above the phone's tab bar.
  */
 export function Toaster() {
+  const router = useRouter();
+  useEffect(() => {
+    navigate = (href) => router.push(href);
+    return () => {
+      navigate = leave;
+    };
+  }, [router]);
+
   return (
     <SonnerToaster
       position="bottom-right"

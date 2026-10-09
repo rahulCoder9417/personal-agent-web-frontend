@@ -1,22 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ApiError, errorMessage, type App } from "@/lib/api/client";
+import type { App } from "@/lib/api/client";
 import { useApps, useConnectApp } from "@/lib/api/hooks";
+import { appsToOffer, describeConnectError } from "@/components/apps/apps-logic";
 import { AppIcon } from "@/components/brand-icon";
 import { CheckIcon, LockIcon } from "@/components/icons";
+import { toastError } from "@/components/toast";
 import { Button, Card, ErrorState, Pill, SkeletonRows } from "@/components/ui";
 import { openInNewTab } from "@/lib/navigate";
 import { titleCase } from "@/lib/format";
 
 const SHOWN = 6;
-
-function connectError(error: unknown): string {
-  if (error instanceof ApiError && (error.planLimit || error.status === 403)) {
-    return "Your plan’s app limit is reached. Disconnect one or upgrade to add more.";
-  }
-  return errorMessage(error);
-}
 
 function isConnected(app: App): boolean {
   return app.connections.some((connection) => connection.status === "active");
@@ -37,7 +32,8 @@ export function StepApps({ onDone }: { onDone: () => void }) {
     return () => window.removeEventListener("focus", refresh);
   }, [opened, refetch]);
 
-  const shown = (apps.data ?? []).filter((app) => app.availableOnPlan).slice(0, SHOWN);
+  // Only apps that can be connected right now: on the plan, and set up on the server.
+  const shown = appsToOffer(apps.data ?? [], SHOWN);
   const connectedCount = (apps.data ?? []).filter(isConnected).length;
 
   const start = (app: App) =>
@@ -47,7 +43,12 @@ export function StepApps({ onDone }: { onDone: () => void }) {
         onSuccess: ({ redirectUrl }) => {
           openInNewTab(redirectUrl);
           setOpened(app.slug);
-        } },
+        },
+        onError: (error) => {
+          const refusal = describeConnectError(app.name, error);
+          toastError(refusal.title, refusal.detail);
+        },
+      },
     );
 
   return (
@@ -97,12 +98,6 @@ export function StepApps({ onDone }: { onDone: () => void }) {
             })}
           </ul>
         </Card>
-      )}
-
-      {connect.isError && (
-        <p role="alert" className="text-[12.5px] text-danger">
-          {connectError(connect.error)}
-        </p>
       )}
 
       <p className="flex items-start gap-2.5 text-[13px] text-muted">

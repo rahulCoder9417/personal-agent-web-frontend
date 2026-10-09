@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AvailableAppCard, ConnectedAppCard } from "@/components/apps/app-cards";
-import { ALL_CATEGORIES, categoriesOf, filterApps, splitApps } from "@/components/apps/apps-logic";
+import { ALL_CATEGORIES, categoriesOf, filterApps, isConnectable, NOT_AVAILABLE_LABEL, splitApps } from "@/components/apps/apps-logic";
 import { LockIcon, SearchIcon } from "@/components/icons";
 import { PageBody } from "@/components/page";
 import { Card, EmptyState, ErrorState, FilterPills, SectionLabel, SkeletonRows } from "@/components/ui";
@@ -97,6 +97,11 @@ export default function AppsPage() {
               <AvailableAppCard key={app.slug} app={app} />
             ))}
           </div>
+          {available.some((app) => !isConnectable(app)) && (
+            <p className="text-[12.5px] text-muted">
+              “{NOT_AVAILABLE_LABEL}” means we haven’t set that app up on Textcrew yet. It gets a Connect button when we have.
+            </p>
+          )}
         </section>
       )}
 

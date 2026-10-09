@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // sonner draws the toasts; these tests check what this app hands it.
 const sonner = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast: sonner, Toaster: () => null }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => {} }) }));
 
 import { ApiError } from "@/lib/api/client";
-import { errorDetail, toast, TOAST_ERROR_MS, TOAST_MS, toastError } from "./toast";
+import { errorDetail, toast, TOAST_ERROR_MS, TOAST_MS, toastButton, toastError } from "./toast";
 
 beforeEach(() => {
   sonner.success.mockClear();
@@ -35,6 +36,22 @@ describe("toast", () => {
   });
 });
 
+describe("toastButton", () => {
+  it("is nothing without an action", () => {
+    expect(toastButton(undefined)).toBeUndefined();
+  });
+
+  it("opens a page of the app for a link", () => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", { location: { assign } });
+    const button = toastButton({ label: "See plans", href: "/settings/plans" });
+    expect(button?.label).toBe("See plans");
+    button?.onClick();
+    expect(assign).toHaveBeenCalledWith("/settings/plans");
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("toastError", () => {
   it("shows what failed and the API's own words for why", () => {
     toastError("Couldn’t connect Google Calendar", new ApiError(404, "not_found", "Google Calendar isn't configured yet"));
@@ -60,10 +77,12 @@ describe("toastError", () => {
   });
 
   it("stays longer than a confirmation, and carries the way out", () => {
-    const action = { label: "See plans", onClick: () => {} };
-    toastError("Your plan’s app limit is reached", "Disconnect one or upgrade to add more.", action);
+    toastError("Your plan’s app limit is reached", "Disconnect one or upgrade to add more.", { label: "See plans", href: "/settings/plans" });
     expect(TOAST_ERROR_MS).toBeGreaterThan(TOAST_MS);
-    expect(sonner.error).toHaveBeenCalledWith("Your plan’s app limit is reached", expect.objectContaining({ action, duration: TOAST_ERROR_MS }));
+    expect(sonner.error).toHaveBeenCalledWith(
+      "Your plan’s app limit is reached",
+      expect.objectContaining({ duration: TOAST_ERROR_MS, action: { label: "See plans", onClick: expect.any(Function) } }),
+    );
   });
 });
 
