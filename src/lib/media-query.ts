@@ -4,12 +4,16 @@ import { useMemo, useSyncExternalStore } from "react";
 
 /**
  * The widths at which the parts of the shell that CSS hides are on screen. Each is the opposite of
- * a breakpoint in the markup: the sidebar is `max-md:hidden` (below 48rem), the chat's side panel
- * `max-[1100px]:hidden`.
+ * a breakpoint in the markup: the sidebar is `max-md:hidden` (below 48rem), the chat's list of
+ * conversations `max-lg:hidden` (below 64rem, where it is a drawer instead), the chat's side panel
+ * `max-[1100px]:hidden`, or `max-[1340px]:hidden` while the list of conversations is open beside
+ * the thread, so the thread keeps room to be read.
  */
 export const SHOWN_AT = {
   sidebar: "(min-width: 48rem)",
+  conversations: "(min-width: 64rem)",
   sidePanel: "(min-width: 1100px)",
+  sidePanelBesideChats: "(min-width: 1340px)",
 } as const;
 
 type Store = { subscribe: (onChange: () => void) => () => void; getSnapshot: () => boolean; getServerSnapshot: () => boolean };

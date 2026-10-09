@@ -190,3 +190,19 @@ export const NewChatIcon = (p: IconProps) => (
     <path d="M17.5 3.5a2.1 2.1 0 0 1 3 3L13 14l-4 1 1-4 7.5-7.5Z" />
   </Base>
 );
+
+/** A page with its side column marked: show or hide the list of chats. */
+export const PanelIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+    <path d="M9.5 4.5v15" />
+  </Base>
+);
+
+/** A pencil: rename. */
+export const PencilIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1 1-4L16.5 4.5Z" />
+    <path d="M14.5 6.5l3 3" />
+  </Base>
+);

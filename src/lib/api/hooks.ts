@@ -22,17 +22,29 @@ import {
   type Automation,
   type ByokProvider,
   type ChannelType,
+  type Conversation,
   type McpServerCreate,
   type Message,
   type PlanId,
 } from "./client";
+import {
+  allConversations,
+  conversationSpoke,
+  conversationStartedBy,
+  dropConversation,
+  emptyActiveChat,
+  placeConversation,
+  type ConversationList,
+} from "../conversations";
 import type { ProgressLine } from "../crew";
 
 // One place for every query key, so the event stream and mutations invalidate the same things.
 export const qk = {
   me: ["me"] as const,
   channels: ["channels"] as const,
-  messages: (channel: ChannelType | "all" = "all") => ["messages", channel] as const,
+  conversations: ["conversations"] as const,
+  /** One conversation's messages. */
+  thread: (conversationId: string) => ["messages", conversationId] as const,
   approvals: (status: ApprovalStatus = "pending") => ["approvals", status] as const,
   apps: ["apps"] as const,
   mcpServers: ["mcp-servers"] as const,
@@ -101,81 +113,173 @@ export function useUnlinkChannel() {
 
 // ---------------------------------------------------------------- chat
 
-export function useMessages(channel: ChannelType | "all" = "all") {
+/** The chat history: every conversation, the one something was last said in first. */
+export function useConversations() {
   return useInfiniteQuery({
-    queryKey: qk.messages(channel),
+    queryKey: qk.conversations,
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
-      unwrap(
-        api.GET("/v1/messages", {
-          params: { query: { limit: PAGE, cursor: pageParam, channel: channel === "all" ? undefined : channel } },
-        }),
-      ),
+    queryFn: ({ pageParam }) => unwrap(api.GET("/v1/conversations", { params: { query: { limit: PAGE, cursor: pageParam } } })),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 }
 
-/** Puts a new or changed message into every cached thread it belongs to (the API lists newest first). */
-export function upsertMessage(qc: QueryClient, message: Message) {
-  const belongs = (key: readonly unknown[]) => key[1] === "all" || key[1] === message.channel;
-  qc.setQueriesData<InfiniteData<Page<Message>>>(
-    { queryKey: ["messages"], predicate: (query) => belongs(query.queryKey) },
-    (data) => {
-      if (!data) return data;
-      const exists = data.pages.some((p) => p.items.some((m) => m.id === message.id));
-      if (exists) {
-        return {
-          ...data,
-          pages: data.pages.map((p) => ({ ...p, items: p.items.map((m) => (m.id === message.id ? message : m)) })),
-        };
-      }
-      const [first, ...rest] = data.pages;
-      if (!first) return data;
-      return { ...data, pages: [{ ...first, items: [message, ...first.items] }, ...rest] };
-    },
-  );
+/** Puts a new or changed conversation where it belongs in the cached list. */
+export function upsertConversation(qc: QueryClient, conversation: Conversation) {
+  qc.setQueryData<ConversationList>(qk.conversations, (list) => (list ? placeConversation(list, conversation) : list));
 }
 
-/** A page of the chat: the messages, and when the web chat's latest new chat started (null if never). */
-type MessagePage = Page<Message> & { chatStartedAt?: string | null };
+/** A conversation was deleted: it leaves the list, and its messages leave the cache with it. */
+export function removeConversation(qc: QueryClient, conversationId: string) {
+  qc.setQueryData<ConversationList>(qk.conversations, (list) => (list ? dropConversation(list, conversationId) : list));
+  qc.removeQueries({ queryKey: qk.thread(conversationId) });
+}
 
-/** When the web chat's latest new chat started, from a cached thread (its newest page says it). */
-export function chatStartedAtOf(data: InfiniteData<MessagePage> | undefined): string | null {
-  return data?.pages[0]?.chatStartedAt ?? null;
+type MessagePage = Page<Message>;
+type Thread = InfiniteData<MessagePage, string | undefined>;
+
+/** One conversation's messages, newest first. Nothing is asked for until a conversation is known. */
+export function useThread(conversationId: string | null) {
+  return useInfiniteQuery({
+    queryKey: qk.thread(conversationId ?? ""),
+    enabled: conversationId !== null,
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }): Promise<MessagePage> =>
+      unwrap(api.GET("/v1/messages", { params: { query: { limit: PAGE, cursor: pageParam, conversationId: conversationId ?? undefined } } })),
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+}
+
+/** Whether a conversation's thread is known to be empty. Undefined when it hasn't been asked for. */
+function threadIsEmpty(qc: QueryClient, conversationId: string): boolean | undefined {
+  const thread = qc.getQueryData<Thread>(qk.thread(conversationId));
+  return thread ? thread.pages.every((page) => page.items.length === 0) : undefined;
+}
+
+/** Puts a new or changed message into its conversation's cached thread (the API lists newest first). */
+export function upsertMessage(qc: QueryClient, message: Message) {
+  qc.setQueryData<Thread>(qk.thread(message.conversationId), (data) => {
+    if (!data) return data;
+    const exists = data.pages.some((p) => p.items.some((m) => m.id === message.id));
+    if (exists) {
+      return {
+        ...data,
+        pages: data.pages.map((p) => ({ ...p, items: p.items.map((m) => (m.id === message.id ? message : m)) })),
+      };
+    }
+    const [first, ...rest] = data.pages;
+    if (!first) return data;
+    return { ...data, pages: [{ ...first, items: [message, ...first.items] }, ...rest] };
+  });
 }
 
 /**
- * Starts a new web chat: Tex no longer sees what was said before in it. The earlier messages stay
- * listed; every cached thread learns the new start, so the "New chat" divider shows at once.
+ * A new message was saved: besides its thread, its conversation moves to the top of the list. A
+ * conversation the list doesn't have yet (the first web message, a new chat on Telegram) is asked for.
  */
-export function useStartNewChat() {
+export function addMessage(qc: QueryClient, message: Message) {
+  upsertMessage(qc, message);
+  const list = qc.getQueryData<ConversationList>(qk.conversations);
+  if (!list) return;
+  const next = conversationSpoke(list, message);
+  if (next === null) void qc.invalidateQueries({ queryKey: qk.conversations });
+  else if (next !== list) qc.setQueryData<ConversationList>(qk.conversations, next);
+}
+
+/**
+ * "New chat": starts a new web conversation, in which Tex starts afresh (its saved memories stay),
+ * and makes it the active one. When nothing has been said in the active one yet, that one is
+ * handed back instead of starting another empty one.
+ */
+export function useNewChat() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => unwrap(api.POST("/v1/chats/new")),
-    onSuccess: ({ chatStartedAt }) => {
-      qc.setQueriesData<InfiniteData<MessagePage>>({ queryKey: ["messages"] }, (data) =>
-        data ? { ...data, pages: data.pages.map((page) => ({ ...page, chatStartedAt })) } : data,
-      );
+    mutationFn: async (): Promise<Conversation> => {
+      const conversations = allConversations(qc.getQueryData<ConversationList>(qk.conversations));
+      return emptyActiveChat(conversations, (id) => threadIsEmpty(qc, id)) ?? unwrap(api.POST("/v1/conversations"));
+    },
+    onSuccess: (conversation) => {
+      upsertConversation(qc, conversation);
+      // Nothing has been said in it, so its thread is known without asking.
+      qc.setQueryData<Thread>(qk.thread(conversation.id), (data) => data ?? { pages: [{ items: [], nextCursor: null }], pageParams: [undefined] });
       // It is in the activity log (`chat_started`).
       void qc.invalidateQueries({ queryKey: qk.activity });
     },
   });
 }
 
+/** Renames a conversation. Shown at once; put back if the API says no. */
+export function useRenameConversation() {
+  const qc = useQueryClient();
+  const retitle = (conversationId: string, title: string) =>
+    qc.setQueryData<ConversationList>(qk.conversations, (list) => {
+      const current = allConversations(list).find((item) => item.id === conversationId);
+      return list && current ? placeConversation(list, { ...current, title }) : list;
+    });
+  return useMutation({
+    mutationFn: (input: { conversationId: string; title: string }) =>
+      unwrap(api.PATCH("/v1/conversations/{conversationId}", { params: { path: { conversationId: input.conversationId } }, body: { title: input.title } })),
+    onMutate: (input) => {
+      const previous = allConversations(qc.getQueryData<ConversationList>(qk.conversations)).find((item) => item.id === input.conversationId)?.title;
+      retitle(input.conversationId, input.title);
+      return { previous };
+    },
+    onError: (_error, input, context) => {
+      if (context?.previous !== undefined) retitle(input.conversationId, context.previous);
+    },
+    onSuccess: (conversation) => upsertConversation(qc, conversation),
+  });
+}
+
+/** Deletes a conversation with its messages and files. It can't be undone. */
+export function useDeleteConversation() {
+  const qc = useQueryClient();
+  const gone = (conversationId: string) => {
+    removeConversation(qc, conversationId);
+    // The backend may have made another web conversation the active one, or started an empty one.
+    void qc.invalidateQueries({ queryKey: qk.conversations });
+    // It is in the activity log (`conversation_deleted`).
+    void qc.invalidateQueries({ queryKey: qk.activity });
+  };
+  return useMutation({
+    mutationFn: (conversationId: string) => unwrap(api.DELETE("/v1/conversations/{conversationId}", { params: { path: { conversationId } } })),
+    onSuccess: (_data, conversationId) => gone(conversationId),
+    // A 404 means it was already gone, and the list should say so.
+    onError: (error, conversationId) => {
+      if (error instanceof ApiError && error.status === 404) gone(conversationId);
+    },
+  });
+}
+
+/**
+ * Sends a web message. With `conversationId` it is written in that web conversation, which becomes
+ * the active one, and Tex carries on with that conversation's own context; without, in the active one.
+ */
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { text: string; attachmentIds?: string[]; clientMessageId?: string }) =>
+    mutationFn: (input: { text: string; attachmentIds?: string[]; clientMessageId?: string; conversationId?: string }) =>
       unwrap(
         api.POST("/v1/messages", {
           body: {
             text: input.text,
             clientMessageId: input.clientMessageId ?? crypto.randomUUID(),
             ...(input.attachmentIds?.length ? { attachmentIds: input.attachmentIds } : {}),
+            ...(input.conversationId ? { conversationId: input.conversationId } : {}),
           },
         }),
       ),
-    onSuccess: (message) => upsertMessage(qc, message),
+    onSuccess: (message) => {
+      const list = qc.getQueryData<ConversationList>(qk.conversations);
+      if (list && !allConversations(list).some((item) => item.id === message.conversationId)) {
+        // The first thing said in web chat started its conversation. It is shown at once, with
+        // this message; the backend's own copy of both is asked for and replaces them.
+        upsertConversation(qc, conversationStartedBy(message));
+        qc.setQueryData<Thread>(qk.thread(message.conversationId), (data) => data ?? { pages: [{ items: [message], nextCursor: null }], pageParams: [undefined] });
+        void qc.invalidateQueries({ queryKey: qk.conversations });
+        void qc.invalidateQueries({ queryKey: qk.thread(message.conversationId) });
+      }
+      addMessage(qc, message);
+    },
   });
 }
 

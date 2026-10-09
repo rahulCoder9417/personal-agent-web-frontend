@@ -14,7 +14,7 @@ const MAX_FILES = 5;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_LENGTH = 8000;
 
-export type ComposerHandle = { addFiles(files: File[]): void };
+export type ComposerHandle = { addFiles(files: File[]): void; focus(): void };
 
 function OutOfCredits() {
   return (
@@ -39,8 +39,12 @@ function OutOfCredits() {
   );
 }
 
-/** Where you type to Tex. Files can be attached with the paperclip or dropped on the chat. */
-export function Composer({ ref }: { ref?: Ref<ComposerHandle> }) {
+/**
+ * Where you type to Tex. Files can be attached with the paperclip or dropped on the chat.
+ * `conversationId` is the web conversation that is open: the message is written in it, which makes
+ * it the active one. Without it (nothing said in web chat yet) the backend picks the active one.
+ */
+export function Composer({ ref, conversationId }: { ref?: Ref<ComposerHandle>; conversationId?: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const me = useMe();
@@ -84,7 +88,7 @@ export function Composer({ ref }: { ref?: Ref<ComposerHandle> }) {
       });
     }
   };
-  useImperativeHandle(ref, () => ({ addFiles }));
+  useImperativeHandle(ref, () => ({ addFiles, focus: () => input.current?.focus() }));
 
   const outOfCredits =
     (send.error instanceof ApiError && send.error.outOfCredits) || (me.data !== undefined && me.data.credits.balance <= 0);
@@ -94,7 +98,7 @@ export function Composer({ ref }: { ref?: Ref<ComposerHandle> }) {
   const submit = () => {
     if (!canSend) return;
     send.mutate(
-      { text: text.trim(), attachmentIds: files.map((f) => f.id) },
+      { text: text.trim(), attachmentIds: files.map((f) => f.id), conversationId },
       {
         onSuccess: () => {
           setText("");

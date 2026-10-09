@@ -151,7 +151,7 @@ describe("chat", () => {
     const working = async (conversationId: string) => {
       const busy = (await call<{ state: string }>("GET", "agent/status")).body.state === "busy";
       const thread = (await call<Page<Message>>("GET", `messages?conversationId=${conversationId}`)).body.items;
-      return threadIsWorking("web", busy, thread);
+      return threadIsWorking(busy, thread);
     };
 
     vi.advanceTimersByTime(500);

@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import type { ChannelType, Message } from "@/lib/api/client";
-import { chatStartedAtOf, useAgentProgress, useAgentStatus, useMessages } from "@/lib/api/hooks";
-import { NEW_CHAT_NOTE, newChatDividerAt, showsNewChat, threadIsWorking } from "@/lib/chat-thread";
+import type { Conversation, Message } from "@/lib/api/client";
+import { useAgentProgress, useAgentStatus, useThread } from "@/lib/api/hooks";
+import { threadIsWorking } from "@/lib/chat-thread";
+import { readOnlyNote } from "@/lib/conversations";
 import type { ProgressLine } from "@/lib/crew";
 import { CHANNEL_LABEL, cn, formatDate, formatDay, formatTime } from "@/lib/format";
+import { useInView } from "@/lib/in-view";
 import { BrandIcon } from "../brand-icon";
 import { FileIcon } from "../icons";
 import { AgentFigure } from "../tex";
@@ -107,18 +109,6 @@ function DayDivider({ iso }: { iso: string }) {
   );
 }
 
-/** Where the web chat last started afresh. What was said above it stays readable; Tex no longer uses it. */
-function NewChatDivider() {
-  return (
-    <div className="flex flex-col gap-1 py-1">
-      <p className="flex items-center gap-3 text-[12px] font-semibold text-accent-dark before:h-px before:flex-1 before:bg-accent/30 after:h-px after:flex-1 after:bg-accent/30">
-        New chat
-      </p>
-      <p className="text-center text-[12px] text-muted">{NEW_CHAT_NOTE}</p>
-    </div>
-  );
-}
-
 const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString();
 
 /**
@@ -145,12 +135,32 @@ function Working({ lines }: { lines: ProgressLine[] }) {
   );
 }
 
-/** One thread for every chat app, oldest at the top. Follows new messages while you're at the bottom. */
-export function Thread({ channel }: { channel: ChannelType | "all" }) {
-  const query = useMessages(channel);
+/** What an open conversation with nothing in it says. */
+function emptyWords(conversation: Conversation | null, hasHistory: boolean): { title: string; body: string } {
+  if (conversation && conversation.channel !== "web") {
+    return { title: "Nothing here yet", body: `${readOnlyNote(conversation.channel)}. What you say there shows up here.` };
+  }
+  if (hasHistory) {
+    return { title: "A new chat", body: "Tex starts afresh here: it doesn’t see what was said in your other chats. What you’ve asked it to remember stays." };
+  }
+  return { title: "Say hi to Tex", body: "Ask for anything you’d hand to an assistant: move a meeting, chase an invoice, file your notes." };
+}
+
+/**
+ * One conversation's messages, oldest at the top. It follows new messages while you're at the
+ * bottom, and asks for earlier ones as you scroll up to them.
+ *
+ * `conversation` is null when there is none to show: while the history is on its way (`loading`),
+ * or before anything was ever said in web chat. `hasHistory` is whether there are other chats.
+ * The chat screen gives each conversation its own Thread (a `key`), so every one opens at its
+ * newest message.
+ */
+export function Thread({ conversation, loading, hasHistory }: { conversation: Conversation | null; loading: boolean; hasHistory: boolean }) {
+  const query = useThread(conversation?.id ?? null);
   const busy = useAgentStatus().data?.state === "busy";
   const progress = useAgentProgress().data;
   const scroller = useRef<HTMLDivElement>(null);
+  const older = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const heightBeforeOlder = useRef<number | null>(null);
 
@@ -166,20 +176,12 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
   }, [newestFirst]);
   const newestId = messages[messages.length - 1]?.message.id;
   const count = messages.length;
-  // With one chat app picked, only a turn on that chat app shows here.
-  const working = threadIsWorking(channel, busy, newestFirst);
+  // Only a turn in this conversation shows here, not one in another chat.
+  const working = threadIsWorking(busy, newestFirst);
 
-  // The web chat's latest new chat: a divider before the first message after it, or at the end.
-  const chatStartedAt = showsNewChat(channel) ? chatStartedAtOf(query.data) : null;
-  const dividerAt = useMemo(
-    () => newChatDividerAt(messages.map((row) => row.message), chatStartedAt, !query.hasNextPage),
-    [messages, chatStartedAt, query.hasNextPage],
-  );
-
-  // A new chat was just started: follow the thread to the bottom, where its divider is.
-  useLayoutEffect(() => {
-    if (chatStartedAt) stick.current = true;
-  }, [chatStartedAt]);
+  const waiting = loading || (conversation !== null && query.isPending);
+  const failed = conversation !== null && query.isError && !query.data;
+  const empty = !waiting && !failed && count === 0;
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -191,7 +193,7 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
     } else if (stick.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [count, newestId, working, chatStartedAt]);
+  }, [count, newestId, working]);
 
   // Content can grow after it first renders (an approval card loading, a font swapping in).
   // While following, stay pinned to the newest message through that too.
@@ -207,15 +209,15 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
     return () => observer.disconnect();
   }, []);
 
-  // A different filter is a different thread: start at its newest message.
-  useEffect(() => {
-    stick.current = true;
-  }, [channel]);
-
   const loadOlder = () => {
     heightBeforeOlder.current = scroller.current?.scrollHeight ?? null;
     void query.fetchNextPage();
   };
+  // Scrolling up to the top of what is loaded asks for the page before it. After a page that
+  // failed, the button is left to ask again, so it doesn't try over and over.
+  useInView(older, loadOlder, query.hasNextPage && !query.isFetchingNextPage && !query.isFetchNextPageError);
+
+  const words = emptyWords(conversation, hasHistory);
 
   return (
     <div
@@ -227,41 +229,33 @@ export function Thread({ channel }: { channel: ChannelType | "all" }) {
       className="scroll-pane min-h-0 flex-1 overflow-y-auto"
     >
       <div ref={content} className="mx-auto flex min-h-full max-w-[760px] flex-col gap-3.5 px-4 pt-2 pb-5 md:px-8" aria-live="polite">
-        {query.isPending && (
+        {waiting && (
           <div className="m-auto text-muted">
             <Spinner size={20} />
           </div>
         )}
-        {query.isError && <ErrorState error={query.error} onRetry={() => query.refetch()} className="m-auto w-full" />}
+        {failed && <ErrorState error={query.error} onRetry={() => query.refetch()} className="m-auto w-full" />}
 
-        {query.isSuccess && count === 0 && (
-          <EmptyState mood="ready" title={channel === "all" ? "Say hi to Tex" : `Nothing from ${CHANNEL_LABEL[channel]} yet`} className="m-auto w-full border-0">
-            {channel === "all"
-              ? "Ask for anything you’d hand to an assistant: move a meeting, chase an invoice, file your notes."
-              : "Messages you send from that chat show up here too."}
+        {empty && (
+          <EmptyState mood="ready" title={words.title} className="m-auto w-full border-0">
+            {words.body}
           </EmptyState>
         )}
 
         {query.hasNextPage && (
-          <Button size="sm" variant="ghost" className="self-center" onClick={loadOlder} pending={query.isFetchingNextPage}>
-            Load earlier messages
-          </Button>
+          <div ref={older} className="flex justify-center">
+            <Button size="sm" variant="ghost" onClick={loadOlder} pending={query.isFetchingNextPage}>
+              {query.isFetchNextPageError ? "Couldn’t load earlier messages. Try again" : "Load earlier messages"}
+            </Button>
+          </div>
         )}
 
-        {messages.map(({ message, startsDay }, index) => {
-          const divider = index === dividerAt && chatStartedAt !== null;
-          // The divider sits on the day the new chat started: before this day's heading if that was an earlier day.
-          const dividerFirst = divider && !sameDay(chatStartedAt, message.createdAt);
-          return (
-            <div key={message.id} className="flex flex-col gap-[13px]">
-              {dividerFirst && <NewChatDivider />}
-              {startsDay && <DayDivider iso={message.createdAt} />}
-              {divider && !dividerFirst && <NewChatDivider />}
-              <Bubble message={message} />
-            </div>
-          );
-        })}
-        {count > 0 && dividerAt === count && <NewChatDivider />}
+        {messages.map(({ message, startsDay }) => (
+          <div key={message.id} className="flex flex-col gap-[13px]">
+            {startsDay && <DayDivider iso={message.createdAt} />}
+            <Bubble message={message} />
+          </div>
+        ))}
 
         {working && count > 0 && <Working lines={progress} />}
       </div>

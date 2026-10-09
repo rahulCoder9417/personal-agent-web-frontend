@@ -92,16 +92,23 @@ const MOOD_LINE: Record<string, string> = {
   paused: "Something needs fixing before it can work.",
 };
 
+// When the panel is hidden. Whole class names, so Tailwind finds them.
+const HIDDEN_BELOW = { alone: "max-[1100px]:hidden", besideChats: "max-[1340px]:hidden" } as const;
+
 /**
  * The right-hand panel of the chat: Tex itself, what's waiting on you, what's done and what's next.
  * Below 1100px it is hidden, and then its contents aren't drawn at all, so a phone or a narrow
- * window never asks for what it shows. The empty panel keeps its place on a wide screen until the
- * browser has said how wide it is.
+ * window never asks for what it shows. With the list of conversations open beside the thread
+ * (`besideChats`) it needs 1340px, so three columns never squeeze the thread. The empty panel
+ * keeps its place on a wide screen until the browser has said how wide it is.
  */
-export function SidePanel() {
-  const shown = useMediaQuery(SHOWN_AT.sidePanel);
+export function SidePanel({ besideChats = false }: { besideChats?: boolean }) {
+  const shown = useMediaQuery(besideChats ? SHOWN_AT.sidePanelBesideChats : SHOWN_AT.sidePanel);
   return (
-    <aside aria-label="Right now" className="scroll-pane flex w-[320px] shrink-0 flex-col gap-6 overflow-y-auto border-l border-line px-5 pt-5 pb-5 max-[1100px]:hidden">
+    <aside
+      aria-label="Right now"
+      className={cn("scroll-pane flex w-[320px] shrink-0 flex-col gap-6 overflow-y-auto border-l border-line px-5 pt-5 pb-5", besideChats ? HIDDEN_BELOW.besideChats : HIDDEN_BELOW.alone)}
+    >
       {shown && <SidePanelContents />}
     </aside>
   );

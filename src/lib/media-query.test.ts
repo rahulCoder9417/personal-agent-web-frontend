@@ -42,6 +42,19 @@ describe("mediaQueryStore", () => {
     expect(mediaQueryStore(SHOWN_AT.sidebar).getServerSnapshot()).toBe(false);
   });
 
+  it("has the list of conversations beside the thread from 1024px, and the side panel next to it from 1340px", () => {
+    const win = fakeWindow(1023);
+    vi.stubGlobal("window", win);
+    const chats = mediaQueryStore(SHOWN_AT.conversations);
+    const panel = mediaQueryStore(SHOWN_AT.sidePanelBesideChats);
+    expect([chats.getSnapshot(), panel.getSnapshot()]).toEqual([false, false]);
+    win.width = 1024;
+    expect([chats.getSnapshot(), panel.getSnapshot()]).toEqual([true, false]);
+    win.width = 1340;
+    expect([chats.getSnapshot(), panel.getSnapshot()]).toEqual([true, true]);
+    expect(mediaQueryStore(SHOWN_AT.conversations).getServerSnapshot()).toBe(false);
+  });
+
   it("matches by the window's width: the side panel from 1100px, the sidebar from 768px", () => {
     const win = fakeWindow(390);
     vi.stubGlobal("window", win);
@@ -78,6 +91,12 @@ describe("mediaQueryStore", () => {
     expect(SHOWN_AT.sidebar).toBe("(min-width: 48rem)");
     expect(source("components/shell/sidebar.tsx")).toMatch(/className="[^"]*\bmax-md:hidden\b/);
     expect(SHOWN_AT.sidePanel).toBe("(min-width: 1100px)");
-    expect(source("components/chat/side-panel.tsx")).toMatch(/className="[^"]*\bmax-\[1100px\]:hidden\b/);
+    expect(source("components/chat/side-panel.tsx")).toMatch(/alone: "max-\[1100px\]:hidden"/);
+    // Beside the open list of conversations the side panel waits for more room.
+    expect(SHOWN_AT.sidePanelBesideChats).toBe("(min-width: 1340px)");
+    expect(source("components/chat/side-panel.tsx")).toMatch(/besideChats: "max-\[1340px\]:hidden"/);
+    // Tailwind's lg is 64rem; below it the list of conversations is a drawer, not a column.
+    expect(SHOWN_AT.conversations).toBe("(min-width: 64rem)");
+    expect(source("components/chat/chat-screen.tsx")).toMatch(/className="[^"]*\bmax-lg:hidden\b/);
   });
 });
