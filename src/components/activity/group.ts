@@ -82,6 +82,7 @@ const ACTION_LABEL: Record<string, string> = {
   pr_review_enabled: "pull-request review turned on",
   pr_review_disabled: "pull-request review turned off",
   chat_started: "started a new chat",
+  conversation_deleted: "deleted a chat",
   // Memory. The row puts who did it in front: "Tex · remembered", "You · deleted a memory".
   remember: "remembered",
   recall: "looked up memory",

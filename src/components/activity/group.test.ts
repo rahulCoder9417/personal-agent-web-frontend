@@ -86,6 +86,12 @@ describe("actionLabel", () => {
     expect(describeActivity(started)).toEqual({ crew: null, who: "You", label: "started a new chat", summary: "Started a new chat in web chat" });
     expect(matchesFilter(started, "you")).toBe(true);
   });
+
+  it("reads a deleted chat as the person's, with no word of what was in it", () => {
+    const deleted = entry("d", "2026-10-01T14:23:00", { actor: "user", action: "conversation_deleted", summary: "Deleted a chat in web chat" });
+    expect(describeActivity(deleted)).toEqual({ crew: null, who: "You", label: "deleted a chat", summary: "Deleted a chat in web chat" });
+    expect(matchesFilter(deleted, "you")).toBe(true);
+  });
 });
 
 describe("memory in the log", () => {
