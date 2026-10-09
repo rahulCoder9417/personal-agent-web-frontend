@@ -6,6 +6,7 @@ import { useAvailableChannels, useChannels, useCreateLinkCode } from "@/lib/api/
 import { BrandIcon } from "@/components/brand-icon";
 import { CheckIcon, CopyIcon, ExternalIcon, LockIcon } from "@/components/icons";
 import { AgentFigure } from "@/components/tex";
+import { toastError } from "@/components/toast";
 import { Button, Card, ErrorState, SectionLabel, SkeletonRows } from "@/components/ui";
 import { linkableChannels, type LinkableChannel } from "@/lib/channels";
 import { openInNewTab } from "@/lib/navigate";
@@ -148,6 +149,7 @@ function LinkChat({ options, initial, onDone }: { options: LinkableChannel[]; in
       // Refused because the channel was just switched off: fetch the list again so it stops being offered.
       onError: (error) => {
         if (error instanceof ApiError && error.code === "channel_disabled") void refetch();
+        toastError(`Couldn’t make a ${name} code`, linkError(error));
       },
     });
   };
@@ -251,12 +253,6 @@ function LinkChat({ options, initial, onDone }: { options: LinkableChannel[]; in
                   )}
                 </div>
               </>
-            )}
-
-            {create.isError && (
-              <p role="alert" className="text-[12.5px] text-danger">
-                {linkError(create.error)}
-              </p>
             )}
           </Card>
 

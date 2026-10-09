@@ -3,7 +3,8 @@
 import { ApiError, type Approval } from "@/lib/api/client";
 import { useDecideApproval } from "@/lib/api/hooks";
 import { cn, formatDateTime, titleCase } from "@/lib/format";
-import { Button, IconTile, InlineError, Pill, type PillTone } from "../ui";
+import { toastError } from "../toast";
+import { Button, IconTile, Pill, type PillTone } from "../ui";
 import { ApprovalIcon } from "./approval-list";
 import { approvalReason, splitDetails, type ApprovalReason } from "@/lib/approvals";
 
@@ -48,10 +49,20 @@ export function ApprovalDetail({ approval, onDecided }: { approval: Approval; on
   const { preview, fields } = splitDetails(approval.details);
   const pending = approval.status === "pending";
   const choosing = decide.isPending ? decide.variables?.decision : undefined;
-  const alreadyDecided = decide.error instanceof ApiError && decide.error.status === 409;
 
   const run = (decision: Decision) =>
-    decide.mutate({ approvalId: approval.id, decision }, { onSuccess: () => onDecided(decision) });
+    decide.mutate(
+      { approvalId: approval.id, decision },
+      {
+        onSuccess: () => onDecided(decision),
+        onError: (error) => {
+          const title = decision === "approve" ? "Couldn’t approve that" : "Couldn’t reject that";
+          // 409: someone (or the clock) got there first. The list has been asked for again.
+          const settled = error instanceof ApiError && error.status === 409;
+          toastError(title, settled ? "This was already decided or has expired. The list is up to date now." : error);
+        },
+      },
+    );
 
   return (
     <article aria-label={approval.summary} className="flex max-w-[620px] flex-col gap-5 rounded-[20px] border border-line bg-surface p-6">
@@ -102,13 +113,6 @@ export function ApprovalDetail({ approval, onDecided }: { approval: Approval; on
               Approve
             </Button>
           </div>
-          {alreadyDecided ? (
-            <p role="alert" className="text-center text-[12.5px] text-danger">
-              This was already decided or has expired. The list is up to date now.
-            </p>
-          ) : (
-            <InlineError error={decide.error} className="text-center" />
-          )}
           <p className="text-center text-[12.5px] text-muted">The same buttons are waiting in your chat. Either place works.</p>
         </div>
       ) : (

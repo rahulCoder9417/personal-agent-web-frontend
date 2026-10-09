@@ -1,7 +1,8 @@
 "use client";
 
 import { AgentFigure } from "@/components/tex";
-import { Card, InlineError, Pill, SectionLabel, Spinner } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { Card, Pill, SectionLabel, Spinner } from "@/components/ui";
 import type { AgentRuntime, AgentSettings } from "@/lib/api/client";
 import { useUpdateAgentSettings } from "@/lib/api/hooks";
 import { cn } from "@/lib/format";
@@ -90,7 +91,10 @@ function RuntimeOption({
 export function RuntimeSection({ settings }: { settings: AgentSettings }) {
   const update = useUpdateAgentSettings();
   const chosen = chosenRuntime(settings);
-  const pick = (runtime: AgentRuntime) => update.mutate(runtimePatch(runtime));
+  const pick = (runtime: AgentRuntime) =>
+    update.mutate(runtimePatch(runtime), {
+      onError: (error) => toastError(`Couldn’t switch to ${runtime === "hermes" ? "Hermes" : "Claude Code"}`, error),
+    });
   const moving = (runtime: AgentRuntime) => update.isPending && update.variables?.runtime === runtime;
 
   return (
@@ -114,7 +118,6 @@ export function RuntimeSection({ settings }: { settings: AgentSettings }) {
           onPick={() => pick("claude_code")}
         />
       </div>
-      <InlineError error={update.error} />
     </section>
   );
 }

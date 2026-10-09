@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ApiError, errorMessage, type Plan, type Subscription } from "@/lib/api/client";
 import { useCancelSubscription } from "@/lib/api/hooks";
+import { toastError } from "@/components/toast";
 import { Button, Card, Pill, SectionLabel, type PillTone } from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
 
@@ -60,14 +61,7 @@ export function SubscriptionCard({ subscription, plan }: { subscription: Subscri
           <span className="text-[13px] text-muted">{describe(subscription, plan)}</span>
         </div>
         {canCancel && !confirming && (
-          <Button
-            onClick={() => {
-              cancel.reset();
-              setConfirming(true);
-            }}
-          >
-            Cancel at period end
-          </Button>
+          <Button onClick={() => setConfirming(true)}>Cancel at period end</Button>
         )}
       </div>
 
@@ -84,16 +78,16 @@ export function SubscriptionCard({ subscription, plan }: { subscription: Subscri
               size="sm"
               variant="primary"
               pending={cancel.isPending}
-              onClick={() => cancel.mutate(undefined, { onSuccess: () => setConfirming(false) })}
+              onClick={() =>
+                cancel.mutate(undefined, {
+                  onSuccess: () => setConfirming(false),
+                  onError: (error) => toastError(`Couldn’t cancel ${name}`, cancelError(error)),
+                })
+              }
             >
               Cancel at period end
             </Button>
           </div>
-          {cancel.isError && (
-            <p role="alert" className="w-full text-[12.5px] text-danger">
-              {cancelError(cancel.error)}
-            </p>
-          )}
         </div>
       )}
     </Card>

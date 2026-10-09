@@ -16,7 +16,8 @@ import {
 import { repoName } from "@/lib/pr-review";
 import { BrandIcon } from "../brand-icon";
 import { ClockIcon, TrashIcon, WarningIcon } from "../icons";
-import { Button, ButtonLink, IconButton, IconTile, InlineError, Switch } from "../ui";
+import { toastError } from "../toast";
+import { Button, ButtonLink, IconButton, IconTile, Switch } from "../ui";
 
 /** Why a paused automation is paused, with the way out. Nothing for one the user paused themselves. */
 function PausedNote({ automation }: { automation: Automation }) {
@@ -150,7 +151,7 @@ function PlainAutomationRow({ automation }: { automation: Automation }) {
                 className="border-danger/40 text-danger hover:border-danger"
                 pending={remove.isPending}
                 aria-label={`Delete ${automation.title} for good`}
-                onClick={() => remove.mutate(automation.id)}
+                onClick={() => remove.mutate(automation.id, { onError: (error) => toastError(`Couldn’t delete “${automation.title}”`, error) })}
               >
                 Delete
               </Button>
@@ -161,7 +162,12 @@ function PlainAutomationRow({ automation }: { automation: Automation }) {
                 on={on}
                 label={`${on ? "Pause" : "Resume"} ${automation.title}`}
                 disabled={update.isPending}
-                onToggle={() => update.mutate({ automationId: automation.id, enabled: !on })}
+                onToggle={() =>
+                  update.mutate(
+                    { automationId: automation.id, enabled: !on },
+                    { onError: (error) => toastError(`Couldn’t ${on ? "pause" : "resume"} “${automation.title}”`, error) },
+                  )
+                }
               />
               <IconButton label={`Delete ${automation.title}`} onClick={() => setConfirming(true)}>
                 <TrashIcon size={16} />
@@ -170,7 +176,6 @@ function PlainAutomationRow({ automation }: { automation: Automation }) {
           )}
         </div>
       </div>
-      <InlineError error={update.error ?? remove.error} className="pl-[54px]" />
     </li>
   );
 }

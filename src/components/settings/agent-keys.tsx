@@ -2,7 +2,9 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { KeyIcon } from "@/components/icons";
-import { Button, Card, ErrorState, Field, IconTile, InlineError, inputClass, Meta, Pill, SkeletonRows } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { Button, Card, ErrorState, Field, IconTile, inputClass, Meta, Pill, SkeletonRows } from "@/components/ui";
+import { refusedTypedValue } from "@/lib/action-errors";
 import type { ByokKey, ByokProvider } from "@/lib/api/client";
 import { useByokKeys, useDeleteByokKey, useSetByokKey } from "@/lib/api/hooks";
 import { cn, formatDate, listNames } from "@/lib/format";
@@ -43,13 +45,24 @@ function KeyForm({ entry, onDone }: { entry: ByokKey; onDone: () => void }) {
       setTooShort(true);
       return;
     }
-    save.mutate({ provider: entry.provider, apiKey: key, model: model.trim() || undefined }, { onSuccess: onDone });
+    save.mutate(
+      { provider: entry.provider, apiKey: key, model: model.trim() || undefined },
+      {
+        onSuccess: onDone,
+        onError: (error) => {
+          if (!refusedTypedValue(error)) toastError(`Couldn’t save your ${PROVIDER_LABEL[entry.provider]} key`, error);
+        },
+      },
+    );
   };
+
+  // The provider's verdict on the key (the test call) is said under the field; anything else is a toast.
+  const refused = refusedTypedValue(save.error) ? save.error.message : null;
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-3 rounded-xl bg-chrome p-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="API key" htmlFor={`${id}-key`} error={tooShort ? "That key looks too short." : null}>
+        <Field label="API key" htmlFor={`${id}-key`} error={tooShort ? "That key looks too short." : refused}>
           <input
             id={`${id}-key`}
             type="password"
@@ -60,6 +73,7 @@ function KeyForm({ entry, onDone }: { entry: ByokKey; onDone: () => void }) {
             onChange={(event) => {
               setApiKey(event.target.value);
               setTooShort(false);
+              if (save.isError) save.reset();
             }}
             className={cn(inputClass, "font-mono text-[12.5px]")}
           />
@@ -92,7 +106,6 @@ function KeyForm({ entry, onDone }: { entry: ByokKey; onDone: () => void }) {
         </Button>
         <span className="text-[12.5px] text-muted">We make one test call before saving. Your provider bills the AI directly.</span>
       </div>
-      <InlineError error={save.error} />
     </form>
   );
 }
@@ -126,7 +139,7 @@ function KeyRow({ entry }: { entry: ByokKey }) {
               confirmLabel="Remove key"
               ariaLabel={`Remove ${name} key`}
               pending={remove.isPending}
-              onConfirm={() => remove.mutate(entry.provider)}
+              onConfirm={() => remove.mutate(entry.provider, { onError: (error) => toastError(`Couldn’t remove your ${name} key`, error) })}
             />
           </>
         ) : (
@@ -138,7 +151,6 @@ function KeyRow({ entry }: { entry: ByokKey }) {
         )}
       </div>
       {editing && <KeyForm entry={entry} onDone={() => setEditing(false)} />}
-      <InlineError error={remove.error} />
     </li>
   );
 }

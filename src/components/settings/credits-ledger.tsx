@@ -1,7 +1,8 @@
 "use client";
 
 import { useLedger } from "@/lib/api/hooks";
-import { Button, Card, ErrorState, InlineError, SkeletonRows } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { Button, Card, ErrorState, SkeletonRows } from "@/components/ui";
 import { cn, formatDateTime, formatNumber } from "@/lib/format";
 import { describeLedgerEntry } from "./credits-ledger-text";
 
@@ -15,6 +16,11 @@ function signed(delta: number): string {
 export function LedgerCard() {
   const ledger = useLedger();
   const entries = ledger.data?.pages.flatMap((page) => page.items) ?? [];
+  // The button stays, so a failed page can be asked for again; the toast says why it failed.
+  const loadOlder = () =>
+    void ledger.fetchNextPage().then((result) => {
+      if (result.isFetchNextPageError) toastError("Couldn’t load older history", result.error);
+    });
 
   return (
     <Card role="group" aria-label="Credit history" className="overflow-hidden">
@@ -63,10 +69,9 @@ export function LedgerCard() {
 
       {(ledger.hasNextPage || ledger.isFetchNextPageError) && (
         <div className="flex items-center gap-3 border-t border-line px-6 py-3">
-          <Button size="sm" pending={ledger.isFetchingNextPage} onClick={() => ledger.fetchNextPage()}>
+          <Button size="sm" pending={ledger.isFetchingNextPage} onClick={loadOlder}>
             Load older
           </Button>
-          {ledger.isFetchNextPageError && <InlineError error={ledger.error} />}
         </div>
       )}
     </Card>

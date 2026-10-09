@@ -5,7 +5,9 @@ import { useId, useState, type FormEvent } from "react";
 import { AppIcon } from "@/components/brand-icon";
 import { ConfirmButton } from "@/components/confirm-button";
 import { WarningIcon } from "@/components/icons";
-import { Button, ButtonLink, Card, Field, InlineError, inputClass, Meta, Pill, Switch } from "@/components/ui";
+import { toastError } from "@/components/toast";
+import { Button, ButtonLink, Card, Field, inputClass, Meta, Pill, Switch } from "@/components/ui";
+import { refusedTypedValue } from "@/lib/action-errors";
 import type { PrReviewRepo } from "@/lib/api/client";
 import { useApps, useDisablePrReview, useEnablePrReview, useMe, usePlans, useUpdateAutomation } from "@/lib/api/hooks";
 import { cn, formatAgo, formatDate } from "@/lib/format";
@@ -34,7 +36,6 @@ export function ReviewRepoRow({ review }: { review: PrReviewRepo }) {
   // Show the switch where it's heading while the request is in flight.
   const enabled = update.isPending ? Boolean(update.variables?.enabled) : review.enabled;
   const state = describeReviewState({ enabled, pausedReason: enabled ? null : update.isPending ? "user" : review.pausedReason });
-  const removeError = remove.isError ? describeDisableError(remove.error) : null;
 
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -54,7 +55,12 @@ export function ReviewRepoRow({ review }: { review: PrReviewRepo }) {
           disabled={update.isPending || remove.isPending}
           label={`${enabled ? "Pause" : "Resume"} review for ${name}`}
           // A repo is paused and resumed as the automation it is.
-          onToggle={() => update.mutate({ automationId: review.id, enabled: !enabled })}
+          onToggle={() =>
+            update.mutate(
+              { automationId: review.id, enabled: !enabled },
+              { onError: (error) => toastError(`Couldn’t ${enabled ? "pause" : "resume"} review for ${name}`, error) },
+            )
+          }
         />
       </div>
 
@@ -77,15 +83,20 @@ export function ReviewRepoRow({ review }: { review: PrReviewRepo }) {
           confirmLabel="Turn off review"
           ariaLabel={`Turn off review for ${name}`}
           pending={remove.isPending}
-          onConfirm={() => remove.mutate({ owner: review.owner, repo: review.repo })}
+          onConfirm={() =>
+            remove.mutate(
+              { owner: review.owner, repo: review.repo },
+              {
+                onError: (error) => {
+                  // A repo that was already off is not worth an error (describeDisableError says nothing).
+                  const why = describeDisableError(error);
+                  if (why) toastError(`Couldn’t turn off review for ${name}`, why);
+                },
+              },
+            )
+          }
         />
       </div>
-      <InlineError error={update.error} />
-      {removeError && (
-        <p role="alert" className="text-[12.5px] text-danger">
-          {removeError}
-        </p>
-      )}
     </Card>
   );
 }
@@ -163,9 +174,19 @@ export function AddReviewRepoForm() {
       return;
     }
     setInvalid(null);
-    setAsked(repoName(parsed.repo));
-    enable.mutate(parsed.repo, { onSuccess: () => setText("") });
+    const name = repoName(parsed.repo);
+    setAsked(name);
+    enable.mutate(parsed.repo, {
+      onSuccess: () => setText(""),
+      onError: (error) => {
+        // What the API says about the repo as typed stays under the field; the rest is a toast.
+        if (refusedTypedValue(error)) return;
+        const refusal = describeEnableError(error, name, plan);
+        toastError(`Couldn’t turn on review for ${name}`, refusal.message, refusal.link);
+      },
+    });
   };
+  const repoRefused = refusedTypedValue(enable.error) ? describeEnableError(enable.error, asked, plan) : null;
 
   return (
     <Card className="p-5">
@@ -213,7 +234,7 @@ export function AddReviewRepoForm() {
           Turning it on is your OK for Patch to comment on pull requests in this repo. Merging and anything else risky still ask first.
         </p>
 
-        {enable.isError && <Refusal error={describeEnableError(enable.error, asked, plan)} />}
+        {repoRefused && <Refusal error={repoRefused} />}
         {enable.isSuccess && (
           <p role="status" className="text-[12.5px] font-medium text-success">
             Review is on for {repoName(enable.data)}.
