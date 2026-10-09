@@ -1,6 +1,6 @@
 "use client";
 
-import { PageBody } from "@/components/page";
+import { COLUMN_ITEM, Columns, PageBody } from "@/components/page";
 import { LinkedChatsSection } from "@/components/settings/general-chats";
 import { DeleteAccountSection, SessionSection, YourDataSection } from "@/components/settings/general-data";
 import { ProfileSection } from "@/components/settings/general-profile";
@@ -12,8 +12,9 @@ export default function GeneralSettingsPage() {
 
   return (
     <PageBody>
-      <div className="grid items-start gap-x-7 gap-y-6 lg:grid-cols-2">
-        <div className="flex min-w-0 flex-col gap-6">
+      {/* One column on a phone, two on a laptop, three on a wide monitor: as many as fit. */}
+      <Columns min={400}>
+        <div className={COLUMN_ITEM}>
           {me.isPending ? (
             <Card>
               <SkeletonRows rows={3} />
@@ -23,14 +24,22 @@ export default function GeneralSettingsPage() {
           ) : (
             <ProfileSection key={me.data.id} me={me.data} />
           )}
+        </div>
+        <div className={COLUMN_ITEM}>
           <LinkedChatsSection />
         </div>
-        <div className="flex min-w-0 flex-col gap-6">
+        <div className={COLUMN_ITEM}>
           <YourDataSection />
-          {me.data && <SessionSection email={me.data.email} />}
+        </div>
+        {me.data && (
+          <div className={COLUMN_ITEM}>
+            <SessionSection email={me.data.email} />
+          </div>
+        )}
+        <div className={COLUMN_ITEM}>
           <DeleteAccountSection />
         </div>
-      </div>
+      </Columns>
     </PageBody>
   );
 }

@@ -11,7 +11,7 @@ import { CHANNEL_LABEL, formatNumber, initials } from "@/lib/format";
 
 function Row({ href, icon, title, detail }: { href: string; icon: ReactNode; title: string; detail?: string }) {
   return (
-    <Link href={href} className="flex min-h-[52px] items-center gap-3 border-b border-line px-1 last:border-b-0">
+    <Link href={href} className="flex min-h-[52px] items-center gap-3 border-b border-line px-1 max-md:last:border-b-0">
       <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-surface-2 text-nav">{icon}</span>
       <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium">{title}</span>
       {detail && <span className="max-w-[45%] truncate text-[13px] text-muted tabular-nums">{detail}</span>}
@@ -43,7 +43,7 @@ export default function MorePage() {
   return (
     <Page>
       <PageHeader title="More" />
-      <PageBody width={560} className="gap-5">
+      <PageBody className="gap-5">
         <Link href="/settings" className="flex items-center gap-3.5 rounded-2xl bg-surface-2 px-4 py-3.5">
           <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-full bg-fg text-[14px] font-semibold text-white">
             {me.data ? initials(me.data.name || me.data.email) : ""}
@@ -55,7 +55,8 @@ export default function MorePage() {
           {plan && <span className="rounded bg-accent-soft px-2 py-0.5 text-[12px] font-semibold text-accent-dark">{plan.name}</span>}
         </Link>
 
-        <div className="flex flex-col">
+        {/* A phone gets one list; opened on a wider screen, the rows sit in as many columns as fit. */}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] gap-x-8">
           <Row href="/activity" icon={<ActivityIcon size={17} />} title="Activity log" />
           <Row href="/settings/credits" icon={glyph("¢")} title="Credits" detail={me.data ? formatNumber(me.data.credits.balance) : undefined} />
           <Row href="/settings/plans" icon={glyph("$")} title="Plans and billing" detail={plan?.name} />

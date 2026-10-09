@@ -28,7 +28,7 @@ export default function AutomationsPage() {
   const shown = kind === "all" ? all : all.filter((a) => a.kind === kind);
 
   return (
-    <PageBody width={1080} className="gap-4">
+    <PageBody className="gap-4">
       <div className="flex min-h-[30px] flex-wrap items-center gap-4">
         <FilterPills label="Filter by kind" options={FILTERS} value={kind} onChange={setKind} />
       </div>

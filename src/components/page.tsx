@@ -16,21 +16,36 @@ export function PageHeader({ title, children }: { title: string; children?: Reac
   );
 }
 
-/** Scrolling body. Content keeps to the header's left edge, at a readable width. */
-export function PageBody({
-  children,
-  width = 1000,
-  className,
-}: {
-  children: ReactNode;
-  width?: number;
-  className?: string;
-}) {
+/**
+ * Scrolling body. It takes the whole width of the sheet, from the header's left edge to the
+ * right edge: lists, tables and card grids fill it, with as many columns as fit. Text that is
+ * read rather than scanned keeps a comfortable line with `READING` on the paragraph; the page
+ * itself is never narrowed.
+ */
+export function PageBody({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div className="scroll-pane min-h-0 flex-1 overflow-y-auto">
-      <div className={cn("flex flex-col gap-7 px-4 pt-2 pb-10 md:px-8", className)} style={{ maxWidth: width + 64 }}>
-        {children}
-      </div>
+      <div className={cn("flex flex-col gap-7 px-4 pt-2 pb-10 md:px-8", className)}>{children}</div>
     </div>
   );
 }
+
+/** The longest line that still reads well, for a paragraph on a full-width page. */
+export const READING = "max-w-[72ch]";
+
+/**
+ * Cards of different heights, in as many columns as fit (at least `min` wide each), filled top
+ * to bottom so no row is left half empty. Give each child `COLUMN_ITEM`.
+ */
+export function Columns({ min = 420, className, children }: { min?: number; className?: string; children: ReactNode }) {
+  return (
+    // The gap under each card is padding (a margin is dropped at the foot of a column); the
+    // negative margin takes back the last one, so what follows sits at the page's own gap.
+    <div className={cn("-mb-6 gap-x-7", className)} style={{ columnWidth: min }}>
+      {children}
+    </div>
+  );
+}
+
+/** Keeps a card in one piece inside `Columns`, with the gap below it. */
+export const COLUMN_ITEM = "break-inside-avoid pb-6";
