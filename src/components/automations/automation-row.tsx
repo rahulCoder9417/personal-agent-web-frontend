@@ -1,23 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import type { ReactNode } from "react";
 import type { Automation } from "@/lib/api/client";
 import { useDeleteAutomation, usePrReviews, useUpdateAutomation } from "@/lib/api/hooks";
-import {
-  AUTOMATION_KIND_LABEL,
-  cn,
-  describeAutomationNext,
-  describeAutomationSchedule,
-  formatAgo,
-  PR_REVIEW_LABEL,
-  titleCase,
-} from "@/lib/format";
+import { describeAutomationCost, describeAutomationRuns, describeAutomationStatus, describeAutomationWhen } from "@/lib/automations";
+import { cn, PR_REVIEW_LABEL, titleCase } from "@/lib/format";
 import { repoName } from "@/lib/pr-review";
 import { BrandIcon } from "../brand-icon";
-import { ClockIcon, TrashIcon, WarningIcon } from "../icons";
+import { ConfirmButton } from "../confirm-button";
+import { WarningIcon } from "../icons";
 import { toastError } from "../toast";
-import { Button, ButtonLink, IconButton, IconTile, Switch } from "../ui";
+import { ButtonLink, IconTile, Pill, Switch } from "../ui";
+import { KindIcon } from "./kind-icon";
 
 /** Why a paused automation is paused, with the way out. Nothing for one the user paused themselves. */
 function PausedNote({ automation }: { automation: Automation }) {
@@ -25,9 +20,9 @@ function PausedNote({ automation }: { automation: Automation }) {
   if (automation.pausedReason === "failures") {
     const app = automation.trigger?.app;
     return (
-      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-danger">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-danger">
         <WarningIcon size={14} className="shrink-0" />
-        <span>Paused after it failed a few times.</span>
+        <span>It failed a few times in a row, so it was paused.</span>
         <Link href="/apps" className="font-medium text-accent hover:text-accent-dark">
           {app ? `Check ${titleCase(app)} in Apps` : "Check your apps"}
         </Link>
@@ -36,9 +31,9 @@ function PausedNote({ automation }: { automation: Automation }) {
   }
   if (automation.pausedReason === "out_of_credits") {
     return (
-      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-danger">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-danger">
         <WarningIcon size={14} className="shrink-0" />
-        <span>Paused because you ran out of credits.</span>
+        <span>You ran out of credits, so it was paused.</span>
         <Link href="/settings/credits" className="font-medium text-accent hover:text-accent-dark">
           Add credits
         </Link>
@@ -48,134 +43,142 @@ function PausedNote({ automation }: { automation: Automation }) {
   return null;
 }
 
-/** "5 min ago", "yesterday", "12 Sep": formatAgo, but fit for the middle of a sentence. */
-function lastRan(iso: string): string {
-  const ago = formatAgo(iso);
-  return ago === "Yesterday" ? "yesterday" : ago;
+/**
+ * One automation in plain words: its name and whether it is on, when it runs, what Tex was asked
+ * to do, the next run, the last one and what it costs. `controls` is what can be done with it.
+ */
+function Item({
+  automation,
+  title,
+  task,
+  timezone,
+  controls,
+  footer,
+}: {
+  automation: Automation;
+  title: string;
+  /** What Tex does when it runs. */
+  task: ReactNode;
+  timezone: string | null | undefined;
+  controls: ReactNode;
+  footer?: ReactNode;
+}) {
+  const on = automation.enabled;
+  const review = automation.preset === "pr_review";
+  const status = describeAutomationStatus(automation);
+  const runs = describeAutomationRuns(automation);
+  const app = automation.kind === "event" ? automation.trigger?.app : undefined;
+
+  return (
+    <li className="flex gap-3.5 border-b border-line px-5 py-4 last:border-b-0 max-sm:gap-3 max-sm:px-4">
+      <IconTile size={38} className={on ? undefined : "opacity-60"}>
+        {app ? <BrandIcon name={app} size={18} /> : <KindIcon kind={automation.kind} size={18} className="text-nav" />}
+      </IconTile>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div className="flex items-start gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h3 className={cn("min-w-0 text-[14.5px] leading-snug font-semibold break-words", !on && "text-muted")}>{title}</h3>
+              <Pill tone={status.tone}>{status.label}</Pill>
+              {review && <Pill tone="waiting">{PR_REVIEW_LABEL}</Pill>}
+            </div>
+            {/* When it runs, as a sentence: this is the line people look for. */}
+            <p className={cn("text-[13.5px]", on ? "text-fg" : "text-muted")}>{describeAutomationWhen(automation, timezone)}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 pt-0.5">{controls}</div>
+        </div>
+
+        <p className="line-clamp-2 text-[13px] text-muted">{task}</p>
+        <PausedNote automation={automation} />
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-0.5">
+          <dl className="flex min-w-0 flex-1 flex-wrap gap-x-4 gap-y-0.5 text-[12.5px] text-muted">
+            <div>
+              <dt className="sr-only">Next run</dt>
+              <dd className={on ? "text-fg-2" : undefined}>{runs.next}</dd>
+            </div>
+            <div>
+              <dt className="sr-only">Last run</dt>
+              <dd>{runs.last}</dd>
+            </div>
+            <div>
+              <dt className="sr-only">Credits</dt>
+              <dd>{describeAutomationCost(automation)}</dd>
+            </div>
+          </dl>
+          {footer}
+        </div>
+      </div>
+    </li>
+  );
 }
 
 /**
  * A repo with pull-request review on. It is an automation, but not one made by asking Tex: it is
  * turned on, paused and turned off on the review screen, so this row shows it and points there.
  */
-function ReviewAutomationRow({ automation }: { automation: Automation }) {
-  const on = automation.enabled;
+function ReviewAutomationRow({ automation, timezone }: { automation: Automation; timezone: string | null | undefined }) {
   // The automation doesn't carry its repo; the review list does, under the same id.
   const review = usePrReviews().data?.find((item) => item.id === automation.id);
   const title = review ? repoName(review) : automation.title;
   return (
-    <li className="flex flex-col gap-2 border-b border-line px-5 py-4 last:border-b-0">
-      <div className="flex items-center gap-x-4 gap-y-1.5 max-lg:flex-wrap">
-        <IconTile size={38}>
-          <BrandIcon name="github" size={18} />
-        </IconTile>
-
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className={cn("truncate text-[14px] font-semibold", !on && "text-muted")}>{title}</span>
-          <span className="truncate text-[13px] text-muted">Patch reviews each pull request and sends you a short verdict.</span>
-          <PausedNote automation={automation} />
-        </div>
-
-        <div className="flex w-[210px] shrink-0 flex-col items-start gap-1 max-lg:order-4 max-lg:w-full max-lg:flex-row max-lg:flex-wrap max-lg:items-center max-lg:gap-x-2 max-lg:pl-[54px]">
-          <span className="rounded-md bg-accent-soft px-2 py-0.5 text-[12px] font-medium whitespace-nowrap text-accent-dark">{PR_REVIEW_LABEL}</span>
-          <span className="max-w-full text-[12px] text-nav">Each new or updated pull request</span>
-        </div>
-
-        <div className="flex w-[170px] shrink-0 flex-col gap-0.5 max-lg:order-5 max-lg:w-full max-lg:flex-row max-lg:gap-2 max-lg:pl-[54px]">
-          <span className={cn("truncate text-[12px]", on ? "text-fg" : "text-muted")}>{describeAutomationNext(automation)}</span>
-          <span className="truncate text-[12px] text-muted">
-            {automation.lastRunAt ? `last review ${lastRan(automation.lastRunAt)}` : "no review yet"}
-          </span>
-        </div>
-
-        <div className="flex w-[156px] shrink-0 items-center justify-end gap-2 max-lg:w-auto">
-          <ButtonLink href="/automations/reviews" size="sm" aria-label={`Manage review for ${title}`}>
-            Manage
-          </ButtonLink>
-        </div>
-      </div>
-    </li>
+    <Item
+      automation={automation}
+      title={title}
+      task="Patch reviews each pull request, comments on it and sends you a short verdict. It never merges."
+      timezone={timezone}
+      controls={
+        <ButtonLink href="/automations/reviews" size="sm" aria-label={`Manage review for ${title}`}>
+          Manage
+        </ButtonLink>
+      }
+    />
   );
 }
 
-/** One automation: what it does, when it runs, and the switch and delete that the app is allowed to do. */
-export function AutomationRow({ automation }: { automation: Automation }) {
-  if (automation.preset === "pr_review") return <ReviewAutomationRow automation={automation} />;
-  return <PlainAutomationRow automation={automation} />;
-}
-
-function PlainAutomationRow({ automation }: { automation: Automation }) {
+function PlainAutomationRow({ automation, timezone }: { automation: Automation; timezone: string | null | undefined }) {
   const update = useUpdateAutomation();
   const remove = useDeleteAutomation();
-  const [confirming, setConfirming] = useState(false);
   const on = automation.enabled;
-  const triggerApp = automation.kind === "event" ? automation.trigger?.app : undefined;
 
   return (
-    <li className="flex flex-col gap-2 border-b border-line px-5 py-4 last:border-b-0">
-      {/* Wide: one row of columns. Narrow: title and switch on top, the schedule on lines below. */}
-      <div className="flex items-center gap-x-4 gap-y-1.5 max-lg:flex-wrap">
-        <IconTile size={38}>
-          {triggerApp ? <BrandIcon name={triggerApp} size={18} /> : <ClockIcon size={18} className="text-nav" />}
-        </IconTile>
-
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className={cn("truncate text-[14px] font-semibold", !on && "text-muted")}>{automation.title}</span>
-          <span className="truncate text-[13px] text-muted">{automation.instruction}</span>
-          <PausedNote automation={automation} />
-        </div>
-
-        <div className="flex w-[210px] shrink-0 flex-col items-start gap-1 max-lg:order-4 max-lg:w-full max-lg:flex-row max-lg:items-center max-lg:gap-2 max-lg:pl-[54px]">
-          <span className="rounded-md bg-surface-2 px-2 py-0.5 text-[12px] font-medium whitespace-nowrap text-nav">
-            {AUTOMATION_KIND_LABEL[automation.kind]}
-          </span>
-          <span className="max-w-full truncate text-[12px] text-nav">{describeAutomationSchedule(automation)}</span>
-        </div>
-
-        <div className="flex w-[170px] shrink-0 flex-col gap-0.5 max-lg:order-5 max-lg:w-full max-lg:flex-row max-lg:gap-2 max-lg:pl-[54px]">
-          <span className={cn("truncate text-[12px]", on ? "text-fg" : "text-muted")}>{describeAutomationNext(automation)}</span>
-          <span className="truncate text-[12px] text-muted">
-            {automation.lastRunAt ? `last ran ${lastRan(automation.lastRunAt)}` : "hasn’t run yet"}
-          </span>
-        </div>
-
-        <div className="flex w-[156px] shrink-0 items-center justify-end gap-2 max-lg:w-auto">
-          {confirming ? (
-            <>
-              <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => setConfirming(false)}>
-                Keep
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="border-danger/40 text-danger hover:border-danger"
-                pending={remove.isPending}
-                aria-label={`Delete ${automation.title} for good`}
-                onClick={() => remove.mutate(automation.id, { onError: (error) => toastError(`Couldn’t delete “${automation.title}”`, error) })}
-              >
-                Delete
-              </Button>
-            </>
-          ) : (
-            <>
-              <Switch
-                on={on}
-                label={`${on ? "Pause" : "Resume"} ${automation.title}`}
-                disabled={update.isPending}
-                onToggle={() =>
-                  update.mutate(
-                    { automationId: automation.id, enabled: !on },
-                    { onError: (error) => toastError(`Couldn’t ${on ? "pause" : "resume"} “${automation.title}”`, error) },
-                  )
-                }
-              />
-              <IconButton label={`Delete ${automation.title}`} onClick={() => setConfirming(true)}>
-                <TrashIcon size={16} />
-              </IconButton>
-            </>
-          )}
-        </div>
-      </div>
-    </li>
+    <Item
+      automation={automation}
+      title={automation.title}
+      task={<>Tex was asked: “{automation.instruction}”</>}
+      timezone={timezone}
+      controls={
+        <Switch
+          on={on}
+          label={`${on ? "Pause" : "Resume"} ${automation.title}`}
+          disabled={update.isPending || remove.isPending}
+          onToggle={() =>
+            update.mutate(
+              { automationId: automation.id, enabled: !on },
+              { onError: (error) => toastError(`Couldn’t ${on ? "pause" : "resume"} “${automation.title}”`, error) },
+            )
+          }
+        />
+      }
+      footer={
+        <ConfirmButton
+          label="Delete"
+          confirmLabel="Delete for good"
+          ariaLabel={`Delete ${automation.title}`}
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate(automation.id, { onError: (error) => toastError(`Couldn’t delete “${automation.title}”`, error) })}
+        />
+      }
+    />
   );
+}
+
+/**
+ * One automation: what it does and when, in words, and what the app is allowed to do with it
+ * (pause, resume, delete). `timezone` is the person's own, so a schedule in it reads "your time".
+ */
+export function AutomationRow({ automation, timezone }: { automation: Automation; timezone?: string | null }) {
+  if (automation.preset === "pr_review") return <ReviewAutomationRow automation={automation} timezone={timezone} />;
+  return <PlainAutomationRow automation={automation} timezone={timezone} />;
 }
