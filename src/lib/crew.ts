@@ -1,9 +1,68 @@
 // The crew, as the backend describes it (`GET /v1/crew`): Tex leads, and Byte, Patch and Scout are
-// the specialists it hands work to. Who they are and who is available comes from the backend;
-// the only name written here is the lead's, for a progress line that names nobody.
+// the specialists it hands work to. Who they are (name, role, description) and who is available
+// comes from the backend. What is written here is what the backend doesn't say: what each one is
+// good for in three lines, a request to try, and how the crew works together.
 
 import type { AgentProgress, CrewMember } from "./api/client";
 import { listNames, titleCase } from "./format";
+
+/** What the crew page says about a member beyond the backend's one-line description. */
+export type CrewGuide = {
+  /** What it can do, as three short lines. */
+  does: readonly [string, string, string];
+  /** Something to ask Tex that this member would end up doing. */
+  example: string;
+};
+
+/**
+ * What each member is good for. These follow the crew as it is built: Byte works on a new branch
+ * and opens the pull request, Patch posts one review and never changes code, and only Scout
+ * touches the web.
+ */
+export const CREW_GUIDE: Record<CrewMember["id"], CrewGuide> = {
+  tex: {
+    does: [
+      "Answers you here and in every chat app you linked",
+      "Plans the job and hands each part to the right specialist",
+      "Works in your connected apps, and asks before anything risky",
+    ],
+    example: "Summarise my unread email and tell me what needs a reply today.",
+  },
+  byte: {
+    does: ["Writes new code and fixes bugs in your repos", "Works on a new branch, never on your main one", "Opens the pull request for you to merge"],
+    example: "Fix the typo in the README of acme/website and open a pull request.",
+  },
+  patch: {
+    does: [
+      "Reviews a pull request for bugs, security and tests",
+      "Posts one review on the pull request and sends you the verdict",
+      "Never changes code, and never merges",
+    ],
+    example: "Review pull request 42 in acme/website.",
+  },
+  scout: {
+    does: [
+      "Searches the web and reads the pages it finds",
+      "Comes back with a short answer and its links",
+      "The only one on the web, with no way into your files or apps",
+    ],
+    example: "Research what other scheduling tools charge, with links.",
+  },
+};
+
+/** How a job moves through the crew, for the strip at the foot of the crew page. */
+export const CREW_STEPS: readonly { title: string; body: string }[] = [
+  { title: "You text Tex", body: "One chat, in plain words. You never have to pick a specialist yourself." },
+  { title: "Tex plans and hands out", body: "Each part goes to whoever is best at it. Up to three specialists can work on one job at once." },
+  { title: "You see who is working", body: "The chat shows each one at work (“Scout · reading 4 pages”), and the activity log keeps it." },
+  { title: "Tex answers", body: "One answer comes back from Tex. Sending, deleting or spending still waits for your OK." },
+];
+
+/** Whether a member works here yet, as the pill on its card says it. */
+export function describeAvailability(member: Pick<CrewMember, "kind" | "available">): { label: string; tone: "done" | "muted" } {
+  if (member.kind === "lead") return { label: "Leads your crew", tone: "done" };
+  return member.available ? { label: "On your crew", tone: "done" } : { label: "Coming soon", tone: "muted" };
+}
 
 /** The lead, the specialists that work on this deployment, and the ones still to come. */
 export function splitCrew(crew: readonly CrewMember[]): { lead: CrewMember | undefined; working: CrewMember[]; coming: CrewMember[] } {

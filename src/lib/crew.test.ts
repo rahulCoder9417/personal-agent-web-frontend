@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { CrewMember } from "./api/client";
-import { addProgress, crewBrowser, crewHeadline, crewNavNote, describeBrowser, progressLine, splitCrew, splitCrewLine } from "./crew";
+import {
+  addProgress,
+  CREW_GUIDE,
+  CREW_STEPS,
+  crewBrowser,
+  crewHeadline,
+  crewNavNote,
+  describeAvailability,
+  describeBrowser,
+  progressLine,
+  splitCrew,
+  splitCrewLine,
+} from "./crew";
 
 function crew(available: CrewMember["id"][], browserBuilt = false): CrewMember[] {
   const member = (id: CrewMember["id"], name: string, role: string, kind: CrewMember["kind"] = "specialist"): CrewMember => ({
@@ -34,6 +46,35 @@ describe("crewHeadline", () => {
     expect(crewHeadline(crew(["byte"]))).toBe("Tex leads and hands work to Byte. Patch and Scout are on the way.");
     expect(crewHeadline(crew(["byte", "patch"]))).toBe("Tex leads and hands work to Byte and Patch. Scout is on the way.");
     expect(crewHeadline(crew([]))).toBe("Tex is on the job today. Byte, Patch and Scout are on the way.");
+  });
+});
+
+describe("the crew page's own words", () => {
+  it("says three things each member does, and gives a request to try", () => {
+    for (const member of crew(["byte", "patch", "scout"])) {
+      const guide = CREW_GUIDE[member.id];
+      expect(guide.does).toHaveLength(3);
+      expect(guide.does.every((line) => line.length > 0 && line.length <= 70)).toBe(true);
+      expect(guide.example.length).toBeGreaterThan(10);
+    }
+  });
+
+  it("keeps the promises the crew is built on", () => {
+    expect(CREW_GUIDE.byte.does.join(" ")).toMatch(/new branch/);
+    expect(CREW_GUIDE.patch.does.join(" ")).toMatch(/never merges/);
+    expect(CREW_GUIDE.scout.does.join(" ")).toMatch(/only one on the web/);
+  });
+
+  it("says who works here, who leads and who is still to come", () => {
+    const [tex, byte, patch] = crew(["byte"]);
+    expect(describeAvailability(tex)).toEqual({ label: "Leads your crew", tone: "done" });
+    expect(describeAvailability(byte)).toEqual({ label: "On your crew", tone: "done" });
+    expect(describeAvailability(patch)).toEqual({ label: "Coming soon", tone: "muted" });
+  });
+
+  it("explains how a job moves through the crew in a few steps", () => {
+    expect(CREW_STEPS.length).toBeGreaterThanOrEqual(3);
+    expect(CREW_STEPS[0].title).toBe("You text Tex");
   });
 });
 
