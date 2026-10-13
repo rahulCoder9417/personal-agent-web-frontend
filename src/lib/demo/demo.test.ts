@@ -22,7 +22,10 @@ import type {
   UsagePeriod,
   UsageTotals,
 } from "@/lib/api/client";
+import { QueryClient } from "@tanstack/react-query";
+import { applyStreamEvent } from "@/lib/api/stream";
 import { threadIsWorking } from "@/lib/chat-thread";
+import { DRAFTS_KEY, type Drafts, NO_DRAFTS, turnOnScreen } from "@/lib/drafts";
 import { hasMarkdown } from "@/lib/markdown";
 import { draftCuts, runDemoAutomation } from "./handlers-chat";
 import { handleDemoRequest, resetDemoStore } from "./index";
@@ -275,6 +278,47 @@ describe("chat", () => {
     // Every draft comes before the answer; nothing of them is saved.
     expect(events.findLastIndex((event) => event.type === "message.draft")).toBeLessThan(answerAt);
     expect(getStore().messages.filter((message) => message.conversationId === sent.body.conversationId && message.direction === "out" && message.createdAt >= sent.body.createdAt)).toHaveLength(1);
+  });
+
+  it("works through a question about the day a tool at a time, and the thread never loses what it showed", async () => {
+    // The live stream as the web app takes it, into a real query cache, at the moment each event is sent.
+    const qc = new QueryClient();
+    const seen: string[] = [];
+    let flashes = 0;
+    let lastShown: string | null = null;
+    subscribe(getStore(), (event) => {
+      applyStreamEvent(qc, event);
+      if (event.type === "message.draft") seen.push(`draft:${(event.data as MessageDraft).text}`);
+      if (event.type === "agent.progress") seen.push(`progress:${(event.data as AgentProgress).text}`);
+    });
+    const sent = await call<Message>("POST", "messages", { text: "How does my day look?", clientMessageId: uuid(31) });
+    const onScreen = () => turnOnScreen(qc.getQueryData<Drafts>(DRAFTS_KEY) ?? NO_DRAFTS, sent.body.conversationId);
+    for (let ms = 0; ms < 8000; ms += 25) {
+      vi.advanceTimersByTime(25);
+      const turn = onScreen();
+      const writing = turn?.writing ?? null;
+      // Shown text that went without becoming a step, or the answer taking its place (the turn leaves the screen), is a flash.
+      if (turn && lastShown && !writing?.startsWith(lastShown) && !turn.steps.some((step) => step.text === lastShown)) flashes++;
+      if (writing) expect(writing.startsWith("Let me") || writing.startsWith("Now your"), "a short line before a tool is never shown").toBe(false);
+      lastShown = writing;
+    }
+
+    // What the backend would have sent: two short lines and a long one, each started over for its tool, then the answer.
+    const startedOver = seen.flatMap((step, index) => (step === "draft:" ? [seen[index - 1]] : []));
+    expect(startedOver).toEqual([
+      "draft:Let me check your calendar.",
+      "draft:Now your inbox.",
+      "draft:Two emails from Maya mention tomorrow’s review, so I’ll read both before I tell you what she needs from you.",
+    ]);
+    expect(seen.filter((step) => step.startsWith("progress:"))).toEqual(["progress:using Google Calendar", "progress:using Gmail", "progress:reading 2 emails"]);
+    const answer = (await call<Page<Message>>("GET", `messages?conversationId=${sent.body.conversationId}`)).body.items[0];
+    expect(answer).toMatchObject({ direction: "out" });
+    expect(answer.text.startsWith("Today: “Roadmap sync” at 3pm")).toBe(true);
+    // The long line was kept as a step, with the tool it went on to, and folded into the answer.
+    const folded = (qc.getQueryData<Drafts>(DRAFTS_KEY) ?? NO_DRAFTS).folded[answer.id];
+    expect(folded.map((step) => [step.text.slice(0, 15), step.progress.map((line) => line.text)])).toEqual([["Two emails from", ["reading 2 emails"]]]);
+    expect(onScreen()).toBeNull();
+    expect(flashes).toBe(0);
   });
 
   it("starts the draft over when a specialist sets to work, and writes the answer after it", async () => {

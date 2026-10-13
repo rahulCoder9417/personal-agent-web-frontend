@@ -183,6 +183,32 @@ function reportProgress(state: DemoState, job: CrewJob, step: string): void {
   logActivity(state, { actor: "agent", action: "crew_progress", summary: text, crew: job.crew });
 }
 
+/**
+ * A question about the day, worked through the way Tex really does it: a few words before each
+ * tool, the draft started over when the tool runs (as the Bridge does), and then the answer. The
+ * two short lines are never shown in web chat (too short, started over too soon); the long one is
+ * shown, and kept as a step above the answer when Tex starts over.
+ */
+const DAY_TURN = {
+  when: /\b(my day|inbox)\b/i,
+  runs: [
+    { text: "Let me check your calendar.", tool: "using Google Calendar" },
+    { text: "Now your inbox.", tool: "using Gmail" },
+    {
+      text: "Two emails from Maya mention tomorrow’s review, so I’ll read both before I tell you what she needs from you.",
+      tool: "reading 2 emails",
+    },
+  ],
+  reply:
+    "Today: “Roadmap sync” at 3pm with Maya and Dev, and the dentist at 5:30. Nothing before noon.\n\nMaya’s two emails ask for the Q3 numbers before tomorrow’s review, and whether 10am works for it. Want me to send her the numbers and say yes to 10?",
+};
+/** How long a short line is written, and stays, before Tex starts over for its tool. */
+const SHORT_LINE_MS = [300, 250] as const;
+/** How long the long line is written, and stays. */
+const LONG_LINE_MS = [800, 700] as const;
+/** How long each of the day turn's tools takes. */
+const TOOL_MS = 700;
+
 /** Tex's answer to a request that isn't a fact to remember, a risky action or a job for the crew. */
 function plainReply(text: string): string {
   return `Got it. In the demo account nothing is really done, but this is where I’d tell you how “${truncate(text, 80)}” went.`;
@@ -195,7 +221,8 @@ function plainReply(text: string): string {
  */
 function plannedReply(request: Message, job: CrewJob | null): string | null {
   if (memoryRequestOf(request.text) || riskOf(request.text)) return null;
-  return job ? job.reply : plainReply(request.text);
+  if (job) return job.reply;
+  return DAY_TURN.when.test(request.text) ? DAY_TURN.reply : plainReply(request.text);
 }
 
 /**
@@ -226,6 +253,22 @@ function writeDraft(state: DemoState, request: Message, text: string, fromMs: nu
   cuts.forEach((end, index) => schedule(state, fromMs + index * DRAFT_STEP_MS, () => showDraft(state, request, text.slice(0, end))));
 }
 
+/** Tex works through a question about the day, a tool at a time, writing its answer last (`DAY_TURN`). Returns when it answers. */
+function workThroughDay(state: DemoState, request: Message): number {
+  let at = PICKUP_MS + DRAFT_STEP_MS;
+  for (const run of DAY_TURN.runs) {
+    const [writeMs, stayMs] = run.text.length >= 80 ? LONG_LINE_MS : SHORT_LINE_MS;
+    writeDraft(state, request, run.text, at, at + writeMs);
+    const startOver = at + writeMs + stayMs;
+    schedule(state, startOver, () => showDraft(state, request, ""));
+    schedule(state, startOver + DRAFT_STEP_MS, () => emit(state, "agent.progress", { text: run.tool, crew: null, at: nowIso() }));
+    at = startOver + TOOL_MS;
+  }
+  const answerAt = at + 1400 + 100;
+  writeDraft(state, request, DAY_TURN.reply, at, answerAt - 100);
+  return answerAt;
+}
+
 function answer(state: DemoState, request: Message, job: CrewJob | null = null): void {
   setMessageStatus(state, request.id, "read");
   // "Remember that…" is a fact to keep, not a job: it comes first, so its words can't be taken for one.
@@ -245,7 +288,7 @@ function answer(state: DemoState, request: Message, job: CrewJob | null = null):
     }
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
   } else {
-    postFromTex(state, request.conversationId, plainReply(request.text));
+    postFromTex(state, request.conversationId, plannedReply(request, null) ?? plainReply(request.text));
     // The time Tex ran is charged, and the AI too when it ran on Textcrew AI. Nothing was changed in an app.
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
     logActivity(state, { actor: "agent", action: "run_app_action", summary: upperFirst(truncate(request.text, 70)), creditsCharged: 0 });
@@ -315,6 +358,9 @@ export const sendMessage: Handler = async ({ state, request }) => {
     const answerAt = CREW_STEP_MS * job.steps.length + FOLLOW_UP_MS;
     if (reply) writeDraft(state, message, reply, CREW_STEP_MS * job.steps.length + DRAFT_STEP_MS, answerAt);
     schedule(state, answerAt, () => answer(state, message, job));
+  } else if (reply === DAY_TURN.reply) {
+    const answerAt = workThroughDay(state, message);
+    schedule(state, answerAt, () => answer(state, message));
   } else {
     if (reply) writeDraft(state, message, reply, PICKUP_MS + DRAFT_STEP_MS, ANSWER_MS);
     schedule(state, ANSWER_MS, () => answer(state, message));
