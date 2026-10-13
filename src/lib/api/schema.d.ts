@@ -264,7 +264,7 @@ export interface paths {
         /**
          * Live updates (Server-Sent Events)
          * @description One long-lived SSE connection per browser tab. Event types:
-         *     `message.created`, `message.status`, `approval.created`, `approval.resolved`,
+         *     `message.created`, `message.status`, `message.draft`, `approval.created`, `approval.resolved`,
          *     `agent.status`, `agent.progress`, `credits.updated`, `automation.updated`,
          *     `conversation.updated`, `conversation.deleted`.
          *     Each event's `data` is JSON matching the `StreamEvent` schema.
@@ -278,6 +278,23 @@ export interface paths {
          *     example `Scout: reading 4 pages` or `using web_search`). It is live only: it isn't saved
          *     as a message and isn't sent to Telegram. Lines that name a crew member are also in the
          *     activity log.
+         *
+         *     `message.draft` is the answer the agent is writing, so far, in a turn whose answer goes to
+         *     web chat (`MessageDraft`). Each one holds the whole draft, not only what was added, so a
+         *     missed one does no harm: the next one has all of it. It is live only, like a progress line:
+         *     nothing is saved for it and it never goes to Telegram or another chat app. The answer itself
+         *     still arrives as `message.created`. How to show it:
+         *     - Show the latest draft of the turn (`turnId`) in the draft's conversation, in place of the
+         *       "working" state. An empty `text` means the agent started over (a new message, or it went
+         *       on to a tool): show the working state again.
+         *     - When a `message.created` from the agent (`direction: out`, no `approvalId`) arrives in
+         *       that conversation, it replaces the draft. That message can arrive just before the last
+         *       draft of the turn, so drop any later draft of the same turn.
+         *     - Clear the draft when the turn ends: `agent.status` other than `busy`, or the incoming
+         *       message (`messageId`) moving to `delivered` or `failed`. A failed turn ends with an
+         *       apology (`message.created`) and no answer.
+         *     - Drafts and the end of their turn are sent in order, so no draft of a turn comes after its
+         *       end. After a reconnect, the next draft (if the turn still runs) brings the whole text back.
          *     Browsers can't set headers on EventSource, so the token may be passed as `?token=`.
          */
         get: operations["streamEvents"];
@@ -1308,6 +1325,32 @@ export interface components {
         ConversationDeleted: {
             id: string;
         };
+        /**
+         * @description The `data` of a `message.draft` stream event: the answer the agent is writing in a turn
+         *     whose answer goes to web chat, so far. Live only: it is never saved. See `GET /v1/stream`
+         *     for how to show it.
+         */
+        MessageDraft: {
+            /** @description The conversation of the turn, where the answer will be saved. */
+            conversationId: string;
+            /** @description The same for every draft of one turn; another turn has another one. */
+            turnId: string;
+            /**
+             * @description The incoming message the turn answers. Null when it answers none (the answer to an
+             *     approval, an automation).
+             */
+            messageId: string | null;
+            /**
+             * @description The whole draft so far, as the agent writes it (it may be half-written Markdown). Empty:
+             *     the agent started over, and nothing is being written right now.
+             * @example Here are your meetings for today:
+             *
+             *     - 10:00 Design review
+             */
+            text: string;
+            /** Format: date-time */
+            at: string;
+        };
         Message: {
             id: string;
             /** @description The conversation this message belongs to. */
@@ -1938,8 +1981,8 @@ export interface components {
         };
         StreamEvent: {
             /** @enum {string} */
-            type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated" | "conversation.updated" | "conversation.deleted";
-            data: components["schemas"]["Message"] | components["schemas"]["Conversation"] | components["schemas"]["ConversationDeleted"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"];
+            type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated" | "conversation.updated" | "conversation.deleted" | "message.draft";
+            data: components["schemas"]["Message"] | components["schemas"]["MessageDraft"] | components["schemas"]["Conversation"] | components["schemas"]["ConversationDeleted"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"];
         };
     };
     responses: {
