@@ -137,7 +137,11 @@ function RepoField({ id, value, onChange, error }: { id: string; value: string; 
         <input
           id={id}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => {
+            // Typed before the list arrived: it stays a field to type in, and keeps the focus.
+            setTyping(true);
+            onChange(event.target.value);
+          }}
           placeholder="owner/repo"
           autoComplete="off"
           autoCapitalize="none"
