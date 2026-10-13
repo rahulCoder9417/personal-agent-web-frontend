@@ -9,7 +9,7 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
 ```
 
 - **Screens**: chat, approvals, automations and pull-request review, activity, apps and your own MCP servers, crew, settings (general, agent and AI, memory, credits, plans), onboarding, sign-in and sign-up.
-- **One layout, two shapes**: on a wide screen a sidebar sits beside the current screen; on a phone there is a top bar, the screen edge to edge and five tabs along the bottom (the rest is under More).
+- **One layout, two shapes**: on a wide screen a sidebar sits beside the current screen, and folds down to a rail of icons; on a phone there is a top bar, the screen edge to edge and five tabs along the bottom (the rest is under More). See [Panels that fold](#panels-that-fold).
 - **Every screen takes the whole width**, except Settings, which is one readable column beside its sections. See [Width](#width) and [Settings](#settings).
 - **Installable on a phone**: "Add to Home Screen" on Android and iPhone opens it in its own window. See [Installing on a phone](#installing-on-a-phone).
 - **The pages only talk to this app's own `/api/v1/*`.** `src/app/api/v1/[...path]/route.ts` forwards to the backend and adds the Clerk session token on the server, so the token never sits in page JavaScript or in an `EventSource` URL. Only user-facing paths are allowed through (no admin, waitlist or webhook routes).
@@ -71,7 +71,7 @@ That starts the backend from `../beckend` with embedded Postgres and a throwaway
 
 - **The pages are static.** Every screen except `/billing` is built ahead (`○` in `pnpm build`'s route table) and served from Vercel's CDN; the data comes afterwards from `/api/v1/*`. Nothing in the pages reads the request: whether the app runs with Clerk, in demo mode or with the development token is decided once, when the app is built (`next.config.ts` writes it in as `NEXT_PUBLIC_TEXTCREW_AUTH_MODE`, read with `builtAuthMode()` in `src/lib/auth-mode.ts`). `/billing` reads the session, so it is rendered per request.
 - **The proxy still runs before every page** (`src/proxy.ts`) and does what needs the request: it asks for a session, sends someone signed in away from the sign-in pages and, without accounts, sends the sign-in pages home. It and the API route read the environment on every request (`authMode()` in `src/lib/env.ts`); on Vercel and in the Dockerfile that is the environment the app was built with.
-- **The first page asks only for what it draws.** The shell asks for the account and the pending approvals; the chat for the channels, the chat history, the open conversation's messages and the agent's state; and the live stream opens. That is all a phone sends (6 calls and the stream). The messages are asked for once the history has said which conversation is open, so that one call waits for another. The sidebar, hidden on a phone, asks for the crew and the plans only on a wider screen (8), and the chat's side panel is only drawn where it shows (from 1100px, or from 1340px while the chat history is open beside the thread), where it adds activity, automations and the agent settings (11). Both follow `useMediaQuery` (`src/lib/media-query.ts`), which says no on the server and in the first render. The checkout watcher asks for the subscription, credits and plans only while a checkout is waiting.
+- **The first page asks only for what it draws.** The shell asks for the account and the pending approvals; the chat for the channels, the chat history, the open conversation's messages and the agent's state; and the live stream opens. That is all a phone sends (6 calls and the stream). The messages are asked for once the history has said which conversation is open, so that one call waits for another. The sidebar, hidden on a phone, asks for the crew and the plans only on a wider screen (8), and the chat's side panel is only drawn where it shows (from 1100px, or from 1340px while the chat history is open beside the thread, and not while it is folded away), where it adds activity, automations and the agent settings (11). Both follow `useMediaQuery` (`src/lib/media-query.ts`), which says no on the server and in the first render. The checkout watcher asks for the subscription, credits and plans only while a checkout is waiting.
 - **What draws Markdown is not part of the first page.** It is a chunk of its own (147 kB, 44 kB gzipped), fetched the first time a reply has something to draw. See [Tex's replies are drawn as Markdown](#texs-replies-are-drawn-as-markdown).
 - **The live stream reconnects** every five minutes on Vercel (the function's time limit) and whenever the connection drops. The backend's stream has no event ids and replays nothing, so a reconnect asks again for the open conversation's messages, the chat history, the approvals and the agent's state; in a tab nobody is looking at they are only marked stale and asked for when the tab is shown again (`catchUpAfterReconnect` in `src/lib/api/stream.ts`).
 
@@ -108,7 +108,7 @@ The screens don't know which chat apps or which AI are on offer. They ask.
 
 - `aiAccess` (`own_key`, `claude_plan`, `platform` or `none`) is what pays for the AI right now.
 - `platformAvailable` is whether Textcrew AI is on offer. When it is false (`AI_ACCESS_MODE=own_only` on the backend) the card says "Not available" rather than hiding.
-- `claudeModel` and `claudeEffort` are what Claude Code runs with (null is its default), and `claudeChoices` (`models` with an id and label each, `efforts`) is what they can be set to, in the order the selects offer them (`src/lib/claude-code.ts`). A change is saved as it is made (`PATCH /v1/agent/settings` with `claudeModel` or `claudeEffort`; "Default" sends null), shown at once and put back if refused. They can be set whatever runs now and apply to turns on Claude Code; a value not offered is 400 `invalid_request`.
+- `claudeModel` and `claudeEffort` are what Claude Code runs with (null is its default), and `claudeChoices` is what they can be set to, in the order the dropdowns offer them (`src/lib/claude-code.ts`). `models` holds every Claude model Claude Code can use, each with an id, a label, a group (`current` or `older`, shown as the dropdown's headings "Current models" and "Older models"), the effort levels it takes, and sometimes a short note (Fable's usage credits), which is the model's second line in the list. The effort dropdown offers only the levels of the chosen model (all of them on "Default"); it is greyed out for a model with none (Opus 4.5, Haiku 4.5). At the foot of the Engine card: the chosen model's note, and a line when the saved effort does not apply to it or runs at a lower level (xhigh on Sonnet 4.6 runs at high). `efforts` is every level. A change is saved as it is made (`PATCH /v1/agent/settings` with `claudeModel` or `claudeEffort`; "Default" sends null), shown at once and put back if refused. They can be set whatever runs now and apply to turns on Claude Code; a value not offered is 400 `invalid_request`.
 - `aiPreference` (`auto` or `platform`) is what the person chose. Someone with a key saved or a Claude plan connected can choose Textcrew AI anyway ("Use Textcrew AI" sends `{ aiPreference: "platform" }`) and go back ("Go back to your Anthropic key" sends `{ runtime: "hermes", aiPreference: "auto" }`; to the Claude plan, `{ runtime: "claude_code", aiPreference: "auto" }`). The key and the plan stay saved either way. With Textcrew AI chosen the agent shown as running is Hermes, and picking Claude Code goes back to the plan.
 
 **Apps.** `GET /v1/apps` lists the catalog with each app's connections, whether the plan includes it (`availableOnPlan`) and whether it can be connected on this server at all (`connectable`: the server has a Composio setup for it; today that is Gmail and GitHub). An app that isn't connectable is listed after the ones that are, says "Not available yet" and has no Connect button; a connected one loses "Add account" and "Reconnect". Onboarding offers only apps that are on the plan and connectable. A backend from before the field existed doesn't send it, and that reads as connectable (`isConnectable` in `src/components/apps/apps-logic.ts`), so an older server doesn't switch every app off.
@@ -122,7 +122,8 @@ The screens don't know which chat apps or which AI are on offer. They ask.
 The chat has a history, like ChatGPT or Claude.ai. A **conversation** is one stretch of a chat between two "New chat" actions, and Tex's context is separate for each: in one conversation it doesn't see what was said in another. What Tex was asked to remember (Settings → Memory) is the person's, not a chat's, and stays.
 
 - **The history** (`GET /v1/conversations`) lists every conversation, the one something was last said in first, each with its title and how long ago that was. The title is the first thing the person said in it, cut short by the backend, or "New chat" while it is empty. A conversation from Telegram carries the Telegram mark. The open conversation is highlighted. More are asked for as the list is scrolled to its end (30 at a time).
-- **Where it sits**: from 1024px it is a column on the left of the thread, which the button at its top folds away and the button in the chat's header brings back (the browser remembers the choice, `src/lib/stored-flag.ts`). Below 1024px it is a drawer from the left, opened with the button in the chat's header; picking a conversation closes it. While the column is open the side panel on the right needs 1340px instead of 1100px, so three columns never squeeze the thread.
+- **Where it sits**: from 1024px it is a column on the left of the thread, which the button at its top folds away and the button in the chat's header brings back (the browser remembers the choice). Below 1024px it is a drawer from the left, opened with the button in the chat's header; picking a conversation closes it. While the column is open the side panel on the right needs 1340px instead of 1100px, so three columns never squeeze the thread. Both slide rather than jump: see [Panels that fold](#panels-that-fold).
+- **Rows come and go smoothly**: a chat that arrives (a new chat, one from Telegram, the next page of the list) fades and slides in; one that is deleted, here or elsewhere, stays where it was for a moment, out of reach, and folds shut while the rows below close up. A list that loads simply appears.
 - **The thread shows one conversation** (`GET /v1/messages?conversationId=`): the one picked from the history, or else the active web conversation, which is where a message from here is written. Earlier messages are asked for as you scroll up to them. The chat's header shows the conversation's title.
 - **Writing** sends the open conversation's id (`POST /v1/messages` with `conversationId`). Writing in an earlier web conversation makes it the active one, and Tex carries on with that conversation's own context. Nothing is open before the first thing ever said in web chat; that message starts the conversation.
 - **Telegram conversations are read here and answered there.** In place of the composer the screen says "Reply on Telegram to continue this chat". On Telegram, `/new` starts a new one (the backend's part).
@@ -188,6 +189,25 @@ There is no native `<select>` in the app. `src/components/select.tsx` has two dr
 - **For screen readers**: the field is a `combobox` that controls a `listbox` of `option`s (in `group`s with their heading as the name). The keys stay on the field and `aria-activedescendant` says which option they are on; the chosen one is `aria-selected` and the ones that can't be picked are `aria-disabled`. A press in the list never takes focus from the field.
 - **Choosing the option already chosen** just closes the list: nothing is saved again.
 - **Where the rules are**: which option a key moves to, type-ahead, the search and where the list goes are in `src/lib/listbox.ts`, tested without a browser. The colours are all design tokens.
+
+## Panels that fold
+
+Three panels can be put away and brought back, and each slides rather than jumps. The browser remembers each one separately (`PANELS` in `src/lib/panels.ts`, on `src/lib/stored-flag.ts`).
+
+| | Put away with | Brought back with | Folded, it is |
+|---|---|---|---|
+| **The sidebar** (every screen, from 768px) | the « button at its top | the same button, now » | a rail of icons, 60px wide |
+| **The chat history** (the chat, from 1024px) | the button beside "Chats" | "Show chats" in the chat's header | gone |
+| **The side panel** "Right now" (the chat, where there is room) | the button beside "Right now" | "Show side panel" at the right of the chat's header | gone |
+
+- **How they move**: a panel's width closes to nothing (or to the rail) in 225ms, slowing as it lands, while what is in it slides out with the edge that moves and fades. What is inside keeps its width as it goes, so no text wraps afresh mid-way. The thread beside it widens in step.
+- **No jump between the chat's two columns**: where there isn't room for the side panel beside the open history (below 1340px), opening the history folds the side panel in the same movement, and closing it brings the panel back the same way.
+- **The rail**: every icon stays exactly where it was and still leads where it did. Pointing at one says where; a screen reader still reads its name. Approvals waiting show as a small count on their icon, and the credits card becomes the balance in a tile (1.9K), red when it is low. The words fade out faster than the sidebar folds, so nothing is seen being cut short. Tex's tile stays.
+- **Put away means out of reach**: a folded panel is `inert` and hidden from screen readers, so the keyboard never lands in it. The buttons say what they do ("Hide chats", "Show side panel", "Collapse sidebar", "Expand sidebar") and whether their panel is open. The header's buttons fade in only while their panel is away.
+- **The keyboard follows**: when the button pressed goes away with its panel, the keyboard goes to the button that brings it back, and the other way round. The sidebar's button stays where it is.
+- **On a phone** nothing changes: the top bar and the tabs stay, and the chat history is the drawer, which now also slides back out as the page brightens, keeping what is in it until it has gone (`.drawer` in `globals.css`). A browser that can't yet keep a closing dialog on screen closes it at once, as before.
+- **Less motion**: with "reduce motion" set in the system, nothing slides or fades; panels, rows and the drawer simply appear and go.
+- **Not on load**: a page is built before it knows what this browser remembers, so it is drawn with every panel open. Once the app has started, the remembered panels are put away at once, without sliding (`useMotionReady` in `src/lib/motion.ts`); only what is pressed after that moves.
 
 ## Automations
 
@@ -296,6 +316,8 @@ src/app/
   onboarding, sign-in, sign-up, sso-callback, billing, connected
   manifest.ts        the web manifest ("Add to Home Screen")
 src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell/…, auth/ for the sign-in forms)
+  shell/sidebar.tsx  the sidebar, and the rail of icons it folds down to
+  chat/folding-pane.tsx  a column beside the thread that slides shut and open (the chat history, the side panel)
   toast.tsx          toasts, drawn by sonner: a confirmation, or an action that failed
   page.tsx           a screen's header and full-width body, columns of cards, the reading width
   select.tsx         the dropdowns: Select (a button and a list) and Combobox (a field that searches a list)
@@ -321,8 +343,10 @@ src/lib/
   markdown.ts        Markdown in Tex's replies: whether a reply has any, and where a link may lead
   in-view.ts         asks for the next page when the end of a list scrolls into view
   listbox.ts         the rules of the dropdowns: the keys, type-ahead, the search and where the list opens
-  stored-flag.ts     a yes or no this browser remembers (the chat history folded away)
-  claude-code.ts     Claude Code's model and thinking effort as the selects offer them
+  stored-flag.ts     a yes or no this browser remembers
+  panels.ts          the panels that fold, each remembered under its own key, and where the keyboard goes after one does
+  motion.ts          how the panels move: their timing, no sliding on load, and a list whose rows fold away as they go
+  claude-code.ts     Claude Code's model and thinking effort as the dropdowns offer them
   credit-costs.ts    what credits pay for, in the words every screen uses
   checkout.ts        what a Polar checkout is waiting for, and when it has arrived
 ```
@@ -353,6 +377,7 @@ src/lib/
   - A refused save (`memory_refused`) and a search (`recall`) carry no `memoryId`, so they link nowhere.
   - Only the web chat's new chat is known (`chatStartedAt`): one started on Telegram with `/new` draws no divider. A new chat started in another tab shows once the messages are asked for again (there is no live event for it).
   - A turn with no incoming message of its own (an automation, the follow-up to an approval) shows Tex at work only under All, because the agent's state carries no channel.
+- A panel that was put away shows open for a moment when a page is first loaded (or reloaded), until the app has started: the pages are built ahead, and only the browser knows what it remembers. Moving between screens doesn't do it. A small script in the page's head that reads the choices before the first paint would end it.
 - Installed on a phone, the app has not been tried on a real Android phone or iPhone.
 - Not yet run with a real Clerk application, real Polar products or a real agent container. The sign-in pages have been rendered with the real (development) Clerk application, but no one has signed in or up through them yet: the steps against Clerk are covered by unit tests of the logic, not by a real sign-in.
 - Sign-in has no second factor beyond a code by email, no passkeys and no phone numbers, because none is switched on in Clerk.

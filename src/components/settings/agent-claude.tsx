@@ -8,8 +8,8 @@ import { Button, inputClass, Meta } from "@/components/ui";
 import { refusedTypedValue } from "@/lib/action-errors";
 import type { AgentSettings, ClaudeEffort, ClaudeLoginStart } from "@/lib/api/client";
 import { useCompleteClaudeLogin, useDisconnectClaude, useStartClaudeLogin, useUpdateClaudeCode } from "@/lib/api/hooks";
-import { choiceValue, effortOptions, modelOptions } from "@/lib/claude-code";
-import type { ListItem } from "@/lib/listbox";
+import { choiceNotes, choiceValue, effortApplies, effortOptions, modelOptions, optionGroups, type SelectOption } from "@/lib/claude-code";
+import type { ListItem, ListOption } from "@/lib/listbox";
 import { openInNewTab } from "@/lib/navigate";
 import { cn, formatDate, formatTime } from "@/lib/format";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -141,24 +141,34 @@ export function ClaudeConnectSteps() {
   );
 }
 
+/** The options as the dropdown takes them: under their headings, with a model's note as its second line. */
+function listItems(options: SelectOption[]): ListItem[] {
+  return optionGroups(options).flatMap((group): ListItem[] => {
+    const items: ListOption[] = group.options.map(({ value, label, note }) => (note ? { value, label, description: note } : { value, label }));
+    return group.label ? [{ label: group.label, options: items }] : items;
+  });
+}
+
 function ChoiceSelect({
   id,
   label,
   help,
   value,
   options,
+  disabled,
   onChange,
 }: {
   id: string;
   label: string;
   help: ReactNode;
   value: string | null;
-  options: readonly ListItem[];
+  options: SelectOption[];
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
     <SettingRow label={label} htmlFor={id} help={help}>
-      <Select id={id} label={label} value={value ?? ""} options={options} onChange={onChange} minListWidth={240} />
+      <Select id={id} label={label} value={value ?? ""} options={listItems(options)} disabled={disabled} onChange={onChange} minListWidth={300} />
     </SettingRow>
   );
 }
@@ -184,6 +194,7 @@ export function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
   // The select goes back to what is saved when a change is refused; the toast says why.
   const refused = { onError: (error: unknown) => toastError("Couldn’t save that choice", error) };
   const saved = update.isSuccess ? (update.variables && "claudeModel" in update.variables ? "model" : "effort") : null;
+  const notes = choiceNotes(settings);
 
   return (
     <>
@@ -211,8 +222,17 @@ export function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
         }
         value={settings.claudeEffort}
         options={effortOptions(settings)}
+        disabled={!effortApplies(settings)}
         onChange={(value) => update.mutate({ claudeEffort: choiceValue<ClaudeEffort>(value) }, refused)}
       />
+      {notes.length > 0 && (
+        // What the chosen model and effort come to, under the two rows, at the foot of the card.
+        <div className="flex flex-col gap-1 rounded-b-[11px] bg-surface-2/60 px-5 py-3 text-[12.5px] text-muted">
+          {notes.map((note) => (
+            <p key={note}>{note}</p>
+          ))}
+        </div>
+      )}
     </>
   );
 }

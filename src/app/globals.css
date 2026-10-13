@@ -301,6 +301,52 @@ body {
   }
 }
 
+/* The chat history's drawer on a phone or a narrow window (Drawer in src/components/chat/chat-screen.tsx):
+   it slides in from the left over a page that dims, and slides back out as the page brightens.
+   Closing keeps it on screen, in the top layer, until it has gone (`allow-discrete`); a browser
+   that can't do that closes it at once. */
+@layer components {
+  .drawer {
+    translate: -100% 0;
+    transition:
+      translate 180ms ease-in,
+      display 180ms allow-discrete,
+      overlay 180ms allow-discrete;
+  }
+
+  .drawer[open] {
+    translate: 0 0;
+    transition-duration: 225ms;
+    transition-timing-function: ease-out;
+  }
+
+  @starting-style {
+    .drawer[open] {
+      translate: -100% 0;
+    }
+  }
+
+  .drawer::backdrop {
+    background-color: transparent;
+    transition:
+      background-color 180ms ease-in,
+      display 180ms allow-discrete,
+      overlay 180ms allow-discrete;
+  }
+
+  .drawer[open]::backdrop {
+    background-color: color-mix(in srgb, var(--fg) 30%, transparent);
+    transition-duration: 225ms;
+    transition-timing-function: ease-out;
+  }
+
+  @starting-style {
+    .drawer[open]::backdrop {
+      background-color: transparent;
+    }
+  }
+}
+
 /* Quiet scrollbars inside panes */
 .scroll-pane {
   scrollbar-width: thin;
@@ -319,13 +365,6 @@ body {
 @keyframes sheet-up { from { transform: translateY(100%); } }
 @keyframes fade-in { from { opacity: 0; } }
 
-@media (prefers-reduced-motion: reduce) {
-  .dropdown-down,
-  .dropdown-up,
-  .sheet-up,
-  .sheet-backdrop { animation: none; }
-}
-
 /* Tex (2D) motion */
 .agent-breathe { animation: agent-breathe 3.4s ease-in-out infinite; }
 .agent-breathe-slow { animation: agent-breathe-slow 5s ease-in-out infinite; }
@@ -343,6 +382,9 @@ body {
 @keyframes agent-caret { 50% { opacity: 0; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Less motion: Tex keeps still, and the drawer appears and goes without sliding. The panels that
+   fold (the sidebar, the chat's columns, the rows of the chat history) carry
+   `motion-reduce:transition-none` themselves. */
 @media (prefers-reduced-motion: reduce) {
   .agent-breathe,
   .agent-breathe-slow,
@@ -351,4 +393,12 @@ body {
   .agent-caret,
   .agent-caret-fast,
   .brand-caret { animation: none; }
+
+  .drawer,
+  .drawer::backdrop { transition: none; }
+
+  .dropdown-down,
+  .dropdown-up,
+  .sheet-up,
+  .sheet-backdrop { animation: none; }
 }
