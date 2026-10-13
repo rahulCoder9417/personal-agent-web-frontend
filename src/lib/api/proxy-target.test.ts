@@ -19,6 +19,13 @@ describe("resolveUpstream", () => {
     expect(resolveUpstream(BASE, ["pr-reviews", "acme", ".."])).toBeNull();
   });
 
+  it("lets crew jobs and the GitHub repos to pick from through", () => {
+    expect(resolveUpstream(BASE, ["crew-jobs"], "?limit=20")?.toString()).toBe("http://localhost:8080/v1/crew-jobs?limit=20");
+    expect(resolveUpstream(BASE, ["crew-jobs", "crj_01jb2k"])?.toString()).toBe("http://localhost:8080/v1/crew-jobs/crj_01jb2k");
+    expect(resolveUpstream(BASE, ["github", "repos"])?.toString()).toBe("http://localhost:8080/v1/github/repos");
+    expect(resolveUpstream(BASE, ["crew-jobs", ".."])).toBeNull();
+  });
+
   it("lets the memory list and one memory through", () => {
     expect(resolveUpstream(BASE, ["memories"])?.toString()).toBe("http://localhost:8080/v1/memories");
     expect(resolveUpstream(BASE, ["memories", "mem_01jb2k"])?.toString()).toBe("http://localhost:8080/v1/memories/mem_01jb2k");
