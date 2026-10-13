@@ -587,7 +587,8 @@ export interface paths {
          *
          *     `claudeModel` and `claudeEffort` are the Claude model and the thinking effort Claude Code
          *     uses (null: Claude Code's own default). They apply to turns that run on Claude Code, and
-         *     can be set whatever the engine is now. `claudeChoices` lists what may be chosen.
+         *     can be set whatever the engine is now. `claudeChoices` lists what may be chosen: every
+         *     Claude model Claude Code can use, each with the effort levels it takes.
          */
         get: operations["getAgentSettings"];
         put?: never;
@@ -1863,15 +1864,41 @@ export interface components {
              * @enum {string|null}
              */
             claudeEffort: "low" | "medium" | "high" | "xhigh" | "max" | null;
-            /** @description What may be chosen for `claudeModel` and `claudeEffort`, in display order. */
+            /**
+             * @description What may be chosen for `claudeModel` and `claudeEffort`, in display order: the current
+             *     models first, then the older ones Claude still offers, newest first.
+             */
             claudeChoices: {
                 models: {
                     /** @example claude-opus-5-5 */
                     id: string;
                     /** @example Opus 5.5 */
                     label: string;
+                    /**
+                     * @description `current`: Claude's newest models. `older`: earlier models Claude still offers.
+                     * @enum {string}
+                     */
+                    group: "current" | "older";
+                    /**
+                     * @description The effort levels this model takes, lowest first. Empty: the model has no
+                     *     effort setting, so `claudeEffort` does not apply to it. A level the model
+                     *     does not take runs at the nearest lower level it does take.
+                     * @example [
+                     *       "low",
+                     *       "medium",
+                     *       "high",
+                     *       "max"
+                     *     ]
+                     */
+                    efforts: ("low" | "medium" | "high" | "xhigh" | "max")[];
+                    /**
+                     * @description A short word about the model worth showing next to it.
+                     * @example Pro: paid with usage credits. Max: up to half your weekly limit, then usage credits.
+                     */
+                    note?: string;
                 }[];
                 /**
+                 * @description Every effort level, lowest first.
                  * @example [
                  *       "low",
                  *       "medium",
