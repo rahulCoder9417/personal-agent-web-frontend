@@ -7,7 +7,9 @@ import { linkableChannels } from "@/lib/channels";
 import { allConversations, canWriteIn, conversationToOpen, newChatError, readOnlyNote, titleOf } from "@/lib/conversations";
 import { CHANNEL_LABEL, cn, listNames } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
-import { storedFlag, useStoredFlag } from "@/lib/stored-flag";
+import { PANEL_MOTION, useMotionReady, useStaysDrawn } from "@/lib/motion";
+import { focusAfterToggle, PANELS } from "@/lib/panels";
+import { useStoredFlag } from "@/lib/stored-flag";
 import { BrandIcon } from "../brand-icon";
 import { CloseIcon, NewChatIcon, PanelIcon } from "../icons";
 import { Page } from "../page";
@@ -15,11 +17,13 @@ import { toast } from "../toast";
 import { ErrorState, IconButton } from "../ui";
 import { Composer, type ComposerHandle } from "./composer";
 import { ConversationPanel } from "./conversation-panel";
-import { SidePanel } from "./side-panel";
+import { FoldingPane } from "./folding-pane";
+import { SidePanel, SidePanelReopen } from "./side-panel";
 import { Thread } from "./thread";
 
-/** Whether the person folded the list of chats away on a wide screen. This browser remembers it. */
-const chatsHidden = storedFlag("textcrew.chats.hidden");
+const CHATS_ID = "chat-history";
+const HIDE_CHATS_ID = "chats-hide";
+const SHOW_CHATS_ID = "chats-show";
 
 /** Shown in place of the composer when the backend has web chat switched off. */
 function WebChatOff({ elsewhere }: { elsewhere: string[] }) {
@@ -44,10 +48,12 @@ function ReadOnly({ channel }: { channel: ChannelType }) {
 /**
  * The list of chats on a phone or a narrow window: a drawer from the left, over the screen. A
  * native dialog, so the page behind it can't be reached, Escape and a tap beside it close it, and
- * the keyboard goes back to the button that opened it.
+ * the keyboard goes back to the button that opened it. It slides in over a dimmed page and slides
+ * back out as the page brightens (`.drawer` in globals.css); what is in it stays until it has gone.
  */
 function Drawer({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const drawn = useStaysDrawn(open);
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
@@ -64,9 +70,9 @@ function Drawer({ open, onClose, children }: { open: boolean; onClose: () => voi
         // A tap on the dimmed page lands on the dialog itself, not on anything in it.
         if (event.target === event.currentTarget) onClose();
       }}
-      className="fixed inset-y-0 right-auto left-0 m-0 h-dvh max-h-none w-[min(320px,86vw)] max-w-none border-0 bg-surface p-0 pb-[env(safe-area-inset-bottom,0px)] text-fg shadow-[var(--shadow-pop)] transition-transform duration-200 ease-out backdrop:bg-fg/30 motion-reduce:transition-none starting:open:-translate-x-full"
+      className="drawer fixed inset-y-0 right-auto left-0 z-50 m-0 h-dvh max-h-none w-[min(320px,86vw)] max-w-none border-0 bg-surface p-0 pb-[env(safe-area-inset-bottom,0px)] text-fg shadow-[var(--shadow-pop)]"
     >
-      {open && children}
+      {drawn && children}
     </dialog>
   );
 }
@@ -79,7 +85,8 @@ function Drawer({ open, onClose, children }: { open: boolean; onClose: () => voi
  * conversation, where a message from here is written. Each has its own context for Tex. A web
  * conversation can be written in (which makes it the active one); another chat app's is read here
  * and answered there. From 1024px the history is a column beside the thread that can be folded
- * away; below that it is a drawer opened from the header.
+ * away; below that it is a drawer opened from the header. The side panel on the right folds away
+ * too. Both slide rather than jump, and this browser remembers which are folded (`PANELS`).
  */
 export function ChatScreen() {
   const available = useAvailableChannels().data;
@@ -93,7 +100,9 @@ export function ChatScreen() {
   const writable = webChatOn && canWriteIn(opened);
 
   const wide = useMediaQuery(SHOWN_AT.conversations);
-  const hidden = useStoredFlag(chatsHidden);
+  const hidden = useStoredFlag(PANELS.chats);
+  const panelHidden = useStoredFlag(PANELS.sidePanel);
+  const motion = useMotionReady();
   const [drawer, setDrawer] = useState(false);
 
   const newChat = useNewChat();
@@ -123,27 +132,60 @@ export function ChatScreen() {
     <ConversationPanel openId={opened?.id ?? null} canStart={webChatOn} starting={newChat.isPending} onOpen={open} onNewChat={startNewChat} dismiss={dismiss} />
   );
   // On a wide screen the header's own buttons are needed only while the column is folded away.
-  const headerOnly = cn(!hidden && "lg:hidden");
+  // They fade and fold as the column comes and goes (in a wrapper, so the button keeps its own
+  // hover transition and its focus ring).
+  const headerOnly = cn("flex max-w-9 shrink-0", motion && cn("transition-[max-width,margin,opacity,visibility]", PANEL_MOTION), !hidden && "lg:invisible lg:max-w-0 lg:opacity-0");
 
   return (
     <>
       {/* The column keeps its place on a wide screen until the browser has said how wide it is. */}
-      {!hidden && (
-        <aside aria-label="Chat history" className="w-[264px] shrink-0 border-r border-line max-lg:hidden">
-          {wide &&
-            panel(
-              <IconButton label="Hide chats" onClick={() => chatsHidden.set(true)}>
-                <PanelIcon size={17} />
-              </IconButton>,
-            )}
-        </aside>
-      )}
+      <FoldingPane
+        id={CHATS_ID}
+        label="Chat history"
+        side="left"
+        width="w-[264px]"
+        open={!hidden}
+        motion={motion}
+        className="max-lg:hidden"
+        innerClassName="border-r border-line"
+      >
+        {wide &&
+          panel(
+            <IconButton
+              id={HIDE_CHATS_ID}
+              label="Hide chats"
+              aria-controls={CHATS_ID}
+              aria-expanded
+              onClick={(event) => {
+                PANELS.chats.set(true);
+                focusAfterToggle(event.currentTarget, SHOW_CHATS_ID);
+              }}
+            >
+              <PanelIcon size={17} />
+            </IconButton>,
+          )}
+      </FoldingPane>
 
       <Page className={cn("relative", dropping && "bg-accent-soft/40")}>
         <header className="flex shrink-0 items-center gap-1.5 px-2.5 pt-3 pb-2 md:min-h-[60px] md:px-5 md:pt-4">
-          <IconButton label="Show chats" onClick={() => (wide ? chatsHidden.set(false) : setDrawer(true))} className={cn("size-9", headerOnly)}>
-            <PanelIcon size={18} />
-          </IconButton>
+          {/* Folded away, it gives back the gap beside it too. */}
+          <span className={cn(headerOnly, !hidden && "lg:-mr-1.5")}>
+            <IconButton
+              id={SHOW_CHATS_ID}
+              label="Show chats"
+              aria-controls={wide ? CHATS_ID : undefined}
+              aria-haspopup={wide ? undefined : "dialog"}
+              aria-expanded={wide ? false : drawer}
+              onClick={(event) => {
+                if (!wide) return setDrawer(true);
+                PANELS.chats.set(false);
+                focusAfterToggle(event.currentTarget, HIDE_CHATS_ID);
+              }}
+              className="size-9"
+            >
+              <PanelIcon size={18} />
+            </IconButton>
+          </span>
           <h1 className="min-w-0 truncate px-1.5 text-[19px] leading-tight font-semibold tracking-[-0.02em]">{opened ? titleOf(opened) : "Chat"}</h1>
           {opened && opened.channel !== "web" && (
             <span className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md bg-surface-2 px-2 text-[12px] font-medium text-nav">
@@ -151,11 +193,16 @@ export function ChatScreen() {
               {CHANNEL_LABEL[opened.channel]}
             </span>
           )}
-          {webChatOn && (
-            <IconButton label="New chat" disabled={newChat.isPending} onClick={startNewChat} className={cn("ml-auto size-9", headerOnly)}>
-              <NewChatIcon size={18} />
-            </IconButton>
-          )}
+          <div className="ml-auto flex shrink-0 items-center">
+            {webChatOn && (
+              <span className={headerOnly}>
+                <IconButton label="New chat" disabled={newChat.isPending} onClick={startNewChat} className="size-9">
+                  <NewChatIcon size={18} />
+                </IconButton>
+              </span>
+            )}
+            <SidePanelReopen besideChats={!hidden} hidden={panelHidden} motion={motion} onShow={() => PANELS.sidePanel.set(false)} />
+          </div>
         </header>
 
         <div
@@ -200,7 +247,7 @@ export function ChatScreen() {
         </div>
       </Page>
 
-      <SidePanel besideChats={!hidden} />
+      <SidePanel besideChats={!hidden} hidden={panelHidden} motion={motion} onHide={() => PANELS.sidePanel.set(true)} />
 
       <Drawer open={drawer && !wide} onClose={() => setDrawer(false)}>
         {panel(

@@ -12,7 +12,7 @@ const base: AgentSettings = {
   ownKeyProviders: ["anthropic"],
   claudeModel: null,
   claudeEffort: null,
-  claudeChoices: { models: [{ id: "claude-opus-5-5", label: "Opus 5.5" }], efforts: ["low", "high"] },
+  claudeChoices: { models: [{ id: "claude-opus-5-5", label: "Opus 5.5", group: "current", efforts: ["low", "high"] }], efforts: ["low", "high"] },
 };
 
 const onTextcrewAi: AgentSettings = { ...base, aiAccess: "platform", ownKeyProviders: [] };

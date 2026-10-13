@@ -114,6 +114,18 @@ describe("Settings → Agent & AI", () => {
   });
 });
 
+describe("Settings → Agent & AI: the model's own rules", () => {
+  it("greys out the effort for a model that takes none, and says why at the foot of the card", async () => {
+    const html = draw(
+      await seededClient((s) => ({ ...s, claude: { connected: true, connectedAt: "2026-10-01T10:00:00Z" }, claudeModel: "claude-opus-4-5", claudeEffort: null })),
+      createElement(AgentSettingsPage),
+    );
+    const effortFor = html.match(/<label for="([^"]+)"[^>]*>Thinking effort<\/label>/)?.[1];
+    expect(html).toMatch(new RegExp(`<button id="${effortFor}" type="button" role="combobox"[^>]*disabled=""`));
+    expect(text(html)).toContain("Opus 4.5 has no thinking effort, so this setting doesn’t apply to it.");
+  });
+});
+
 describe("Settings → Memory", () => {
   it("lists the kinds one under another", async () => {
     const html = draw(await seededClient(), createElement(MemoryPage));

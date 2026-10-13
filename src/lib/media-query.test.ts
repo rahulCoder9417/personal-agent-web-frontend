@@ -87,14 +87,15 @@ describe("mediaQueryStore", () => {
   });
 
   it("is the opposite of the breakpoints that hide them in the markup", () => {
-    // Tailwind's md is 48rem; the sidebar is hidden below it and the side panel below 1100px.
+    // Tailwind's md is 48rem; the sidebar is hidden below it.
     expect(SHOWN_AT.sidebar).toBe("(min-width: 48rem)");
-    expect(source("components/shell/sidebar.tsx")).toMatch(/className="[^"]*\bmax-md:hidden\b/);
+    expect(source("components/shell/sidebar.tsx")).toMatch(/"[^"]*\bmax-md:hidden\b/);
+    // The side panel folds below 1100px, and its button in the chat's header shows from there.
     expect(SHOWN_AT.sidePanel).toBe("(min-width: 1100px)");
-    expect(source("components/chat/side-panel.tsx")).toMatch(/alone: "max-\[1100px\]:hidden"/);
+    expect(source("components/chat/side-panel.tsx")).toMatch(/alone: \{\s*panel: "max-\[1100px\]:invisible max-\[1100px\]:w-0",\s*inside: "max-\[1100px\]:opacity-0",\s*reopen: "min-\[1100px\]:/);
     // Beside the open list of conversations the side panel waits for more room.
     expect(SHOWN_AT.sidePanelBesideChats).toBe("(min-width: 1340px)");
-    expect(source("components/chat/side-panel.tsx")).toMatch(/besideChats: "max-\[1340px\]:hidden"/);
+    expect(source("components/chat/side-panel.tsx")).toMatch(/besideChats: \{\s*panel: "max-\[1340px\]:invisible max-\[1340px\]:w-0",\s*inside: "max-\[1340px\]:opacity-0",\s*reopen: "min-\[1340px\]:/);
     // Tailwind's lg is 64rem; below it the list of conversations is a drawer, not a column.
     expect(SHOWN_AT.conversations).toBe("(min-width: 64rem)");
     expect(source("components/chat/chat-screen.tsx")).toMatch(/className="[^"]*\bmax-lg:hidden\b/);
