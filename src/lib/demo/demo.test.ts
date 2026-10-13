@@ -24,7 +24,7 @@ import type {
 } from "@/lib/api/client";
 import { threadIsWorking } from "@/lib/chat-thread";
 import { hasMarkdown } from "@/lib/markdown";
-import { draftCuts } from "./handlers-chat";
+import { draftCuts, runDemoAutomation } from "./handlers-chat";
 import { handleDemoRequest, resetDemoStore } from "./index";
 import { getStore, subscribe } from "./store";
 
@@ -232,8 +232,9 @@ describe("chat", () => {
     const seeded = await newest();
     expect(seeded).toMatchObject({ id: "msg_w8", direction: "out", conversationId: "cnv_web_1" });
     expect(parts(seeded.text)).toEqual(all);
-    // Every other seeded message is plain text, shown as typed.
-    expect(getStore().messages.filter((message) => hasMarkdown(message.text)).map((message) => message.id)).toEqual(["msg_w8"]);
+    // Every other seeded message is plain text, shown as typed, but for the address at the end of a
+    // run's copy on Telegram, which is drawn as a link.
+    expect(getStore().messages.filter((message) => hasMarkdown(message.text)).map((message) => message.id)).toEqual(["msg_w8", "msg_review_copy"]);
 
     await call<Message>("POST", "messages", { text: "Fix the bug in the signup form", clientMessageId: uuid(24) });
     vi.advanceTimersByTime(5000);
@@ -337,7 +338,8 @@ describe("chat", () => {
     expect(started.body.chatStartedAt).toBe(new Date(NOW.getTime() + 60_000).toISOString());
     const active = getStore().conversations.filter((item) => item.channel === "web" && item.active);
     expect(active).toHaveLength(1);
-    expect(active[0]).toMatchObject({ epoch: 2, startedAt: started.body.chatStartedAt, title: "New chat" });
+    // Number 2 is the Automations chat's.
+    expect(active[0]).toMatchObject({ epoch: 3, startedAt: started.body.chatStartedAt, title: "New chat" });
 
     // Earlier messages are still there; every page and filter says when the new chat started.
     const after = await call<Thread>("GET", "messages");
@@ -361,7 +363,7 @@ describe("chat", () => {
       expect(limited.status).toBe(429);
       expect(limited.body.error.code).toBe("rate_limited");
     }
-    expect(getStore().conversations.filter((item) => item.channel === "web")).toHaveLength(32);
+    expect(getStore().conversations.filter((item) => item.channel === "web" && item.kind === "chat")).toHaveLength(32);
 
     vi.advanceTimersByTime(3_600_001);
     expect((await call("POST", "conversations")).status).toBe(201);
@@ -410,7 +412,7 @@ describe("conversations", () => {
   };
 
   it("lists the history newest first, with what each conversation is called and which one is written in", async () => {
-    const all = await list();
+    const all = await list("?kind=chat");
     expect(all.nextCursor).toBeNull();
     expect(all.items.map((item) => [item.id, item.channel, item.epoch, item.active])).toEqual([
       ["cnv_tg_1", "telegram", 1, true],
@@ -427,20 +429,71 @@ describe("conversations", () => {
     ]);
     for (const item of all.items) {
       expect(item.id.startsWith("cnv_")).toBe(true);
+      expect(item.kind).toBe("chat");
       expect(item.title.length).toBeLessThanOrEqual(61);
       expect(item.lastMessageAt).toBe((await thread(item.id))[0].createdAt);
     }
   });
 
+  it("keeps the Automations chat apart: its own kind, never active, listed alone with kind=automations", async () => {
+    const pinned = (await list("?kind=automations")).items;
+    expect(pinned.map((item) => [item.id, item.kind, item.channel, item.epoch, item.active, item.title])).toEqual([
+      ["cnv_automations", "automations", "web", 2, false, "Automations"],
+    ]);
+    // Every run is in it: the weekday meetings and the pull-request review's verdict.
+    expect((await thread("cnv_automations")).map((message) => message.id)).toEqual(["msg_review", "msg_run_2", "msg_run_1"]);
+    expect(pinned[0].lastMessageAt).toBe((await thread("cnv_automations"))[0].createdAt);
+    // Without `kind`, it is listed with the rest, in its place by time.
+    expect((await list()).items.map((item) => item.id)).toEqual(["cnv_tg_1", "cnv_web_1", "cnv_automations", "cnv_web_0", "cnv_tg_0"]);
+    expect((await call<ErrorBody>("GET", "conversations?kind=pinned")).status).toBe(400);
+  });
+
+  it("writes in the Automations chat without making it active, and keeps its name", async () => {
+    const sent = await call<Message>("POST", "messages", { text: "Which meeting can move?", clientMessageId: uuid(57), conversationId: "cnv_automations" });
+    expect(sent.status).toBe(202);
+    expect(sent.body.conversationId).toBe("cnv_automations");
+    vi.advanceTimersByTime(2000);
+    expect((await thread("cnv_automations"))[0]).toMatchObject({ direction: "out", conversationId: "cnv_automations" });
+    expect((await list("?channel=web")).items.filter((item) => item.active).map((item) => item.id)).toEqual(["cnv_web_1"]);
+    // A message without a conversation still goes to the active one.
+    expect((await call<Message>("POST", "messages", { text: "Thanks", clientMessageId: uuid(58) })).body.conversationId).toBe("cnv_web_1");
+
+    for (const body of [{ title: "Runs" }, { active: true }]) {
+      const refused = await call<ErrorBody>("PATCH", "conversations/cnv_automations", body);
+      expect(refused.status).toBe(409);
+    }
+    expect((await list("?kind=automations")).items[0]).toMatchObject({ title: "Automations", active: false });
+  });
+
+  it("a run answers in the Automations chat, and starts it again after it was deleted", async () => {
+    const seen = events();
+    expect((await call("DELETE", "conversations/cnv_automations")).status).toBe(204);
+    expect((await list("?kind=automations")).items).toEqual([]);
+    runDemoAutomation(getStore());
+    const [again] = (await list("?kind=automations")).items;
+    expect(again).toMatchObject({ kind: "automations", title: "Automations", active: false });
+    expect(again.id).not.toBe("cnv_automations");
+    expect((await thread(again.id)).map((message) => message.direction)).toEqual(["out"]);
+    expect((await list("?channel=web")).items.filter((item) => item.active).map((item) => item.id)).toEqual(["cnv_web_1"]);
+    expect(seen.map((event) => event.type)).toEqual([
+      "conversation.deleted",
+      "conversation.updated",
+      "message.created",
+      "conversation.updated",
+      "automation.updated",
+    ]);
+  });
+
   it("filters by chat app and pages with a cursor", async () => {
-    expect((await list("?channel=web")).items.map((item) => item.id)).toEqual(["cnv_web_1", "cnv_web_0"]);
+    expect((await list("?channel=web&kind=chat")).items.map((item) => item.id)).toEqual(["cnv_web_1", "cnv_web_0"]);
+    expect((await list("?channel=web")).items.map((item) => item.id)).toEqual(["cnv_web_1", "cnv_automations", "cnv_web_0"]);
     expect((await list("?channel=telegram")).items.map((item) => item.id)).toEqual(["cnv_tg_1", "cnv_tg_0"]);
     expect((await call<ErrorBody>("GET", "conversations?channel=fax")).status).toBe(400);
 
-    const first = await list("?limit=3");
+    const first = await list("?limit=3&kind=chat");
     expect(first.items).toHaveLength(3);
     expect(first.nextCursor).toBeTruthy();
-    const second = await list(`?limit=3&cursor=${encodeURIComponent(first.nextCursor ?? "")}`);
+    const second = await list(`?limit=3&kind=chat&cursor=${encodeURIComponent(first.nextCursor ?? "")}`);
     expect(second.items.map((item) => item.id)).toEqual(["cnv_tg_0"]);
     expect(second.nextCursor).toBeNull();
   });
@@ -463,7 +516,7 @@ describe("conversations", () => {
     vi.advanceTimersByTime(60_000);
     const started = await call<Conversation>("POST", "conversations");
     expect(started.status).toBe(201);
-    expect(started.body).toMatchObject({ channel: "web", epoch: 2, active: true, title: "New chat", startedAt: new Date(NOW.getTime() + 60_000).toISOString() });
+    expect(started.body).toMatchObject({ channel: "web", kind: "chat", epoch: 3, active: true, title: "New chat", startedAt: new Date(NOW.getTime() + 60_000).toISOString() });
     expect(started.body.id.startsWith("cnv_")).toBe(true);
     expect(await thread(started.body.id)).toEqual([]);
 
@@ -506,7 +559,7 @@ describe("conversations", () => {
     expect(sent.body.conversationId).toBe("cnv_web_0");
 
     vi.advanceTimersByTime(2000);
-    const all = (await list()).items;
+    const all = (await list("?kind=chat")).items;
     expect(all.map((item) => [item.id, item.active])).toEqual([["cnv_web_0", true], ["cnv_tg_1", true], ["cnv_web_1", false], ["cnv_tg_0", false]]);
     // Its own title stays, Tex answers there, and the conversation that was active got nothing.
     expect(all[0].title).toBe("Draft a short update for the team about Friday’s offsite");
@@ -545,7 +598,7 @@ describe("conversations", () => {
   it("makes an earlier web conversation the active one when asked, and refuses that for Telegram", async () => {
     const made = await call<Conversation>("PATCH", "conversations/cnv_web_0", { active: true });
     expect(made.body).toMatchObject({ id: "cnv_web_0", active: true });
-    expect((await list("?channel=web")).items.map((item) => [item.id, item.active])).toEqual([["cnv_web_1", false], ["cnv_web_0", true]]);
+    expect((await list("?channel=web&kind=chat")).items.map((item) => [item.id, item.active])).toEqual([["cnv_web_1", false], ["cnv_web_0", true]]);
     expect((await call<Thread>("GET", "messages?channel=web")).body.items[0].id).toBe("msg_w4");
 
     const refused = await call<ErrorBody>("PATCH", "conversations/cnv_tg_0", { active: true });
@@ -560,7 +613,7 @@ describe("conversations", () => {
     const deleted = await call("DELETE", "conversations/cnv_tg_1");
     expect(deleted.status).toBe(204);
 
-    expect((await list()).items.map((item) => item.id)).toEqual(["cnv_web_1", "cnv_web_0", "cnv_tg_0"]);
+    expect((await list("?kind=chat")).items.map((item) => item.id)).toEqual(["cnv_web_1", "cnv_web_0", "cnv_tg_0"]);
     expect((await call<Thread>("GET", "messages")).body.items).toHaveLength(before - 7);
     expect((await call<ErrorBody>("GET", "messages?conversationId=cnv_tg_1")).status).toBe(404);
     expect(seen.map((event) => [event.type, (event.data as Conversation).id])).toEqual([["conversation.deleted", "cnv_tg_1"]]);
@@ -591,13 +644,14 @@ describe("conversations", () => {
   it("makes the newest web conversation left the active one when the active one is deleted, or starts an empty one", async () => {
     const seen = events();
     await call("DELETE", "conversations/cnv_web_1");
-    expect((await list("?channel=web")).items.map((item) => [item.id, item.active])).toEqual([["cnv_web_0", true]]);
+    expect((await list("?channel=web&kind=chat")).items.map((item) => [item.id, item.active])).toEqual([["cnv_web_0", true]]);
     expect(seen.map((event) => [event.type, (event.data as Conversation).id])).toEqual([["conversation.deleted", "cnv_web_1"], ["conversation.updated", "cnv_web_0"]]);
 
     await call("DELETE", "conversations/cnv_web_0");
-    const left = (await list("?channel=web")).items;
+    const left = (await list("?channel=web&kind=chat")).items;
     expect(left).toHaveLength(1);
-    expect(left[0]).toMatchObject({ active: true, title: "New chat", epoch: 0 });
+    // A number never used before: the Automations chat holds number 2.
+    expect(left[0]).toMatchObject({ active: true, title: "New chat", epoch: 3 });
     expect(await thread(left[0].id)).toEqual([]);
     // Deleting one that isn't active leaves the active one alone.
     await call<Conversation>("POST", "conversations");

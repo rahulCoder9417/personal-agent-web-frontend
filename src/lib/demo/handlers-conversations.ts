@@ -1,13 +1,15 @@
 // Conversations for the demo account: the chat history. A conversation is one stretch of a chat
 // between two "New chat" actions, and Tex's context is separate for each.
 
-import type { ChannelType, Conversation, Message } from "@/lib/api/client";
+import type { ChannelType, Conversation, ConversationKind, Message } from "@/lib/api/client";
 import { CHANNEL_LABEL } from "@/lib/format";
+import { AUTOMATIONS_TITLE, isAutomationsChat } from "@/lib/conversations";
 import { conversationTitle, NEW_CHAT_TITLE, type Handler } from "./context";
 import { badRequest, conflict, json, noContent, notFound, oneOf, paginate, rateLimited, readJson, stringField } from "./http";
 import { emit, logActivity, nextId, type DemoState } from "./store";
 
 const CHANNELS: readonly ChannelType[] = ["whatsapp", "telegram", "imessage", "web"];
+const KINDS: readonly ConversationKind[] = ["chat", "automations"];
 const NEW_CHATS_PER_HOUR = 30;
 const HOUR_MS = 3_600_000;
 
@@ -22,6 +24,35 @@ export function activeWebConversation(state: DemoState): Conversation | undefine
   return state.conversations.find((conversation) => conversation.channel === "web" && conversation.active);
 }
 
+/** The next number in web chat: the Automations chat takes one too, so the agent keeps its context apart. */
+function nextWebEpoch(state: DemoState): number {
+  const epochs = state.conversations.filter((conversation) => conversation.channel === "web").map((conversation) => conversation.epoch);
+  return epochs.length ? Math.max(...epochs) + 1 : 0;
+}
+
+/**
+ * The Automations chat, where every run of every automation answers, started the first time it is
+ * needed (as the backend does it): beside the others, never the active one.
+ */
+export function automationsChat(state: DemoState): Conversation {
+  const found = state.conversations.find(isAutomationsChat);
+  if (found) return found;
+  const at = new Date().toISOString();
+  const conversation: Conversation = {
+    id: nextId(state, "cnv"),
+    channel: "web",
+    kind: "automations",
+    epoch: nextWebEpoch(state),
+    startedAt: at,
+    lastMessageAt: at,
+    title: AUTOMATIONS_TITLE,
+    active: false,
+  };
+  state.conversations.push(conversation);
+  emit(state, "conversation.updated", conversation);
+  return conversation;
+}
+
 /** The conversation a chat app writes in: its chat's latest one. */
 export function activeConversation(state: DemoState, channel: ChannelType): Conversation | undefined {
   return state.conversations.find((conversation) => conversation.channel === channel && conversation.active);
@@ -29,6 +60,8 @@ export function activeConversation(state: DemoState, channel: ChannelType): Conv
 
 /** Makes one web conversation the active one. Each conversation that changed is sent on the stream. */
 export function makeActive(state: DemoState, conversation: Conversation): void {
+  // The Automations chat is written in where it is: it never becomes the active one.
+  if (isAutomationsChat(conversation)) return;
   for (const other of state.conversations) {
     if (other.channel !== conversation.channel || other === conversation || !other.active) continue;
     other.active = false;
@@ -44,12 +77,12 @@ export function makeActive(state: DemoState, conversation: Conversation): void {
  * afresh in it; its memories stay. No turn runs and nothing is charged.
  */
 export function startWebConversation(state: DemoState): Conversation {
-  const epochs = state.conversations.filter((conversation) => conversation.channel === "web").map((conversation) => conversation.epoch);
   const at = new Date().toISOString();
   const conversation: Conversation = {
     id: nextId(state, "cnv"),
     channel: "web",
-    epoch: epochs.length ? Math.max(...epochs) + 1 : 0,
+    kind: "chat",
+    epoch: nextWebEpoch(state),
     startedAt: at,
     lastMessageAt: at,
     title: NEW_CHAT_TITLE,
@@ -78,7 +111,11 @@ export function messageSaved(state: DemoState, message: Message): void {
 export const listConversations: Handler = ({ state, url }) => {
   const raw = url.searchParams.get("channel");
   const channel = raw === null ? null : oneOf(raw, CHANNELS, "channel");
-  const items = state.conversations.filter((conversation) => !channel || conversation.channel === channel).sort(newestFirst);
+  const rawKind = url.searchParams.get("kind");
+  const kind = rawKind === null ? null : oneOf(rawKind, KINDS, "kind");
+  const items = state.conversations
+    .filter((conversation) => (!channel || conversation.channel === channel) && (!kind || (conversation.kind ?? "chat") === kind))
+    .sort(newestFirst);
   return json(paginate(items, url));
 };
 
@@ -112,6 +149,9 @@ export const updateConversation: Handler = async ({ state, request, params }) =>
   if (body.active === true && conversation.channel !== "web") {
     throw conflict(`A ${CHANNEL_LABEL[conversation.channel]} conversation can't be made active from the web`);
   }
+  if (isAutomationsChat(conversation)) {
+    throw conflict(title !== undefined ? "The Automations chat keeps its name" : "The Automations chat is never the active one. Write in it to continue there");
+  }
 
   const renamed = title !== undefined && title !== conversation.title;
   if (renamed) conversation.title = title;
@@ -143,7 +183,7 @@ export const deleteConversation: Handler = ({ state, params }) => {
 
   // Web chat always has a conversation to write in: the newest one left, or a new empty one.
   if (conversation.channel === "web" && conversation.active) {
-    const next = state.conversations.filter((other) => other.channel === "web").sort(newestFirst)[0];
+    const next = state.conversations.filter((other) => other.channel === "web" && !isAutomationsChat(other)).sort(newestFirst)[0];
     if (next) makeActive(state, next);
     else startWebConversation(state);
   }

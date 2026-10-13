@@ -18,7 +18,15 @@ import {
   stringField,
   type JsonObject,
 } from "./http";
-import { activeConversation, activeWebConversation, findConversation, makeActive, messageSaved, startWebConversation } from "./handlers-conversations";
+import {
+  activeConversation,
+  activeWebConversation,
+  automationsChat,
+  findConversation,
+  makeActive,
+  messageSaved,
+  startWebConversation,
+} from "./handlers-conversations";
 import { memoryRequestOf, rememberFact } from "./handlers-memory";
 import { BYTE_REPLY, SCOUT_REPLY } from "./replies";
 import type { SpecialistId } from "./seed";
@@ -254,6 +262,7 @@ function conversationToWriteIn(state: DemoState, conversationId: string | undefi
   const conversation = findConversation(state, conversationId);
   if (!conversation) throw notFound("That conversation doesn't exist");
   if (conversation.channel !== "web") throw conflict(`Reply on ${CHANNEL_LABEL[conversation.channel]} to continue this chat`);
+  // The Automations chat stays where it is (makeActive leaves it): never the active one.
   makeActive(state, conversation);
   return conversation;
 }
@@ -338,7 +347,30 @@ export const uploadAttachment: Handler = async ({ state, request }) => {
   return json(attachment, 201);
 };
 
-export const openStream: Handler = ({ request, state }) => streamResponse(request, state);
+/** How long after the app first connects the demo's weekday automation runs once more, so a run can be seen arriving. */
+export const DEMO_RUN_MS = 20_000;
+
+/**
+ * "Today's meetings" runs once more, as an automation does: its answer goes to the Automations
+ * chat (started again if it was deleted), never to the chat that is open.
+ */
+export function runDemoAutomation(state: DemoState): void {
+  const automation = state.automations.find((item) => item.id === "aut_meetings" && item.enabled);
+  if (!automation) return;
+  const chat = automationsChat(state);
+  postFromTex(state, chat.id, "A change to today’s meetings: “Roadmap sync” moved to tomorrow at 3pm, so you’re free from 2 until the dentist at 5:30.");
+  automation.lastRunAt = nowIso();
+  emit(state, "automation.updated", automation);
+}
+
+export const openStream: Handler = ({ request, state }) => {
+  // Once per demo account, a little after the app first connects.
+  if (!state.demoRunScheduled) {
+    state.demoRunScheduled = true;
+    schedule(state, DEMO_RUN_MS, () => runDemoAutomation(state));
+  }
+  return streamResponse(request, state);
+};
 
 // ---------------------------------------------------------------- approvals
 

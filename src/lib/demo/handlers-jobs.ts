@@ -208,6 +208,7 @@ function reportConversation(state: DemoState, job: DemoCrewJob): Conversation | 
   const own: Conversation = {
     id: nextId(state, "cnv"),
     channel: "web",
+    kind: "chat",
     epoch: epochs.length ? Math.max(...epochs) + 1 : 0,
     startedAt: at,
     lastMessageAt: at,

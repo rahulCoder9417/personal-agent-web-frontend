@@ -10,6 +10,8 @@ export type DemoState = DemoData & {
   seq: number;
   listeners: Set<Listener>;
   timers: Set<ReturnType<typeof setTimeout>>;
+  /** The one extra run of an automation the demo shows arriving has been set (`openStream`). */
+  demoRunScheduled: boolean;
 };
 
 // On globalThis so a hot reload of this module doesn't hand every request a fresh account.
@@ -18,7 +20,7 @@ type Holder = { [KEY]?: DemoState };
 const holder = globalThis as unknown as Holder;
 
 function createState(now: Date): DemoState {
-  return { ...createSeed(now), seq: 0, listeners: new Set(), timers: new Set() };
+  return { ...createSeed(now), seq: 0, listeners: new Set(), timers: new Set(), demoRunScheduled: false };
 }
 
 export function getStore(): DemoState {

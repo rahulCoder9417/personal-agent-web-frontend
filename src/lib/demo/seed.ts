@@ -26,6 +26,7 @@ import type {
   Subscription,
   TopUpPack,
 } from "@/lib/api/client";
+import { AUTOMATIONS_TITLE } from "@/lib/conversations";
 import { conversationTitle } from "./context";
 import { prFindingsReply } from "./replies";
 
@@ -627,10 +628,17 @@ function seedApprovals(now: Date): Approval[] {
   ];
 }
 
+/** How the backend's copy of a run's answer reads in the chat app the automation was made in. */
+export function runCopyText(title: string, icon: "⏰" | "⚡", text: string): string {
+  return `${icon} ${title}\n\n${text}\n\nTo follow up, open the Automations chat in the Textcrew web app: https://app.textcrew.in/?chat=automations`;
+}
+
 /**
- * The chats so far: two on Telegram and two in the web chat, the later of each the active one.
+ * The chats so far: two on Telegram and two in the web chat, the later of each the active one, and
+ * the Automations chat, where every run of every automation answers (pinned apart in the app).
  * All of Tex's replies are plain text but one, in the active web chat, which is written in Markdown.
  * Each conversation's title and `lastMessageAt` come from its messages, as the backend derives them.
+ * The pull-request review was turned on with Telegram linked, so its verdict also went there as a copy.
  */
 function seedChats(now: Date): { conversations: Conversation[]; messages: Message[] } {
   type Line = Omit<Message, "id" | "createdAt" | "conversationId" | "channel" | "approvalId"> & { approvalId?: string };
@@ -638,18 +646,19 @@ function seedChats(now: Date): { conversations: Conversation[]; messages: Messag
   const messages: Message[] = [];
 
   /** One conversation, oldest message first. `at` is when each message was said. */
-  const chat = (id: string, channel: ChannelType, epoch: number, active: boolean, lines: [id: string, at: string, line: Line][]) => {
+  const chat = (id: string, channel: ChannelType, epoch: number, active: boolean, lines: [id: string, at: string, line: Line][], kind: "chat" | "automations" = "chat") => {
     for (const [messageId, at, line] of lines) {
       messages.push({ id: messageId, conversationId: id, channel, createdAt: at, approvalId: null, ...line });
     }
     const firstIncoming = lines.find(([, , line]) => line.direction === "in");
     conversations.push({
-      id, channel, epoch, active,
+      id, channel, kind, epoch, active,
       startedAt: lines[0][1],
       lastMessageAt: lines[lines.length - 1][1],
-      title: conversationTitle(firstIncoming?.[2].text ?? ""),
+      title: kind === "automations" ? AUTOMATIONS_TITLE : conversationTitle(firstIncoming?.[2].text ?? ""),
     });
   };
+  const verdict = `Patch reviewed pull request #${REVIEWED.number} in ${REVIEWED.owner}/${REVIEWED.repo}. Two things to fix before you merge: the discount is applied twice when a coupon and a plan change land together, and the new webhook handler has no test. The details are on the pull request.`;
 
   chat("cnv_tg_0", "telegram", 0, false, [
     ["msg_t1", atDay(now, 6, 10, 5), { direction: "in", status: "read", text: "What’s on my calendar on Thursday?" }],
@@ -668,9 +677,10 @@ function seedChats(now: Date): { conversations: Conversation[]; messages: Messag
       attachments: [{ id: "att_voice_1", name: "voice-note.ogg", mimeType: "audio/ogg" }],
     }],
     ["msg_2", earlierToday(now, 207), { direction: "out", status: "delivered", text: "Filed. Tidy notes are on your “Acme kickoff” page in Notion." }],
-    ["msg_review", earlierToday(now, 92), {
+    // A copy of the verdict that is kept in the Automations chat (the review was turned on with Telegram linked).
+    ["msg_review_copy", earlierToday(now, 92), {
       direction: "out", status: "delivered",
-      text: `Patch reviewed pull request #${REVIEWED.number} in ${REVIEWED.owner}/${REVIEWED.repo}. Two things to fix before you merge: the discount is applied twice when a coupon and a plan change land together, and the new webhook handler has no test. The details are on the pull request.`,
+      text: runCopyText(`Review pull requests in ${REVIEWED.owner}/${REVIEWED.repo}`, "⚡", verdict),
     }],
     ["msg_3", earlierToday(now, 17), { direction: "in", status: "read", text: "Move my 3pm with Maya to tomorrow and let her know" }],
     ["msg_4", earlierToday(now, 16), { direction: "out", status: "delivered", text: "On it. Your 3pm is “Roadmap sync”. Moving it to tomorrow, same time." }],
@@ -685,6 +695,17 @@ function seedChats(now: Date): { conversations: Conversation[]; messages: Messag
     // An answer written in Markdown, as Tex writes for the web chat: a heading, a table, code, a list, a link.
     ["msg_w8", earlierToday(now, 40), { direction: "out", status: "sent", text: prFindingsReply(REVIEWED.number) }],
   ]);
+
+  // Every run answers here: the weekday meetings list, and the pull-request review's verdict.
+  const weekdays = [1, 2, 3, 4, 5];
+  const lastMeetings = nearestRun(now, 8, weekdays, -1);
+  const meetingsBefore = nearestRun(new Date(Date.parse(lastMeetings) - 60_000), 8, weekdays, -1);
+  const runs: [id: string, at: string, line: Line][] = [
+    ["msg_run_1", meetingsBefore, { direction: "out", status: "sent", text: "Today: “Design review” at 11 with Priya, and a 1:1 with Dev at 4. The rest of your afternoon is free." }],
+    ["msg_review", earlierToday(now, 92), { direction: "out", status: "sent", text: verdict }],
+    ["msg_run_2", lastMeetings, { direction: "out", status: "sent", text: "Today: “Roadmap sync” at 3pm with Maya and Dev, and the dentist at 5:30. Nothing before noon." }],
+  ];
+  chat("cnv_automations", "web", 2, false, runs.sort((a, b) => Date.parse(a[1]) - Date.parse(b[1])), "automations");
 
   // The API lists messages newest first. Two said in the same minute keep the order they were said in.
   messages.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
