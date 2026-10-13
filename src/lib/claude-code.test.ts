@@ -138,6 +138,21 @@ describe("choiceNotes", () => {
   });
 });
 
+describe("a backend from before model groups and levels", () => {
+  // Vercel can put the web app live before the server is updated: its models have only an id and a label.
+  const OLD = { models: [{ id: "claude-opus-5-5", label: "Opus 5.5" }], efforts: ALL } as unknown as Choices;
+
+  it("lists the models with no heading, offers every level and says nothing", () => {
+    expect(modelOptions(settings("claude-opus-5-5", "high", OLD))).toEqual([
+      { value: "", label: "Default" },
+      { value: "claude-opus-5-5", label: "Opus 5.5" },
+    ]);
+    expect(modelEfforts(settings("claude-opus-5-5", "high", OLD))).toEqual(ALL);
+    expect(effortApplies(settings("claude-opus-5-5", "high", OLD))).toBe(true);
+    expect(choiceNotes(settings("claude-opus-5-5", "high", OLD))).toEqual([]);
+  });
+});
+
 describe("choiceValue", () => {
   it("sends Default as null and anything else as it is", () => {
     expect(choiceValue("")).toBeNull();
