@@ -300,7 +300,7 @@ export function ChatScreen() {
             />
           )}
           <div className="shrink-0 px-3 pb-3 md:px-7 md:pb-3.5">
-            <div className="mx-auto max-w-[704px]">
+            <div className="mx-auto max-w-[888px]">
               {standIn ? (
                 <p role="note" className="flex items-center gap-2.5 rounded-2xl bg-surface-2 px-[18px] py-3.5 text-[13.5px] text-nav">
                   <AutomationsIcon size={16} className="shrink-0" />

@@ -52,8 +52,9 @@ export function DrawnText({ text, className }: { text: string; className?: strin
  * every reply was before replies were drawn as Markdown. One with Markdown is drawn from it; until
  * the renderer has arrived, it too reads as typed.
  *
- * A bubble is 560px wide at most, a comfortable line to read. A reply with a table or a block of
- * code may take the thread's whole width instead, so that less of it has to scroll sideways.
+ * A bubble is 560px wide, or 85% of the thread where the thread is wider than that leaves room
+ * for, up to 680px: a comfortable line to read. A narrower thread is filled. A reply with a table or
+ * a block of code may take the thread's whole width instead, so that less of it has to scroll sideways.
  */
 export function AgentBubble({ text, children, writing }: { text: string; children?: ReactNode; writing?: boolean }) {
   const drawn = hasMarkdown(text);
@@ -62,7 +63,7 @@ export function AgentBubble({ text, children, writing }: { text: string; childre
     <div
       aria-hidden={writing || undefined}
       className={cn(
-        "max-w-[min(560px,100%)] rounded-[18px] rounded-bl-[6px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.45] break-words",
+        "max-w-[min(100%,max(560px,min(680px,85%)))] rounded-[18px] rounded-bl-[6px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.45] break-words",
         drawn ? "has-[pre]:max-w-full has-[table]:max-w-full" : "whitespace-pre-wrap",
       )}
     >

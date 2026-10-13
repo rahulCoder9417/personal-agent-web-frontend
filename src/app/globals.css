@@ -130,6 +130,12 @@ body {
     white-space: normal;
   }
 
+  /* A reply with a table or a block of code may take the thread's whole width; its words keep the
+     line of a reply without one (a bubble of 680px, less its padding), so they stay easy to read. */
+  .markdown > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6, .footnotes) {
+    max-width: 648px;
+  }
+
   .markdown > * + * {
     margin-top: 1.45em;
   }
