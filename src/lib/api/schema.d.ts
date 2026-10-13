@@ -35,7 +35,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update profile settings */
+        /**
+         * Update profile settings
+         * @description A `timezone` (an IANA name such as `Asia/Kolkata`, 400 for an unknown one) also makes
+         *     `timezoneSet` true.
+         */
         patch: operations["updateMe"];
         trace?: never;
     };
@@ -1236,6 +1240,13 @@ export interface components {
             name: string;
             /** @example Asia/Kolkata */
             timezone: string;
+            /**
+             * @description False while the account still has the time zone it started with (`UTC`) and nobody has
+             *     set one. The web app then sets it once, from the browser's time zone. True once a
+             *     `PATCH /v1/me` with `timezone` was made (by the user, or by the web app that once), so
+             *     a time zone someone set is never replaced.
+             */
+            timezoneSet: boolean;
             plan: components["schemas"]["PlanId"];
             /** @enum {string} */
             role: "user" | "admin";

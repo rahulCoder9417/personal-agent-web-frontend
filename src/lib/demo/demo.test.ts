@@ -77,8 +77,10 @@ describe("account", () => {
   });
 
   it("updates the profile and rejects an unknown time zone", async () => {
+    // The demo account's zone was chosen already, so the app never sets it from the browser.
+    expect((await call<Me>("GET", "me")).body).toMatchObject({ timezone: "Asia/Kolkata", timezoneSet: true });
     const ok = await call<Me>("PATCH", "me", { name: "Aarav S", timezone: "Europe/London" });
-    expect(ok.body).toMatchObject({ name: "Aarav S", timezone: "Europe/London" });
+    expect(ok.body).toMatchObject({ name: "Aarav S", timezone: "Europe/London", timezoneSet: true });
     const bad = await call<ErrorBody>("PATCH", "me", { timezone: "Mars/Olympus" });
     expect(bad.status).toBe(400);
     expect(bad.body.error.code).toBe("invalid_request");
