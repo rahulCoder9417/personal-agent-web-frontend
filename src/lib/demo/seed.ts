@@ -693,7 +693,7 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
   return {
     user: {
       id: "user_demo", email: "aarav@northwind.studio", emailVerified: true, name: "Aarav Shah",
-      timezone: "Asia/Kolkata", plan, role: "user", createdAt: signedUp,
+      timezone: "Asia/Kolkata", timezoneSet: true, plan, role: "user", createdAt: signedUp,
     },
     availableChannels: ["telegram", "web"],
     channels: [{ id: "ch_telegram", channel: "telegram", displayId: "@aarav_s", linkedAt: iso(Date.parse(signedUp) + 5 * MINUTE) }],

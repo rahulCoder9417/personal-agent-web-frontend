@@ -45,7 +45,7 @@ export const updateMe: Handler = async ({ state, request }) => {
   if (name !== undefined && name.length === 0) throw badRequest("name can't be empty");
   if (timezone !== undefined && !isTimezone(timezone)) throw badRequest("timezone isn't a known time zone");
   if (name !== undefined) state.user.name = name;
-  if (timezone !== undefined) state.user.timezone = timezone;
+  if (timezone !== undefined) Object.assign(state.user, { timezone, timezoneSet: true });
   return json(me(state));
 };
 
