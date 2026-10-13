@@ -3,6 +3,7 @@ import { ApiError, type Conversation } from "./api/client";
 import {
   activeWebConversation,
   allConversations,
+  automationsChatIn,
   automationsChatSpoke,
   automationsUnread,
   canWriteIn,
@@ -17,6 +18,7 @@ import {
   placeConversation,
   readOnlyNote,
   seenToRemember,
+  serverHasAutomationsChat,
   titleOf,
   titleToSave,
   type ConversationList,
@@ -232,6 +234,20 @@ describe("the Automations chat", () => {
     expect(isAutomationsChat(conversation("a", "09:00", { kind: "chat" }))).toBe(false);
     expect(isAutomationsChat(conversation("a", "09:00"))).toBe(false);
     expect(isAutomationsChat(null)).toBe(false);
+  });
+
+  it("is found by its own kind, so an older backend that ignores the filter doesn't make an ordinary chat of it", () => {
+    expect(automationsChatIn([pinned("09:00")])?.id).toBe("auto");
+    expect(automationsChatIn([])).toBeNull();
+    // An older backend lists every conversation, newest first, and says no kind.
+    expect(automationsChatIn([conversation("a", "10:00", { active: true }), conversation("b", "09:00")])).toBeNull();
+    expect(automationsChatIn([conversation("a", "10:00", { kind: "chat" }), pinned("09:00")])?.id).toBe("auto");
+  });
+
+  it("is something the backend has when it says each conversation's kind", () => {
+    expect(serverHasAutomationsChat([conversation("a", "10:00", { kind: "chat" }), pinned("09:00")])).toBe(true);
+    expect(serverHasAutomationsChat([])).toBe(true);
+    expect(serverHasAutomationsChat([conversation("a", "10:00", { kind: "chat" }), conversation("b", "09:00")])).toBe(false);
   });
 
   it("is never the active web conversation, and never one of the dated list's rows", () => {
