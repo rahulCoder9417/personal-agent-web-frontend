@@ -151,6 +151,41 @@ describe("applyStreamEvent, for the chat", () => {
   });
 });
 
+describe("applyStreamEvent, for the Automations chat", () => {
+  const pinned = (rest: Partial<Conversation> = {}) => conversation("cnv_auto", "07:00", { kind: "automations", title: "Automations", ...rest });
+  const pinnedNow = (qc: QueryClient) => qc.getQueryData<Conversation | null>(qk.automationsChat);
+
+  it("keeps it pinned apart: a new run moves it on, never into the dated list, and never makes it active", () => {
+    const chat = chatCache();
+    chat.qc.setQueryData(qk.automationsChat, pinned());
+    chat.qc.setQueryData(qk.thread("cnv_auto"), { pages: [{ items: [], nextCursor: null }], pageParams: [undefined] });
+
+    chat.send("message.created", message("r1", "cnv_auto", "12:50", { direction: "out", text: "Your meetings today: …" }));
+    expect(chat.threadIds("cnv_auto")).toEqual(["r1"]);
+    expect(pinnedNow(chat.qc)).toMatchObject({ id: "cnv_auto", lastMessageAt: at("12:50"), active: false });
+    expect(chat.history().map((item) => item.id)).toEqual(["cnv_now", "cnv_old", "cnv_tg"]);
+    // The dated list was not asked for again: the conversation is known.
+    expect(chat.qc.getQueryState(qk.conversations)?.isInvalidated).toBe(false);
+
+    // The person writes in it: it is still not the active one, and the active web chat stays.
+    chat.send("message.created", message("r2", "cnv_auto", "12:55", { text: "Which can move?" }));
+    expect(pinnedNow(chat.qc)).toMatchObject({ lastMessageAt: at("12:55"), active: false });
+    expect(chat.history().map((item) => [item.id, item.active])).toEqual([["cnv_now", true], ["cnv_old", false], ["cnv_tg", true]]);
+  });
+
+  it("takes it from conversation.updated (started by a first run), and drops it on conversation.deleted", () => {
+    const chat = chatCache();
+    chat.qc.setQueryData(qk.automationsChat, null);
+    chat.send("conversation.updated", pinned({ lastMessageAt: at("12:58") }));
+    expect(pinnedNow(chat.qc)).toMatchObject({ id: "cnv_auto", kind: "automations" });
+    expect(chat.history().map((item) => item.id)).toEqual(["cnv_now", "cnv_old", "cnv_tg"]);
+
+    chat.send("conversation.deleted", pinned());
+    expect(pinnedNow(chat.qc)).toBeNull();
+    expect(chat.history().map((item) => item.id)).toEqual(["cnv_now", "cnv_old", "cnv_tg"]);
+  });
+});
+
 describe("applyStreamEvent, for the answer as it is written", () => {
   const draft = (text: string, rest: Partial<MessageDraft> = {}): MessageDraft => ({
     conversationId: "cnv_now",

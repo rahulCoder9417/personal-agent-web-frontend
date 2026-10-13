@@ -44,7 +44,7 @@ function OutOfCredits() {
  * `conversationId` is the web conversation that is open: the message is written in it, which makes
  * it the active one. Without it (nothing said in web chat yet) the backend picks the active one.
  */
-export function Composer({ ref, conversationId }: { ref?: Ref<ComposerHandle>; conversationId?: string }) {
+export function Composer({ ref, conversationId, placeholder = "Message Tex…" }: { ref?: Ref<ComposerHandle>; conversationId?: string; placeholder?: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const me = useMe();
@@ -163,7 +163,7 @@ export function Composer({ ref, conversationId }: { ref?: Ref<ComposerHandle>; c
             value={text}
             maxLength={MAX_LENGTH}
             aria-label="Message Tex"
-            placeholder="Message Tex…"
+            placeholder={placeholder}
             autoFocus
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {

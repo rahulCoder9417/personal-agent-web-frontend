@@ -31,10 +31,12 @@ import {
 } from "./client";
 import {
   allConversations,
+  automationsChatSpoke,
   conversationSpoke,
   conversationStartedBy,
   dropConversation,
   emptyActiveChat,
+  isAutomationsChat,
   placeConversation,
   type ConversationList,
 } from "../conversations";
@@ -45,6 +47,8 @@ export const qk = {
   me: ["me"] as const,
   channels: ["channels"] as const,
   conversations: ["conversations"] as const,
+  /** The Automations chat, pinned apart (under `conversations`, so refreshing the list refreshes it too). */
+  automationsChat: ["conversations", "automations"] as const,
   /** One conversation's messages. */
   thread: (conversationId: string) => ["messages", conversationId] as const,
   approvals: (status: ApprovalStatus = "pending") => ["approvals", status] as const,
@@ -117,24 +121,49 @@ export function useUnlinkChannel() {
 
 // ---------------------------------------------------------------- chat
 
-/** The chat history: every conversation, the one something was last said in first. */
+/**
+ * The chat history: every conversation, the one something was last said in first. The Automations
+ * chat is left out (`kind=chat`): it is pinned apart (`useAutomationsChat`). An older backend
+ * ignores `kind` and has no Automations chat.
+ */
 export function useConversations() {
   return useInfiniteQuery({
     queryKey: qk.conversations,
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => unwrap(api.GET("/v1/conversations", { params: { query: { limit: PAGE, cursor: pageParam } } })),
+    queryFn: async ({ pageParam }) => {
+      const page = await unwrap(api.GET("/v1/conversations", { params: { query: { limit: PAGE, cursor: pageParam, kind: "chat" } } }));
+      return { ...page, items: page.items.filter((item) => !isAutomationsChat(item)) };
+    },
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 }
 
-/** Puts a new or changed conversation where it belongs in the cached list. */
+/**
+ * The Automations chat, where every run of every automation answers, or null while there is none
+ * (no automation has been made or run yet, or it was deleted and nothing has run since).
+ */
+export function useAutomationsChat() {
+  return useQuery({
+    queryKey: qk.automationsChat,
+    queryFn: async (): Promise<Conversation | null> => {
+      const page = await unwrap(api.GET("/v1/conversations", { params: { query: { limit: 1, kind: "automations" } } }));
+      return page.items.find(isAutomationsChat) ?? null;
+    },
+  });
+}
+
+const automationsChatOf = (qc: QueryClient) => qc.getQueryData<Conversation | null>(qk.automationsChat) ?? null;
+
+/** Puts a new or changed conversation where it belongs: pinned (the Automations chat), or in the dated list. */
 export function upsertConversation(qc: QueryClient, conversation: Conversation) {
+  if (isAutomationsChat(conversation)) qc.setQueryData<Conversation | null>(qk.automationsChat, conversation);
   qc.setQueryData<ConversationList>(qk.conversations, (list) => (list ? placeConversation(list, conversation) : list));
 }
 
 /** A conversation was deleted: it leaves the list, and its messages leave the cache with it. */
 export function removeConversation(qc: QueryClient, conversationId: string) {
   qc.setQueryData<ConversationList>(qk.conversations, (list) => (list ? dropConversation(list, conversationId) : list));
+  if (automationsChatOf(qc)?.id === conversationId) qc.setQueryData<Conversation | null>(qk.automationsChat, null);
   qc.removeQueries({ queryKey: qk.thread(conversationId) });
 }
 
@@ -182,6 +211,12 @@ export function upsertMessage(qc: QueryClient, message: Message) {
  */
 export function addMessage(qc: QueryClient, message: Message) {
   upsertMessage(qc, message);
+  // In the Automations chat: it stays pinned, with its newest message later now.
+  const automations = automationsChatOf(qc);
+  if (automations?.id === message.conversationId) {
+    qc.setQueryData<Conversation | null>(qk.automationsChat, automationsChatSpoke(automations, message));
+    return;
+  }
   const list = qc.getQueryData<ConversationList>(qk.conversations);
   if (!list) return;
   const next = conversationSpoke(list, message);
@@ -257,6 +292,7 @@ export function useDeleteConversation() {
 /**
  * Sends a web message. With `conversationId` it is written in that web conversation, which becomes
  * the active one, and Tex carries on with that conversation's own context; without, in the active one.
+ * The Automations chat is written in where it is: it never becomes the active one.
  */
 export function useSendMessage() {
   const qc = useQueryClient();
@@ -274,7 +310,8 @@ export function useSendMessage() {
       ),
     onSuccess: (message) => {
       const list = qc.getQueryData<ConversationList>(qk.conversations);
-      if (list && !allConversations(list).some((item) => item.id === message.conversationId)) {
+      const inAutomations = automationsChatOf(qc)?.id === message.conversationId;
+      if (list && !inAutomations && !allConversations(list).some((item) => item.id === message.conversationId)) {
         // The first thing said in web chat started its conversation. It is shown at once, with
         // this message; the backend's own copy of both is asked for and replaces them.
         upsertConversation(qc, conversationStartedBy(message));

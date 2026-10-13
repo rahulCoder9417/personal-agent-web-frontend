@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiError, errorMessage, type Conversation } from "@/lib/api/client";
-import { useConversations, useDeleteConversation, useRenameConversation } from "@/lib/api/hooks";
-import { allConversations, lastSpokenAt, TITLE_MAX, titleOf, titleToSave } from "@/lib/conversations";
+import { useAutomationsChat, useConversations, useDeleteConversation, useRenameConversation } from "@/lib/api/hooks";
+import { allConversations, isAutomationsChat, lastSpokenAt, TITLE_MAX, titleOf, titleToSave } from "@/lib/conversations";
 import { CHANNEL_LABEL, cn, formatAgo } from "@/lib/format";
 import { useInView } from "@/lib/in-view";
 import { usePresence } from "@/lib/motion";
 import { BrandIcon } from "../brand-icon";
-import { MoreIcon, NewChatIcon, PencilIcon, TrashIcon } from "../icons";
+import { AutomationsIcon, MoreIcon, NewChatIcon, PencilIcon, TrashIcon } from "../icons";
 import { toast } from "../toast";
 import { Button, Spinner } from "../ui";
 
@@ -47,6 +47,8 @@ function RowMenu({
 }) {
   const [confirming, setConfirming] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
+  // The Automations chat keeps its name: it can only be deleted.
+  const pinned = isAutomationsChat(conversation);
 
   useEffect(() => {
     const first = menu.current?.querySelector<HTMLElement>("button");
@@ -92,8 +94,12 @@ function RowMenu({
     >
       {confirming ? (
         <div role="alertdialog" aria-label={`Delete ${titleOf(conversation)}?`} className="flex flex-col gap-2 p-2">
-          <p className="text-[13.5px] font-semibold">Delete this chat?</p>
-          <p className="text-[12.5px] text-muted">Its messages and files are deleted too. This can’t be undone.</p>
+          <p className="text-[13.5px] font-semibold">{pinned ? "Delete the Automations chat?" : "Delete this chat?"}</p>
+          <p className="text-[12.5px] text-muted">
+            {pinned
+              ? "Every run in it is deleted too. Your automations keep running, and the next run starts it again."
+              : "Its messages and files are deleted too. This can’t be undone."}
+          </p>
           <div className="flex justify-end gap-1.5 pt-0.5">
             <Button size="sm" variant="ghost" disabled={deleting} onClick={() => onClose(true)}>
               Cancel
@@ -105,10 +111,12 @@ function RowMenu({
         </div>
       ) : (
         <div role="menu" aria-label={`Options for ${titleOf(conversation)}`}>
-          <button type="button" role="menuitem" onClick={onRename} className={cn(item, "hover:bg-surface-2")}>
-            <PencilIcon size={15} className="text-muted" />
-            Rename
-          </button>
+          {!pinned && (
+            <button type="button" role="menuitem" onClick={onRename} className={cn(item, "hover:bg-surface-2")}>
+              <PencilIcon size={15} className="text-muted" />
+              Rename
+            </button>
+          )}
           <button type="button" role="menuitem" onClick={() => setConfirming(true)} className={cn(item, "text-danger hover:bg-danger-soft")}>
             <TrashIcon size={15} />
             Delete
@@ -275,6 +283,93 @@ function Row({
   );
 }
 
+/**
+ * The Automations chat, pinned above the dated list with its own icon: every run of every
+ * automation answers there. A dot says something new arrived in it since it was last open. Its menu
+ * only deletes it (it keeps its name).
+ */
+function AutomationsRow({
+  conversation,
+  open,
+  unread,
+  now,
+  menu,
+  deleting,
+  onOpen,
+  onMenu,
+  onDelete,
+}: {
+  conversation: Conversation;
+  open: boolean;
+  unread: boolean;
+  now: Date;
+  menu: MenuState | null;
+  deleting: boolean;
+  onOpen: () => void;
+  onMenu: (state: MenuState | null) => void;
+  onDelete: () => void;
+}) {
+  const toggle = useRef<HTMLButtonElement>(null);
+  const menuOpen = menu?.id === conversation.id;
+  const ran = conversation.lastMessageAt !== conversation.startedAt;
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        aria-current={open ? "true" : undefined}
+        aria-label={`${titleOf(conversation)}${unread ? ", new runs" : ""}`}
+        onClick={onOpen}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-[9px] py-[7px] pr-9 pl-2 text-left transition-colors",
+          open ? "bg-surface-2" : "hover:bg-surface-2/70",
+        )}
+      >
+        <span aria-hidden className="relative grid size-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+          <AutomationsIcon size={16} />
+          {unread && <span data-unread className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-accent ring-2 ring-surface" />}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col gap-px">
+          <span className={cn("w-full truncate text-[13.5px]", open || unread ? "font-semibold text-fg" : "font-medium text-fg-2")}>
+            {titleOf(conversation)}
+          </span>
+          <span className="w-full truncate text-[12px] text-muted tabular-nums">
+            {ran ? formatAgo(lastSpokenAt(conversation), now) : "No runs yet"}
+          </span>
+        </span>
+      </button>
+      <button
+        ref={toggle}
+        type="button"
+        data-menu-toggle
+        aria-label={`Options for ${titleOf(conversation)}`}
+        title="Delete"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={() => onMenu(menuOpen ? null : { id: conversation.id, up: false })}
+        className={cn(
+          "absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-lg text-muted transition-[opacity,background-color,color] hover:bg-line hover:text-fg",
+          !(menuOpen || open) && "group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0",
+        )}
+      >
+        <MoreIcon size={16} />
+      </button>
+      {menuOpen && (
+        <RowMenu
+          conversation={conversation}
+          up={false}
+          deleting={deleting}
+          onRename={() => {}}
+          onDelete={onDelete}
+          onClose={(refocus) => {
+            onMenu(null);
+            if (refocus) toggle.current?.focus();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function Loading() {
   return (
     <div aria-hidden className="flex flex-col gap-3 px-2.5 pt-2">
@@ -301,6 +396,7 @@ export function ConversationPanel({
   openId,
   canStart,
   starting,
+  automationsUnread = false,
   onOpen,
   onNewChat,
   dismiss,
@@ -309,12 +405,16 @@ export function ConversationPanel({
   /** Web chat is switched on, so a new chat can be started. */
   canStart: boolean;
   starting: boolean;
+  /** Something arrived in the Automations chat since it was last open. */
+  automationsUnread?: boolean;
   onOpen: (conversationId: string) => void;
   onNewChat: () => void;
   dismiss: ReactNode;
 }) {
   const list = useConversations();
-  const conversations = useMemo(() => allConversations(list.data), [list.data]);
+  const automations = useAutomationsChat().data ?? null;
+  // The dated list: the Automations chat is pinned above it instead.
+  const conversations = useMemo(() => allConversations(list.data).filter((conversation) => !isAutomationsChat(conversation)), [list.data]);
   // What has just gone stays a moment, to fold shut where it was.
   const rows = usePresence(conversations, conversationKey);
   const rename = useRenameConversation();
@@ -360,8 +460,23 @@ export function ConversationPanel({
           </Button>
         </div>
       )}
+      {automations && (
+        <div data-automations-chat className="shrink-0 border-b border-line px-1.5 pb-2">
+          <AutomationsRow
+            conversation={automations}
+            open={automations.id === openId}
+            unread={automationsUnread}
+            now={now}
+            menu={menu}
+            deleting={remove.isPending && remove.variables === automations.id}
+            onOpen={() => onOpen(automations.id)}
+            onMenu={setMenu}
+            onDelete={() => deleteIt(automations)}
+          />
+        </div>
+      )}
 
-      <nav aria-label="Chats" data-chats-pane className="scroll-pane min-h-0 flex-1 overflow-y-auto px-1.5 pb-3">
+      <nav aria-label="Chats" data-chats-pane className={cn("scroll-pane min-h-0 flex-1 overflow-y-auto px-1.5 pb-3", automations && "pt-2")}>
         {list.isPending && <Loading />}
         {list.isError && !list.data && (
           <div role="alert" className="flex flex-col items-start gap-2 px-2.5 pt-2 text-[13px] text-muted">
