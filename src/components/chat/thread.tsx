@@ -5,7 +5,7 @@ import type { Conversation, Message } from "@/lib/api/client";
 import { useAgentProgress, useAgentStatus, useThread } from "@/lib/api/hooks";
 import { useDraft } from "@/lib/api/stream";
 import { threadIsWorking } from "@/lib/chat-thread";
-import { readOnlyNote } from "@/lib/conversations";
+import { isAutomationsChat, readOnlyNote } from "@/lib/conversations";
 import type { ProgressLine } from "@/lib/crew";
 import { CHANNEL_LABEL, cn, formatDate, formatDay, formatTime } from "@/lib/format";
 import { useInView } from "@/lib/in-view";
@@ -162,6 +162,12 @@ function Writing({ text }: { text: string }) {
 function emptyWords(conversation: Conversation | null, hasHistory: boolean): { title: string; body: string } {
   if (conversation && conversation.channel !== "web") {
     return { title: "Nothing here yet", body: `${readOnlyNote(conversation.channel)}. What you say there shows up here.` };
+  }
+  if (isAutomationsChat(conversation)) {
+    return {
+      title: "No runs yet",
+      body: "When one of your automations runs, its result shows up here, not in your other chats. Write here to follow up: Tex has the runs in mind.",
+    };
   }
   if (hasHistory) {
     return { title: "A new chat", body: "Tex starts afresh here: it doesn’t see what was said in your other chats. What you’ve asked it to remember stays." };

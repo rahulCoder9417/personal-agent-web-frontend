@@ -10,6 +10,19 @@ export type ConversationList = { pages: ConversationPage[]; pageParams: unknown[
 
 /** What the backend calls a conversation nobody has said anything in yet. */
 export const NEW_CHAT_TITLE = "New chat";
+/** The Automations chat's name: the backend gives it, and it can't be changed. */
+export const AUTOMATIONS_TITLE = "Automations";
+/** The chat's address with the Automations chat open (the backend's Telegram copies link here too). */
+export const AUTOMATIONS_CHAT_HREF = "/?chat=automations";
+
+/**
+ * The Automations chat: where every run of every automation answers (timers, app events,
+ * pull-request review verdicts, and the notices about them). One per person, a web conversation
+ * that is never the active one. It is pinned above the dated list rather than mixed into it.
+ */
+export function isAutomationsChat(conversation: Pick<Conversation, "kind"> | null | undefined): boolean {
+  return conversation?.kind === "automations";
+}
 /** The longest name a conversation can be given (`PATCH /v1/conversations/{id}`). */
 export const TITLE_MAX = 80;
 
@@ -49,9 +62,9 @@ export function allConversations(list: ConversationList | undefined): Conversati
   return all;
 }
 
-/** The web conversation that web messages are saved in. */
+/** The web conversation that web messages are saved in. Never the Automations chat. */
 export function activeWebConversation(conversations: readonly Conversation[]): Conversation | undefined {
-  return conversations.find((conversation) => conversation.channel === "web" && conversation.active);
+  return conversations.find((conversation) => conversation.channel === "web" && conversation.active && !isAutomationsChat(conversation));
 }
 
 /**
@@ -123,6 +136,7 @@ export function conversationStartedBy(message: Pick<Message, "conversationId" | 
   return {
     id: message.conversationId,
     channel: message.channel,
+    kind: "chat",
     epoch: 0,
     startedAt: message.createdAt,
     lastMessageAt: message.createdAt,
@@ -143,6 +157,8 @@ export function conversationStartedBy(message: Pick<Message, "conversationId" | 
  */
 export function placeConversation(list: ConversationList, conversation: Conversation): ConversationList {
   if (list.pages.length === 0) return list;
+  // The Automations chat is pinned apart, never one of the dated list's rows.
+  if (isAutomationsChat(conversation)) return list.pages.some((page) => page.items.some((item) => item.id === conversation.id)) ? withoutIt(list, conversation.id) : list;
   const loaded = list.pages.flatMap((page) => page.items);
   const before = loaded.find((item) => item.id === conversation.id);
 
@@ -189,4 +205,40 @@ export function conversationSpoke(
   if (Date.parse(message.createdAt) <= time(conversation)) return list;
   const writtenIn = message.channel === "web" && message.direction === "in";
   return placeConversation(list, { ...conversation, lastMessageAt: message.createdAt, active: conversation.active || writtenIn });
+}
+
+// ---------------------------------------------------------------- the Automations chat
+
+/**
+ * The Automations chat after a message was saved in it: its newest message is now later. It
+ * stays where it is (pinned) and never becomes the active one, even when the person writes in it.
+ * Unchanged when the message isn't newer, or isn't its.
+ */
+export function automationsChatSpoke(chat: Conversation, message: Pick<Message, "conversationId" | "createdAt">): Conversation {
+  if (message.conversationId !== chat.id || Date.parse(message.createdAt) <= time(chat)) return chat;
+  return { ...chat, lastMessageAt: message.createdAt };
+}
+
+/** What this browser remembers of the Automations chat: which one, and up to when its runs were seen. */
+export type AutomationsSeen = { id: string; at: string };
+
+/**
+ * What is remembered once the Automations chat is known. Nothing remembered yet (the first time
+ * this browser sees one): everything in it counts as seen, so the mark isn't lit for runs from
+ * before. A different chat than the one remembered (the old one was deleted, and a run started
+ * this one): nothing in it was seen yet. Null: keep what is remembered.
+ */
+export function seenToRemember(chat: Conversation, seen: AutomationsSeen | null): AutomationsSeen | null {
+  if (seen === null) return { id: chat.id, at: lastSpokenAt(chat) };
+  if (seen.id !== chat.id) return { id: chat.id, at: chat.startedAt };
+  return null;
+}
+
+/**
+ * Whether the Automations chat shows its unread mark: something arrived in it after it was last
+ * seen, and it isn't the one open (while it is open, what arrives is being seen).
+ */
+export function automationsUnread(chat: Conversation | null, seen: AutomationsSeen | null, open: boolean): boolean {
+  if (!chat || open || seen === null || seen.id !== chat.id) return false;
+  return time(chat) > Date.parse(seen.at);
 }

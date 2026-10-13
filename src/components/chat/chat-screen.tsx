@@ -1,17 +1,19 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ChannelType } from "@/lib/api/client";
-import { useAvailableChannels, useConversations, useNewChat } from "@/lib/api/hooks";
+import { useAutomationsChat, useAvailableChannels, useConversations, useNewChat } from "@/lib/api/hooks";
+import { useAutomationsUnread } from "@/lib/automations-seen";
 import { linkableChannels } from "@/lib/channels";
-import { allConversations, canWriteIn, conversationToOpen, newChatError, readOnlyNote, titleOf } from "@/lib/conversations";
+import { allConversations, canWriteIn, conversationToOpen, isAutomationsChat, newChatError, readOnlyNote, titleOf } from "@/lib/conversations";
 import { CHANNEL_LABEL, cn, listNames } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { PANEL_MOTION, useMotionReady, useStaysDrawn } from "@/lib/motion";
 import { focusAfterToggle, PANELS } from "@/lib/panels";
 import { useStoredFlag } from "@/lib/stored-flag";
 import { BrandIcon } from "../brand-icon";
-import { CloseIcon, NewChatIcon, PanelIcon } from "../icons";
+import { AutomationsIcon, CloseIcon, NewChatIcon, PanelIcon } from "../icons";
 import { Page } from "../page";
 import { toast } from "../toast";
 import { ErrorState, IconButton } from "../ui";
@@ -43,6 +45,23 @@ function ReadOnly({ channel }: { channel: ChannelType }) {
       {readOnlyNote(channel)}.
     </p>
   );
+}
+
+/**
+ * `/?chat=automations` (the Automations screen's link, and the last line of a run's copy on
+ * Telegram) opens the Automations chat. Read once, then the address is tidied. Reading the address
+ * needs a Suspense boundary.
+ */
+function OpenFromLink({ onAutomations }: { onAutomations: () => void }) {
+  const params = useSearchParams();
+  const router = useRouter();
+  const wanted = params.get("chat") === "automations";
+  useEffect(() => {
+    if (!wanted) return;
+    onAutomations();
+    router.replace("/");
+  }, [wanted, onAutomations, router]);
+  return null;
 }
 
 /**
@@ -94,10 +113,23 @@ export function ChatScreen() {
   const webChatOn = available === undefined || available.includes("web");
 
   const list = useConversations();
-  const conversations = useMemo(() => allConversations(list.data), [list.data]);
+  const automations = useAutomationsChat();
+  const automationsChat = automations.data ?? null;
+  // The dated list, then the Automations chat (pinned apart in the history, but opened like any).
+  const conversations = useMemo(() => {
+    const dated = allConversations(list.data).filter((conversation) => !isAutomationsChat(conversation));
+    return automationsChat ? [...dated, automationsChat] : dated;
+  }, [list.data, automationsChat]);
   const [pickedId, setPickedId] = useState<string | null>(null);
-  const opened = conversationToOpen(conversations, pickedId, webChatOn);
+  // Asked for by the address (`?chat=automations`): the Automations chat, once it is known, until
+  // another conversation is picked.
+  const [wantAutomations, setWantAutomations] = useState(false);
+  const askForAutomations = useCallback(() => setWantAutomations(true), []);
+  const picked = pickedId ?? (wantAutomations ? (automationsChat?.id ?? null) : null);
+  const opened = conversationToOpen(conversations, picked, webChatOn);
   const writable = webChatOn && canWriteIn(opened);
+  const inAutomations = isAutomationsChat(opened);
+  const automationsUnread = useAutomationsUnread(automationsChat, inAutomations);
 
   const wide = useMediaQuery(SHOWN_AT.conversations);
   const hidden = useStoredFlag(PANELS.chats);
@@ -117,6 +149,7 @@ export function ChatScreen() {
 
   const open = (conversationId: string) => {
     setPickedId(conversationId);
+    setWantAutomations(false);
     setDrawer(false);
   };
   const startNewChat = () =>
@@ -129,7 +162,15 @@ export function ChatScreen() {
     });
 
   const panel = (dismiss: ReactNode) => (
-    <ConversationPanel openId={opened?.id ?? null} canStart={webChatOn} starting={newChat.isPending} onOpen={open} onNewChat={startNewChat} dismiss={dismiss} />
+    <ConversationPanel
+      openId={opened?.id ?? null}
+      canStart={webChatOn}
+      starting={newChat.isPending}
+      automationsUnread={automationsUnread}
+      onOpen={open}
+      onNewChat={startNewChat}
+      dismiss={dismiss}
+    />
   );
   // On a wide screen the header's own buttons are needed only while the column is folded away.
   // They fade and fold as the column comes and goes (in a wrapper, so the button keeps its own
@@ -172,7 +213,7 @@ export function ChatScreen() {
           <span className={cn(headerOnly, !hidden && "lg:-mr-1.5")}>
             <IconButton
               id={SHOW_CHATS_ID}
-              label="Show chats"
+              label={automationsUnread ? "Show chats (new automation runs)" : "Show chats"}
               aria-controls={wide ? CHATS_ID : undefined}
               aria-haspopup={wide ? undefined : "dialog"}
               aria-expanded={wide ? false : drawer}
@@ -181,11 +222,20 @@ export function ChatScreen() {
                 PANELS.chats.set(false);
                 focusAfterToggle(event.currentTarget, HIDE_CHATS_ID);
               }}
-              className="size-9"
+              className="relative size-9"
             >
               <PanelIcon size={18} />
+              {/* A run arrived in the Automations chat while the history is put away. */}
+              {automationsUnread && (
+                <span data-unread aria-hidden className="absolute top-1.5 right-1.5 size-2 rounded-full bg-accent ring-2 ring-surface" />
+              )}
             </IconButton>
           </span>
+          {inAutomations && (
+            <span aria-hidden className="ml-1 grid size-7 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+              <AutomationsIcon size={15} />
+            </span>
+          )}
           <h1 className="min-w-0 truncate px-1.5 text-[19px] leading-tight font-semibold tracking-[-0.02em]">{opened ? titleOf(opened) : "Chat"}</h1>
           {opened && opened.channel !== "web" && (
             <span className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md bg-surface-2 px-2 text-[12px] font-medium text-nav">
@@ -239,7 +289,7 @@ export function ChatScreen() {
               ) : (
                 // The composer reads ?draft= from the URL, which needs a Suspense boundary.
                 <Suspense fallback={<div className="h-[66px]" />}>
-                  <Composer ref={composer} conversationId={opened?.id} />
+                  <Composer ref={composer} conversationId={opened?.id} placeholder={inAutomations ? "Follow up on a run…" : undefined} />
                 </Suspense>
               )}
             </div>
@@ -248,6 +298,10 @@ export function ChatScreen() {
       </Page>
 
       <SidePanel besideChats={!hidden} hidden={panelHidden} motion={motion} onHide={() => PANELS.sidePanel.set(true)} />
+
+      <Suspense fallback={null}>
+        <OpenFromLink onAutomations={askForAutomations} />
+      </Suspense>
 
       <Drawer open={drawer && !wide} onClose={() => setDrawer(false)}>
         {panel(

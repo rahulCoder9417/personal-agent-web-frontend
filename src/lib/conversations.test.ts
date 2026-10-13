@@ -3,16 +3,20 @@ import { ApiError, type Conversation } from "./api/client";
 import {
   activeWebConversation,
   allConversations,
+  automationsChatSpoke,
+  automationsUnread,
   canWriteIn,
   conversationSpoke,
   conversationStartedBy,
   conversationToOpen,
   dropConversation,
   emptyActiveChat,
+  isAutomationsChat,
   lastSpokenAt,
   newChatError,
   placeConversation,
   readOnlyNote,
+  seenToRemember,
   titleOf,
   titleToSave,
   type ConversationList,
@@ -180,7 +184,7 @@ describe("the cached list", () => {
 
   it("stands in for the conversation a first message started until the backend describes it", () => {
     const started = conversationStartedBy({ conversationId: "cnv_first", channel: "web", createdAt: at("13:00") });
-    expect(started).toEqual({ id: "cnv_first", channel: "web", epoch: 0, startedAt: at("13:00"), lastMessageAt: at("13:00"), title: "New chat", active: true });
+    expect(started).toEqual({ id: "cnv_first", channel: "web", kind: "chat", epoch: 0, startedAt: at("13:00"), lastMessageAt: at("13:00"), title: "New chat", active: true });
     const next = placeConversation(listOf([[conversation("tg", "12:00", { channel: "telegram", active: true })]]), started);
     expect(conversationToOpen(allConversations(next), null, true)?.id).toBe("cnv_first");
   });
@@ -217,5 +221,55 @@ describe("a message saved in a conversation", () => {
 
   it("says so when the conversation isn't in the list, so it is asked for", () => {
     expect(conversationSpoke(list, message("unknown", "12:30"))).toBeNull();
+  });
+});
+
+describe("the Automations chat", () => {
+  const pinned = (last: string, rest: Partial<Conversation> = {}) => conversation("auto", last, { kind: "automations", title: "Automations", startedAt: at("07:00"), ...rest });
+
+  it("is known by its kind; an older backend's conversations have none and are chats", () => {
+    expect(isAutomationsChat(pinned("09:00"))).toBe(true);
+    expect(isAutomationsChat(conversation("a", "09:00", { kind: "chat" }))).toBe(false);
+    expect(isAutomationsChat(conversation("a", "09:00"))).toBe(false);
+    expect(isAutomationsChat(null)).toBe(false);
+  });
+
+  it("is never the active web conversation, and never one of the dated list's rows", () => {
+    const a = conversation("a", "10:00", { active: true });
+    // Even if something said it was active, the web chat writes in the real active one.
+    expect(activeWebConversation([pinned("11:00", { active: true }), a])?.id).toBe("a");
+    const list = placeConversation(listOf([[a]]), pinned("11:00"));
+    expect(allConversations(list).map((item) => item.id)).toEqual(["a"]);
+    // One that got into the list is taken out of it.
+    expect(allConversations(placeConversation(listOf([[pinned("09:00"), a]]), pinned("11:00"))).map((item) => item.id)).toEqual(["a"]);
+  });
+
+  it("moves on with each message saved in it, and stays not active when the person writes there", () => {
+    const chat = pinned("09:00");
+    const run = automationsChatSpoke(chat, { conversationId: "auto", createdAt: at("09:30") });
+    expect(run).toMatchObject({ lastMessageAt: at("09:30"), active: false });
+    expect(automationsChatSpoke(run, { conversationId: "auto", createdAt: at("09:10") })).toBe(run);
+    expect(automationsChatSpoke(run, { conversationId: "other", createdAt: at("10:00") })).toBe(run);
+  });
+
+  it("lights its mark when a run arrived after it was last seen, and not while it is open", () => {
+    const chat = pinned("09:00");
+    // The first time this browser meets it: what is in it counts as seen.
+    const first = seenToRemember(chat, null);
+    expect(first).toEqual({ id: "auto", at: at("09:00") });
+    expect(automationsUnread(chat, first, false)).toBe(false);
+    expect(seenToRemember(chat, first)).toBeNull();
+
+    const later = { ...chat, lastMessageAt: at("09:30") };
+    expect(automationsUnread(later, first, false)).toBe(true);
+    expect(automationsUnread(later, first, true)).toBe(false);
+    expect(automationsUnread(later, { id: "auto", at: at("09:30") }, false)).toBe(false);
+    expect(automationsUnread(null, first, false)).toBe(false);
+
+    // Deleted and started again by a run: a new chat, and its runs were not seen yet.
+    const again = pinned("12:00", { id: "auto2", startedAt: at("11:59") });
+    const remembered = seenToRemember(again, first);
+    expect(remembered).toEqual({ id: "auto2", at: at("11:59") });
+    expect(automationsUnread(again, remembered, false)).toBe(true);
   });
 });
