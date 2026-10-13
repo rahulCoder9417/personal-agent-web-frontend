@@ -6,6 +6,7 @@ import { useConversations, useDeleteConversation, useRenameConversation } from "
 import { allConversations, lastSpokenAt, TITLE_MAX, titleOf, titleToSave } from "@/lib/conversations";
 import { CHANNEL_LABEL, cn, formatAgo } from "@/lib/format";
 import { useInView } from "@/lib/in-view";
+import { usePresence } from "@/lib/motion";
 import { BrandIcon } from "../brand-icon";
 import { MoreIcon, NewChatIcon, PencilIcon, TrashIcon } from "../icons";
 import { toast } from "../toast";
@@ -22,6 +23,8 @@ function useNow(): Date {
 }
 
 type MenuState = { id: string; up: boolean };
+
+const conversationKey = (conversation: Conversation) => conversation.id;
 
 /**
  * What can be done with one conversation: rename it, or delete it after asking once more.
@@ -157,6 +160,8 @@ function RenameField({ conversation, onSave, onCancel }: { conversation: Convers
 
 function Row({
   conversation,
+  entering,
+  leaving,
   open,
   now,
   menu,
@@ -169,6 +174,10 @@ function Row({
   onDelete,
 }: {
   conversation: Conversation;
+  /** It has just been added: it fades and slides in. */
+  entering: boolean;
+  /** It has just gone (deleted here or elsewhere): it fades and folds shut, and can't be reached. */
+  leaving: boolean;
   open: boolean;
   now: Date;
   menu: MenuState | null;
@@ -183,9 +192,9 @@ function Row({
   const toggle = useRef<HTMLButtonElement>(null);
   const title = titleOf(conversation);
   const elsewhere = conversation.channel !== "web";
-  const menuOpen = menu?.id === conversation.id;
+  const menuOpen = !leaving && menu?.id === conversation.id;
 
-  if (renaming) {
+  if (renaming && !leaving) {
     return (
       <li>
         <RenameField conversation={conversation} onSave={onSaveName} onCancel={() => onRename(false)} />
@@ -194,50 +203,61 @@ function Row({
   }
 
   return (
-    <li className="group relative">
-      <button
-        type="button"
-        aria-current={open ? "true" : undefined}
-        onClick={onOpen}
-        className={cn(
-          "flex w-full flex-col gap-px rounded-[9px] py-[7px] pr-9 pl-2.5 text-left transition-colors",
-          open ? "bg-surface-2" : "hover:bg-surface-2/70",
-        )}
-      >
-        <span className={cn("w-full truncate text-[13.5px]", open ? "font-semibold text-fg" : "font-medium text-fg-2")}>{title}</span>
-        <span className="flex w-full items-center gap-1.5 text-[12px] text-muted tabular-nums">
-          {elsewhere && (
-            <>
-              <BrandIcon name={conversation.channel} size={11} />
-              <span>{CHANNEL_LABEL[conversation.channel]} ·</span>
-            </>
+    <li
+      inert={leaving}
+      aria-hidden={leaving || undefined}
+      className={cn(
+        // A row of one track that can close to nothing, so a row that goes folds shut and the rows below close up smoothly.
+        "group relative grid grid-cols-1 transition-[grid-template-rows,opacity,translate] duration-200 ease-out motion-reduce:transition-none",
+        leaving ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]",
+        entering && "starting:-translate-y-1.5 starting:opacity-0",
+      )}
+    >
+      <div className={cn("relative min-h-0", leaving && "overflow-hidden")}>
+        <button
+          type="button"
+          aria-current={open ? "true" : undefined}
+          onClick={onOpen}
+          className={cn(
+            "flex w-full flex-col gap-px rounded-[9px] py-[7px] pr-9 pl-2.5 text-left transition-colors",
+            open ? "bg-surface-2" : "hover:bg-surface-2/70",
           )}
-          <span className="truncate">{formatAgo(lastSpokenAt(conversation), now)}</span>
-        </span>
-      </button>
-      <button
-        ref={toggle}
-        type="button"
-        data-menu-toggle
-        aria-label={`Options for ${title}`}
-        title="Rename or delete"
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        onClick={(event) => {
-          if (menuOpen) return onMenu(null);
-          // Open upwards when the row is near the bottom of the list, where a menu below would be cut off.
-          const pane = event.currentTarget.closest("[data-chats-pane]");
-          const room = (pane?.getBoundingClientRect().bottom ?? window.innerHeight) - event.currentTarget.getBoundingClientRect().bottom;
-          onMenu({ id: conversation.id, up: room < 170 });
-        }}
-        className={cn(
-          "absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-lg text-muted transition-[opacity,background-color,color] hover:bg-line hover:text-fg",
-          // Always there on a touch screen and on the open row; elsewhere it shows with the pointer or the keyboard.
-          !(menuOpen || open) && "group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0",
-        )}
-      >
-        <MoreIcon size={16} />
-      </button>
+        >
+          <span className={cn("w-full truncate text-[13.5px]", open ? "font-semibold text-fg" : "font-medium text-fg-2")}>{title}</span>
+          <span className="flex w-full items-center gap-1.5 text-[12px] text-muted tabular-nums">
+            {elsewhere && (
+              <>
+                <BrandIcon name={conversation.channel} size={11} />
+                <span>{CHANNEL_LABEL[conversation.channel]} ·</span>
+              </>
+            )}
+            <span className="truncate">{formatAgo(lastSpokenAt(conversation), now)}</span>
+          </span>
+        </button>
+        <button
+          ref={toggle}
+          type="button"
+          data-menu-toggle
+          aria-label={`Options for ${title}`}
+          title="Rename or delete"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={(event) => {
+            if (menuOpen) return onMenu(null);
+            // Open upwards when the row is near the bottom of the list, where a menu below would be cut off.
+            const pane = event.currentTarget.closest("[data-chats-pane]");
+            const room = (pane?.getBoundingClientRect().bottom ?? window.innerHeight) - event.currentTarget.getBoundingClientRect().bottom;
+            onMenu({ id: conversation.id, up: room < 170 });
+          }}
+          className={cn(
+            "absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-lg text-muted transition-[opacity,background-color,color] hover:bg-line hover:text-fg",
+            // Always there on a touch screen and on the open row; elsewhere it shows with the pointer or the keyboard.
+            !(menuOpen || open) && "group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0",
+          )}
+        >
+          <MoreIcon size={16} />
+        </button>
+      </div>
       {menuOpen && (
         <RowMenu
           conversation={conversation}
@@ -295,6 +315,8 @@ export function ConversationPanel({
 }) {
   const list = useConversations();
   const conversations = useMemo(() => allConversations(list.data), [list.data]);
+  // What has just gone stays a moment, to fold shut where it was.
+  const rows = usePresence(conversations, conversationKey);
   const rename = useRenameConversation();
   const remove = useDeleteConversation();
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -354,10 +376,12 @@ export function ConversationPanel({
         )}
 
         <ul className="flex flex-col gap-px">
-          {conversations.map((conversation) => (
+          {rows.map(({ item: conversation, entering, leaving }) => (
             <Row
               key={conversation.id}
               conversation={conversation}
+              entering={entering}
+              leaving={leaving}
               open={conversation.id === openId}
               now={now}
               menu={menu}
