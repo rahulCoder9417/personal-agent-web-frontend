@@ -478,7 +478,9 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
           </div>
         ))}
 
-        {(turn || showWorking) && <TurnInProgress steps={turn?.steps ?? []} writing={writing} working={showWorking} lines={progress} />}
+        {(stepCount > 0 || writing !== null || showWorking) && (
+          <TurnInProgress steps={turn?.steps ?? []} writing={writing} working={showWorking} lines={progress} />
+        )}
       </div>
     </div>
   );
