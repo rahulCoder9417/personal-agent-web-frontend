@@ -198,5 +198,5 @@ export function useConnectDialog(options: { returnPath: (app: App) => string; ne
       onClose={() => setTarget(null)}
     />
   ) : null;
-  return { open: (app: App, purpose: ConnectPurpose = "connect") => setTarget({ app, purpose }), dialog, openFor: target?.app.slug ?? null };
+  return { open: (app: App, purpose: ConnectPurpose = "connect") => setTarget({ app, purpose }), dialog };
 }
