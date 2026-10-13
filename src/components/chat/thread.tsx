@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Conversation, Message } from "@/lib/api/client";
 import { useAgentProgress, useAgentStatus, useThread } from "@/lib/api/hooks";
-import { useDraft } from "@/lib/api/stream";
+import { updateDrafts, useDrafts } from "@/lib/api/stream";
 import { threadIsWorking } from "@/lib/chat-thread";
 import { isAutomationsChat, readOnlyNote } from "@/lib/conversations";
 import type { ProgressLine } from "@/lib/crew";
+import { answerInThread, type DraftStep, stepLine, stepsToShow, turnAnswered, turnOnScreen } from "@/lib/drafts";
 import { CHANNEL_LABEL, cn, formatDate, formatDay, formatTime } from "@/lib/format";
 import { useInView } from "@/lib/in-view";
 import { BrandIcon } from "../brand-icon";
@@ -51,7 +53,8 @@ function Attachments({ message, onDark }: { message: Message; onDark?: boolean }
   );
 }
 
-function MetaLine({ message, align }: { message: Message; align: "start" | "end" }) {
+/** A message's channel, time and status. `extra` goes at the end of the line (a reply's "Show steps"). */
+function MetaLine({ message, align, extra }: { message: Message; align: "start" | "end"; extra?: ReactNode }) {
   const status = message.direction === "in" ? STATUS_WORDS[message.status] : message.status === "failed" ? "not delivered" : undefined;
   return (
     <p className={cn("flex items-center gap-1.5 px-1 text-[12px] text-muted tabular-nums", align === "end" && "justify-end")}>
@@ -59,6 +62,7 @@ function MetaLine({ message, align }: { message: Message; align: "start" | "end"
       <span>
         {CHANNEL_LABEL[message.channel]} · {formatTime(message.createdAt)}
         {status && <span className={message.status === "failed" ? "text-danger" : undefined}> · {status}</span>}
+        {extra && <> · {extra}</>}
       </span>
     </p>
   );
@@ -72,7 +76,7 @@ function TexAvatar({ working }: { working?: boolean }) {
   );
 }
 
-function Bubble({ message }: { message: Message }) {
+function BubbleBody({ message, stepsToggle }: { message: Message; stepsToggle?: ReactNode }) {
   if (message.direction === "in") {
     return (
       <div className="flex flex-col items-end gap-[5px]">
@@ -97,10 +101,137 @@ function Bubble({ message }: { message: Message }) {
             <Attachments message={message} />
           </AgentBubble>
         )}
-        <MetaLine message={message} align="start" />
+        <MetaLine message={message} align="start" extra={stepsToggle} />
       </div>
     </div>
   );
+}
+
+/**
+ * The steps of a turn, as a trail of muted lines beside the bubble: each one what Tex wrote and then
+ * started over from (one line, cut short), with what it went on to do under it. The last
+ * `STEPS_SHOWN` are there; earlier ones fold into "+N earlier steps". While the turn is written
+ * (`live`) screen readers skip them, as they skip the draft.
+ */
+function StepTrail({ steps, live }: { steps: readonly DraftStep[]; live?: boolean }) {
+  const [all, setAll] = useState(false);
+  const { shown, earlier } = stepsToShow(steps, all);
+  return (
+    <div aria-hidden={live || undefined} className="ml-[42px] flex min-w-0 flex-col gap-1 border-l-2 border-line pb-2 pl-3 text-[13px] text-muted">
+      {earlier > 0 && (
+        <button
+          type="button"
+          tabIndex={live ? -1 : undefined}
+          onClick={() => setAll(true)}
+          className="self-start text-[12px] font-medium transition-colors hover:text-fg"
+        >
+          +{earlier} earlier {earlier === 1 ? "step" : "steps"}
+        </button>
+      )}
+      <ol className="flex min-w-0 flex-col gap-1">
+        {shown.map((step, index) => (
+          <li key={earlier + index} className="flex min-w-0 flex-col gap-0.5 transition-opacity duration-200 starting:opacity-0 motion-reduce:transition-none">
+            <span className="truncate">{stepLine(step.text)}</span>
+            {step.progress.map((line) => (
+              <span key={line.who} className="flex min-w-0 items-center gap-1.5 text-[12px]">
+                <AgentFigure who={line.who} mood="working" glyph size={14} label="" className="shrink-0" />
+                <span className="truncate">
+                  <span className="font-medium text-fg-2">{line.name}</span> · {line.text}
+                </span>
+              </span>
+            ))}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/** Answers whose steps have folded once (this session): drawn again, after another chat was open, they start folded. */
+const foldedOnce = new Set<string>();
+
+/**
+ * Whether an answer's steps are open. The answer took the place of what was being written, with the
+ * steps above it, so they start open and fold away at once, smoothly (`StepsRegion`).
+ */
+function useStepsOpen(messageId: string) {
+  const [fresh] = useState(() => !foldedOnce.has(messageId));
+  const [open, setOpen] = useState(fresh);
+  useEffect(() => {
+    if (!fresh) return;
+    foldedOnce.add(messageId);
+    // Two frames, so the steps are drawn open once before they fold.
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setOpen(false));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [fresh, messageId]);
+  return [open, setOpen] as const;
+}
+
+/** The steps of an answer: a region that folds shut to nothing and opens again. */
+function StepsRegion({ id, open, children }: { id: string; open: boolean; children: ReactNode }) {
+  return (
+    <div
+      id={id}
+      inert={!open}
+      className={cn(
+        "grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none",
+        open ? "grid-rows-[1fr]" : "grid-rows-[0fr] opacity-0",
+      )}
+    >
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * A message with the steps of the turn before it folded into it: "Show steps (N)" opens them again.
+ * On Tex's answer the button is on its line of channel and time, so the answer sits exactly where its
+ * draft was; on anything else (the next message, when a turn ended without an answer) it is a line of its own.
+ */
+function BubbleWithSteps({ message, steps }: { message: Message; steps: readonly DraftStep[] }) {
+  const id = useId();
+  const [open, setOpen] = useStepsOpen(message.id);
+  const toggle = (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={id}
+      onClick={() => setOpen((was) => !was)}
+      className="font-medium text-muted underline-offset-2 transition-colors hover:text-fg hover:underline"
+    >
+      {open ? "Hide steps" : `Show steps (${steps.length})`}
+    </button>
+  );
+  const region = (
+    <StepsRegion id={id} open={open}>
+      <StepTrail steps={steps} />
+    </StepsRegion>
+  );
+  if (message.direction === "out") {
+    return (
+      <div className="flex flex-col">
+        {region}
+        <BubbleBody message={message} stepsToggle={toggle} />
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col">
+      <p className="ml-[42px] pb-1.5 text-[12px]">{toggle}</p>
+      {region}
+      <BubbleBody message={message} />
+    </div>
+  );
+}
+
+function Bubble({ message, steps }: { message: Message; steps?: readonly DraftStep[] }) {
+  return steps?.length ? <BubbleWithSteps message={message} steps={steps} /> : <BubbleBody message={message} />;
 }
 
 function DayDivider({ iso }: { iso: string }) {
@@ -140,8 +271,8 @@ function Working({ lines }: { lines: ProgressLine[] }) {
 /**
  * Tex's answer as it is written (`message.draft`), in place of the "working" bubble: drawn the way
  * the answer will be, Markdown included (half-written Markdown reads well enough until the answer
- * takes its place). Screen readers hear once that Tex is writing, not every few words; the answer is
- * read out when it arrives.
+ * takes its place, in the same place and at the same width). Screen readers hear once that Tex is
+ * writing, not every few words; the answer is read out when it arrives.
  */
 function Writing({ text }: { text: string }) {
   return (
@@ -154,6 +285,21 @@ function Writing({ text }: { text: string }) {
           Tex is writing…
         </p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The turn being written in this conversation: its steps, then the text being written or, between
+ * two runs of text, the "working" bubble. With steps on screen, a progress line shows under the
+ * step it follows, so the bubble just says that Tex is at work. After a turn that ended without its
+ * answer, only the steps are left, until the next message.
+ */
+function TurnInProgress({ steps, writing, working, lines }: { steps: readonly DraftStep[]; writing: string | null; working: boolean; lines: ProgressLine[] }) {
+  return (
+    <div className="flex flex-col">
+      {steps.length > 0 && <StepTrail steps={steps} live />}
+      {writing !== null ? <Writing text={writing} /> : working && <Working lines={steps.length > 0 ? [] : lines} />}
     </div>
   );
 }
@@ -185,12 +331,11 @@ function emptyWords(conversation: Conversation | null, hasHistory: boolean): { t
  * newest message.
  */
 export function Thread({ conversation, loading, hasHistory }: { conversation: Conversation | null; loading: boolean; hasHistory: boolean }) {
+  const qc = useQueryClient();
   const query = useThread(conversation?.id ?? null);
   const busy = useAgentStatus().data?.state === "busy";
   const progress = useAgentProgress().data;
-  // What Tex is writing in this conversation right now, if anything.
-  const draft = useDraft(conversation?.id ?? null);
-  const writing = draft !== null;
+  const drafts = useDrafts();
   const scroller = useRef<HTMLDivElement>(null);
   const older = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -211,9 +356,25 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
   // Only a turn in this conversation shows here, not one in another chat.
   const working = threadIsWorking(busy, newestFirst);
 
+  // What Tex is writing in this conversation right now, and the steps before it.
+  const onScreen = turnOnScreen(drafts, conversation?.id ?? null);
+  // The turn's answer may be in the thread already without its event (it came with the thread asked
+  // for again after the stream was down): the steps fold into it, as they would have.
+  const answeredBy = onScreen ? answerInThread(newestFirst, onScreen.turn) : null;
+  const conversationId = conversation?.id ?? null;
+  useEffect(() => {
+    if (conversationId && answeredBy) updateDrafts(qc, (all) => turnAnswered(all, conversationId, answeredBy));
+  }, [qc, conversationId, answeredBy]);
+  const turn = answeredBy ? null : onScreen;
+  const stepsOf = (messageId: string) => drafts.folded[messageId] ?? (messageId === answeredBy ? onScreen?.steps : undefined);
+  const writing = turn?.writing ?? null;
+  const stepCount = turn?.steps.length ?? 0;
+  // A turn with no incoming message of its own here (an automation's run) is at work while it runs.
+  const showWorking = writing === null && ((working && count > 0) || (turn?.live === true && busy && stepCount > 0));
+
   const waiting = loading || (conversation !== null && query.isPending);
   const failed = conversation !== null && query.isError && !query.data;
-  const empty = !waiting && !failed && count === 0 && !writing;
+  const empty = !waiting && !failed && count === 0 && !turn;
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -225,7 +386,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
     } else if (stick.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [count, newestId, working, writing]);
+  }, [count, newestId, showWorking, writing, stepCount]);
 
   // Content can grow after it first renders (an approval card loading, a font swapping in).
   // While following, stay pinned to the newest message through that too.
@@ -285,11 +446,11 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
         {messages.map(({ message, startsDay }) => (
           <div key={message.id} className="flex flex-col gap-[13px]">
             {startsDay && <DayDivider iso={message.createdAt} />}
-            <Bubble message={message} />
+            <Bubble message={message} steps={stepsOf(message.id)} />
           </div>
         ))}
 
-        {draft ? <Writing text={draft.text} /> : working && count > 0 && <Working lines={progress} />}
+        {(turn || showWorking) && <TurnInProgress steps={turn?.steps ?? []} writing={writing} working={showWorking} lines={progress} />}
       </div>
     </div>
   );
