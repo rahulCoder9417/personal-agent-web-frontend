@@ -11,6 +11,7 @@ import {
   describeCronInWords,
   describeTrigger,
   describeZone,
+  nextRunLine,
   templateHref,
   templatesToOffer,
 } from "./automations";
@@ -171,6 +172,30 @@ describe("describeAutomationRuns", () => {
   it("says a one-time automation is done once it has run", () => {
     const done: Automation = { ...base, kind: "once", runAt: "2026-09-30T10:00:00", lastRunAt: "2026-09-30T10:00:00", nextRunAt: null };
     expect(describeAutomationRuns(done, NOW).next).toBe("Done: it ran its one time");
+  });
+});
+
+describe("nextRunLine", () => {
+  const at = (iso: string, title: string, rest: Partial<Automation> = {}): Automation => ({ ...repeat("0 8 * * 1-5"), id: title, title, nextRunAt: iso, ...rest });
+
+  it("names the automation that runs next and when", () => {
+    const meetings = at("2026-10-02T08:00:00", "Today’s meetings");
+    const invoice = at("2026-10-01T16:00:00", "Chase the invoice", { kind: "once", runAt: "2026-10-01T16:00:00" });
+    const later = at("2026-10-08T09:00:00", "Weekly review");
+    expect(nextRunLine([meetings, later, invoice], NOW)).toBe(`Next: Chase the invoice, today at ${formatTime("2026-10-01T16:00:00")}`);
+    expect(nextRunLine([meetings, later], NOW)).toBe(`Next: Today’s meetings, tomorrow at ${formatTime("2026-10-02T08:00:00")}`);
+    expect(nextRunLine([later], NOW)).toBe(`Next: Weekly review, on Thu 8 Oct at ${formatTime("2026-10-08T09:00:00")}`);
+    // A paused one doesn't run; one whose time has passed is next only when nothing is still to come.
+    expect(nextRunLine([{ ...invoice, enabled: false }, meetings], NOW)).toMatch(/^Next: Today’s meetings/);
+    expect(nextRunLine([at("2026-10-01T09:00:00", "Missed")], NOW)).toMatch(/^Next: Missed, today at/);
+  });
+
+  it("says when one that waits for something happening runs, and when all are paused", () => {
+    expect(nextRunLine([event("gmail", "GMAIL_NEW_GMAIL_MESSAGE")], NOW)).toMatch(/^Next: t, when a new email arrives in Gmail/);
+    const review: Automation = { ...event("github", "GITHUB_PULL_REQUEST_EVENT"), title: "Review pull requests in acme/web", preset: "pr_review" };
+    expect(nextRunLine([review], NOW)).toBe("Next: Review pull requests in acme/web, when a pull request opens or gets new commits");
+    expect(nextRunLine([{ ...review, enabled: false }], NOW)).toBe("Your automation is paused: nothing runs until you resume it.");
+    expect(nextRunLine([{ ...review, enabled: false }, { ...base, enabled: false }], NOW)).toBe("Your automations are paused: nothing runs until you resume one.");
   });
 });
 

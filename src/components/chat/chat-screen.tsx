@@ -3,10 +3,10 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ChannelType } from "@/lib/api/client";
-import { useAutomationsChat, useAvailableChannels, useConversations, useNewChat } from "@/lib/api/hooks";
+import { useAvailableChannels, useConversations, useNewChat, usePinnedAutomations } from "@/lib/api/hooks";
 import { useAutomationsUnread } from "@/lib/automations-seen";
 import { linkableChannels } from "@/lib/channels";
-import { allConversations, canWriteIn, conversationToOpen, isAutomationsChat, newChatError, readOnlyNote, titleOf } from "@/lib/conversations";
+import { allConversations, AUTOMATIONS_TITLE, canWriteIn, conversationToOpen, isAutomationsChat, newChatError, readOnlyNote, titleOf } from "@/lib/conversations";
 import { CHANNEL_LABEL, cn, listNames } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { PANEL_MOTION, useMotionReady, useStaysDrawn } from "@/lib/motion";
@@ -21,7 +21,7 @@ import { Composer, type ComposerHandle } from "./composer";
 import { ConversationPanel } from "./conversation-panel";
 import { FoldingPane } from "./folding-pane";
 import { SidePanel, SidePanelReopen } from "./side-panel";
-import { Thread } from "./thread";
+import { AutomationsWaiting, Thread } from "./thread";
 
 const CHATS_ID = "chat-history";
 const HIDE_CHATS_ID = "chats-hide";
@@ -113,22 +113,25 @@ export function ChatScreen() {
   const webChatOn = available === undefined || available.includes("web");
 
   const list = useConversations();
-  const automations = useAutomationsChat();
-  const automationsChat = automations.data ?? null;
+  // Asked for (its pinned row, or the address `?chat=automations`): the Automations chat, once it is
+  // known, until another conversation is picked.
+  const [wantAutomations, setWantAutomations] = useState(false);
+  const pinned = usePinnedAutomations(wantAutomations);
+  const automationsChat = pinned.chat;
   // The dated list, then the Automations chat (pinned apart in the history, but opened like any).
   const conversations = useMemo(() => {
     const dated = allConversations(list.data).filter((conversation) => !isAutomationsChat(conversation));
     return automationsChat ? [...dated, automationsChat] : dated;
   }, [list.data, automationsChat]);
   const [pickedId, setPickedId] = useState<string | null>(null);
-  // Asked for by the address (`?chat=automations`): the Automations chat, once it is known, until
-  // another conversation is picked.
-  const [wantAutomations, setWantAutomations] = useState(false);
-  const askForAutomations = useCallback(() => setWantAutomations(true), []);
   const picked = pickedId ?? (wantAutomations ? (automationsChat?.id ?? null) : null);
-  const opened = conversationToOpen(conversations, picked, webChatOn);
-  const writable = webChatOn && canWriteIn(opened);
-  const inAutomations = isAutomationsChat(opened);
+  // Asked for before the backend has started it: its stand-in, which says what will come. Once
+  // the backend starts it (a run, or a new automation), the real one opens in its place.
+  const standIn = wantAutomations && automationsChat === null ? pinned.waiting : null;
+  const lookingForIt = wantAutomations && automationsChat === null && pinned.pending;
+  const opened = standIn || lookingForIt ? null : conversationToOpen(conversations, picked, webChatOn);
+  const writable = webChatOn && canWriteIn(opened) && !standIn;
+  const inAutomations = standIn !== null || isAutomationsChat(opened);
   const automationsUnread = useAutomationsUnread(automationsChat, inAutomations);
 
   const wide = useMediaQuery(SHOWN_AT.conversations);
@@ -152,6 +155,11 @@ export function ChatScreen() {
     setWantAutomations(false);
     setDrawer(false);
   };
+  const openAutomations = useCallback(() => {
+    setPickedId(null);
+    setWantAutomations(true);
+    setDrawer(false);
+  }, [setDrawer]);
   const startNewChat = () =>
     newChat.mutate(undefined, {
       onSuccess: (conversation) => {
@@ -166,8 +174,10 @@ export function ChatScreen() {
       openId={opened?.id ?? null}
       canStart={webChatOn}
       starting={newChat.isPending}
+      automationsOpen={inAutomations}
       automationsUnread={automationsUnread}
       onOpen={open}
+      onOpenAutomations={openAutomations}
       onNewChat={startNewChat}
       dismiss={dismiss}
     />
@@ -236,7 +246,9 @@ export function ChatScreen() {
               <AutomationsIcon size={15} />
             </span>
           )}
-          <h1 className="min-w-0 truncate px-1.5 text-[19px] leading-tight font-semibold tracking-[-0.02em]">{opened ? titleOf(opened) : "Chat"}</h1>
+          <h1 className="min-w-0 truncate px-1.5 text-[19px] leading-tight font-semibold tracking-[-0.02em]">
+            {opened ? titleOf(opened) : standIn ? AUTOMATIONS_TITLE : "Chat"}
+          </h1>
           {opened && opened.channel !== "web" && (
             <span className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md bg-surface-2 px-2 text-[12px] font-medium text-nav">
               <BrandIcon name={opened.channel} size={12} />
@@ -276,13 +288,25 @@ export function ChatScreen() {
             <div className="scroll-pane flex min-h-0 flex-1 overflow-y-auto">
               <ErrorState error={list.error} onRetry={() => list.refetch()} className="m-auto w-full" />
             </div>
+          ) : standIn ? (
+            <AutomationsWaiting automations={standIn} />
           ) : (
             // Its own Thread for each conversation, so each opens at its newest message.
-            <Thread key={opened?.id ?? "none"} conversation={opened} loading={list.isPending} hasHistory={conversations.length > (opened ? 1 : 0)} />
+            <Thread
+              key={opened?.id ?? "none"}
+              conversation={opened}
+              loading={list.isPending || lookingForIt}
+              hasHistory={conversations.length > (opened ? 1 : 0)}
+            />
           )}
           <div className="shrink-0 px-3 pb-3 md:px-7 md:pb-3.5">
             <div className="mx-auto max-w-[704px]">
-              {opened && !canWriteIn(opened) ? (
+              {standIn ? (
+                <p role="note" className="flex items-center gap-2.5 rounded-2xl bg-surface-2 px-[18px] py-3.5 text-[13.5px] text-nav">
+                  <AutomationsIcon size={16} className="shrink-0" />
+                  You can follow up here once the first run has arrived.
+                </p>
+              ) : opened && !canWriteIn(opened) ? (
                 <ReadOnly channel={opened.channel} />
               ) : !webChatOn ? (
                 <WebChatOff elsewhere={linkableChannels(available ?? []).map((item) => CHANNEL_LABEL[item])} />
@@ -300,7 +324,7 @@ export function ChatScreen() {
       <SidePanel besideChats={!hidden} hidden={panelHidden} motion={motion} onHide={() => PANELS.sidePanel.set(true)} />
 
       <Suspense fallback={null}>
-        <OpenFromLink onAutomations={askForAutomations} />
+        <OpenFromLink onAutomations={openAutomations} />
       </Suspense>
 
       <Drawer open={drawer && !wide} onClose={() => setDrawer(false)}>

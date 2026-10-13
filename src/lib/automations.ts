@@ -222,6 +222,13 @@ export function describeTrigger(trigger: Automation["trigger"]): string {
   return known ? `When ${known[1]} in ${name}` : `When ${name} reports “${humanizeEvent(core)}”`;
 }
 
+/** "today at 10:00 AM", "tomorrow at 8:00 AM", "on Thu 15 Oct at 9:00 AM": a moment, to go mid-sentence. */
+function dayAndTime(iso: string, now: Date): string {
+  const day = formatDay(iso, now);
+  const on = /^(Today|Tomorrow|Yesterday)$/.test(day) ? day.toLowerCase() : `on ${day}`;
+  return `${on} at ${formatTime(iso)}`;
+}
+
 /**
  * When an automation runs, as a sentence someone would say: "Every Monday at 9:00 AM, your time",
  * "Once, tomorrow at 10:00 AM", "When a new email arrives in Gmail". `accountZone` is the
@@ -231,12 +238,7 @@ export function describeAutomationWhen(automation: Automation, accountZone?: str
   // The trigger's own name (GITHUB_PULL_REQUEST_EVENT) says less than this does.
   if (automation.preset === "pr_review") return "When a pull request opens or gets new commits";
 
-  if (automation.kind === "once") {
-    if (!automation.runAt) return "Once";
-    const day = formatDay(automation.runAt, now);
-    const on = /^(Today|Tomorrow|Yesterday)$/.test(day) ? day.toLowerCase() : `on ${day}`;
-    return `Once, ${on} at ${formatTime(automation.runAt)}`;
-  }
+  if (automation.kind === "once") return automation.runAt ? `Once, ${dayAndTime(automation.runAt, now)}` : "Once";
 
   if (automation.kind === "repeat") {
     if (!automation.cron) return "On a schedule";
@@ -279,6 +281,27 @@ export function describeAutomationRuns(automation: Automation, now = new Date())
   else next = "Not scheduled yet";
 
   return { next, last };
+}
+
+/**
+ * What runs next among the person's automations, in one line for the Automations chat before
+ * anything has run there: "Next: Today’s meetings, tomorrow at 8:00 AM". With nothing on a clock,
+ * the next is one that waits for something to happen ("Next: Review pull requests in acme/web, when
+ * a pull request opens or gets new commits"). Paused ones don't run, so they aren't next.
+ */
+export function nextRunLine(automations: readonly Automation[], now = new Date()): string {
+  const running = automations.filter((automation) => automation.enabled);
+  const timed = running
+    .filter((automation) => automation.nextRunAt && automation.preset !== "pr_review")
+    .sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!));
+  const upcoming = timed.find((automation) => Date.parse(automation.nextRunAt!) >= now.getTime()) ?? timed[0];
+  if (upcoming) return `Next: ${upcoming.title}, ${dayAndTime(upcoming.nextRunAt!, now)}`;
+  const waiting = running.find((automation) => automation.kind === "event") ?? running[0];
+  if (waiting) {
+    const when = describeAutomationWhen(waiting, null, now);
+    return `Next: ${waiting.title}, ${when.charAt(0).toLowerCase()}${when.slice(1)}`;
+  }
+  return automations.length === 1 ? "Your automation is paused: nothing runs until you resume it." : "Your automations are paused: nothing runs until you resume one.";
 }
 
 /** What an automation costs, in a few words for its row. The rates are in `AUTOMATION_CREDITS`. */

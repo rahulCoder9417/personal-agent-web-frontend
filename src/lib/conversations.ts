@@ -23,6 +23,23 @@ export const AUTOMATIONS_CHAT_HREF = "/?chat=automations";
 export function isAutomationsChat(conversation: Pick<Conversation, "kind"> | null | undefined): boolean {
   return conversation?.kind === "automations";
 }
+/**
+ * The Automations chat in a page of `GET /v1/conversations?kind=automations`. Each item's own `kind`
+ * is checked: an older backend ignores the filter and lists every conversation, and its newest
+ * ordinary chat must not be taken for the Automations chat.
+ */
+export function automationsChatIn(items: readonly Conversation[]): Conversation | null {
+  return items.find(isAutomationsChat) ?? null;
+}
+
+/**
+ * Whether this backend has the Automations chat at all: one that does says the `kind` of every
+ * conversation; an older one leaves it out. With nothing listed yet, it is taken to have it.
+ */
+export function serverHasAutomationsChat(conversations: readonly Pick<Conversation, "kind">[]): boolean {
+  return conversations.every((conversation) => conversation.kind !== undefined);
+}
+
 /** The longest name a conversation can be given (`PATCH /v1/conversations/{id}`). */
 export const TITLE_MAX = 80;
 

@@ -2,9 +2,10 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Conversation, Message } from "@/lib/api/client";
+import type { Automation, Conversation, Message } from "@/lib/api/client";
 import { useAgentProgress, useAgentStatus, useThread } from "@/lib/api/hooks";
 import { updateDrafts, useDrafts } from "@/lib/api/stream";
+import { nextRunLine } from "@/lib/automations";
 import { threadIsWorking } from "@/lib/chat-thread";
 import { isAutomationsChat, readOnlyNote } from "@/lib/conversations";
 import type { ProgressLine } from "@/lib/crew";
@@ -14,7 +15,7 @@ import { useInView } from "@/lib/in-view";
 import { BrandIcon } from "../brand-icon";
 import { FileIcon } from "../icons";
 import { AgentFigure } from "../tex";
-import { Button, EmptyState, ErrorState, Spinner } from "../ui";
+import { Button, ButtonLink, EmptyState, ErrorState, Spinner } from "../ui";
 import { AgentBubble } from "./agent-bubble";
 import { ApprovalCard } from "./approval-card";
 
@@ -300,6 +301,33 @@ function TurnInProgress({ steps, writing, working, lines }: { steps: readonly Dr
     <div className="flex flex-col">
       {steps.length > 0 && <StepTrail steps={steps} live />}
       {writing !== null ? <Writing text={writing} /> : working && <Working lines={steps.length > 0 ? [] : lines} />}
+    </div>
+  );
+}
+
+/**
+ * The Automations chat before the backend has started it (the person's automations were all made
+ * before it existed, and none has run since): a calm word on what will come here, the next run, and
+ * the way to the automations. Nothing can be written here yet.
+ */
+export function AutomationsWaiting({ automations }: { automations: readonly Automation[] }) {
+  return (
+    <div className="scroll-pane flex min-h-0 flex-1 overflow-y-auto">
+      <EmptyState
+        mood="ready"
+        title="No runs yet"
+        className="m-auto w-full border-0"
+        action={
+          <ButtonLink href="/automations" size="sm">
+            See your automations
+          </ButtonLink>
+        }
+      >
+        <p>Runs of your automations will appear here, not in your other chats.</p>
+        <p data-next-run className="mt-1.5 font-medium text-fg-2">
+          {nextRunLine(automations)}
+        </p>
+      </EmptyState>
     </div>
   );
 }

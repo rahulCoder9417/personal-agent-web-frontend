@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiError, errorMessage, type Conversation } from "@/lib/api/client";
-import { useAutomationsChat, useConversations, useDeleteConversation, useRenameConversation } from "@/lib/api/hooks";
-import { allConversations, isAutomationsChat, lastSpokenAt, TITLE_MAX, titleOf, titleToSave } from "@/lib/conversations";
+import { useConversations, useDeleteConversation, usePinnedAutomations, useRenameConversation } from "@/lib/api/hooks";
+import { allConversations, AUTOMATIONS_TITLE, isAutomationsChat, lastSpokenAt, TITLE_MAX, titleOf, titleToSave } from "@/lib/conversations";
 import { CHANNEL_LABEL, cn, formatAgo } from "@/lib/format";
 import { useInView } from "@/lib/in-view";
 import { usePresence } from "@/lib/motion";
@@ -286,7 +286,8 @@ function Row({
 /**
  * The Automations chat, pinned above the dated list with its own icon: every run of every
  * automation answers there. A dot says something new arrived in it since it was last open. Its menu
- * only deletes it (it keeps its name).
+ * only deletes it (it keeps its name). With no `conversation`, it is the stand-in for one the backend
+ * hasn't started yet: the same row, with nothing to delete.
  */
 function AutomationsRow({
   conversation,
@@ -299,7 +300,7 @@ function AutomationsRow({
   onMenu,
   onDelete,
 }: {
-  conversation: Conversation;
+  conversation: Conversation | null;
   open: boolean;
   unread: boolean;
   now: Date;
@@ -310,14 +311,15 @@ function AutomationsRow({
   onDelete: () => void;
 }) {
   const toggle = useRef<HTMLButtonElement>(null);
-  const menuOpen = menu?.id === conversation.id;
-  const ran = conversation.lastMessageAt !== conversation.startedAt;
+  const menuOpen = conversation !== null && menu?.id === conversation.id;
+  const ran = conversation !== null && conversation.lastMessageAt !== conversation.startedAt;
+  const title = conversation ? titleOf(conversation) : AUTOMATIONS_TITLE;
   return (
     <div className="group relative">
       <button
         type="button"
         aria-current={open ? "true" : undefined}
-        aria-label={`${titleOf(conversation)}${unread ? ", new runs" : ""}`}
+        aria-label={`${title}${unread ? ", new runs" : ""}`}
         onClick={onOpen}
         className={cn(
           "flex w-full items-center gap-2.5 rounded-[9px] py-[7px] pr-9 pl-2 text-left transition-colors",
@@ -329,42 +331,44 @@ function AutomationsRow({
           {unread && <span data-unread className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-accent ring-2 ring-surface" />}
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-px">
-          <span className={cn("w-full truncate text-[13.5px]", open || unread ? "font-semibold text-fg" : "font-medium text-fg-2")}>
-            {titleOf(conversation)}
-          </span>
+          <span className={cn("w-full truncate text-[13.5px]", open || unread ? "font-semibold text-fg" : "font-medium text-fg-2")}>{title}</span>
           <span className="w-full truncate text-[12px] text-muted tabular-nums">
-            {ran ? formatAgo(lastSpokenAt(conversation), now) : "No runs yet"}
+            {conversation && ran ? formatAgo(lastSpokenAt(conversation), now) : "No runs yet"}
           </span>
         </span>
       </button>
-      <button
-        ref={toggle}
-        type="button"
-        data-menu-toggle
-        aria-label={`Options for ${titleOf(conversation)}`}
-        title="Delete"
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        onClick={() => onMenu(menuOpen ? null : { id: conversation.id, up: false })}
-        className={cn(
-          "absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-lg text-muted transition-[opacity,background-color,color] hover:bg-line hover:text-fg",
-          !(menuOpen || open) && "group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0",
-        )}
-      >
-        <MoreIcon size={16} />
-      </button>
-      {menuOpen && (
-        <RowMenu
-          conversation={conversation}
-          up={false}
-          deleting={deleting}
-          onRename={() => {}}
-          onDelete={onDelete}
-          onClose={(refocus) => {
-            onMenu(null);
-            if (refocus) toggle.current?.focus();
-          }}
-        />
+      {conversation && (
+        <>
+          <button
+            ref={toggle}
+            type="button"
+            data-menu-toggle
+            aria-label={`Options for ${title}`}
+            title="Delete"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => onMenu(menuOpen ? null : { id: conversation.id, up: false })}
+            className={cn(
+              "absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-lg text-muted transition-[opacity,background-color,color] hover:bg-line hover:text-fg",
+              !(menuOpen || open) && "group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0",
+            )}
+          >
+            <MoreIcon size={16} />
+          </button>
+          {menuOpen && (
+            <RowMenu
+              conversation={conversation}
+              up={false}
+              deleting={deleting}
+              onRename={() => {}}
+              onDelete={onDelete}
+              onClose={(refocus) => {
+                onMenu(null);
+                if (refocus) toggle.current?.focus();
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -396,8 +400,10 @@ export function ConversationPanel({
   openId,
   canStart,
   starting,
+  automationsOpen = false,
   automationsUnread = false,
   onOpen,
+  onOpenAutomations,
   onNewChat,
   dismiss,
 }: {
@@ -405,14 +411,20 @@ export function ConversationPanel({
   /** Web chat is switched on, so a new chat can be started. */
   canStart: boolean;
   starting: boolean;
+  /** The Automations chat, or its stand-in, is the one open. */
+  automationsOpen?: boolean;
   /** Something arrived in the Automations chat since it was last open. */
   automationsUnread?: boolean;
   onOpen: (conversationId: string) => void;
+  onOpenAutomations: () => void;
   onNewChat: () => void;
   dismiss: ReactNode;
 }) {
   const list = useConversations();
-  const automations = useAutomationsChat().data ?? null;
+  // The Automations chat, or its stand-in while the backend hasn't started it and there are automations.
+  const pinned = usePinnedAutomations(true);
+  const automations = pinned.chat;
+  const showPinned = automations !== null || pinned.waiting !== null;
   // The dated list: the Automations chat is pinned above it instead.
   const conversations = useMemo(() => allConversations(list.data).filter((conversation) => !isAutomationsChat(conversation)), [list.data]);
   // What has just gone stays a moment, to fold shut where it was.
@@ -460,23 +472,23 @@ export function ConversationPanel({
           </Button>
         </div>
       )}
-      {automations && (
+      {showPinned && (
         <div data-automations-chat className="shrink-0 border-b border-line px-1.5 pb-2">
           <AutomationsRow
             conversation={automations}
-            open={automations.id === openId}
+            open={automationsOpen || (automations !== null && automations.id === openId)}
             unread={automationsUnread}
             now={now}
             menu={menu}
-            deleting={remove.isPending && remove.variables === automations.id}
-            onOpen={() => onOpen(automations.id)}
+            deleting={automations !== null && remove.isPending && remove.variables === automations.id}
+            onOpen={onOpenAutomations}
             onMenu={setMenu}
-            onDelete={() => deleteIt(automations)}
+            onDelete={() => automations && deleteIt(automations)}
           />
         </div>
       )}
 
-      <nav aria-label="Chats" data-chats-pane className={cn("scroll-pane min-h-0 flex-1 overflow-y-auto px-1.5 pb-3", automations && "pt-2")}>
+      <nav aria-label="Chats" data-chats-pane className={cn("scroll-pane min-h-0 flex-1 overflow-y-auto px-1.5 pb-3", showPinned && "pt-2")}>
         {list.isPending && <Loading />}
         {list.isError && !list.data && (
           <div role="alert" className="flex flex-col items-start gap-2 px-2.5 pt-2 text-[13px] text-muted">

@@ -31,6 +31,7 @@ import {
 } from "./client";
 import {
   allConversations,
+  automationsChatIn,
   automationsChatSpoke,
   conversationSpoke,
   conversationStartedBy,
@@ -38,6 +39,7 @@ import {
   emptyActiveChat,
   isAutomationsChat,
   placeConversation,
+  serverHasAutomationsChat,
   type ConversationList,
 } from "../conversations";
 import type { ProgressLine } from "../crew";
@@ -140,16 +142,40 @@ export function useConversations() {
 
 /**
  * The Automations chat, where every run of every automation answers, or null while there is none
- * (no automation has been made or run yet, or it was deleted and nothing has run since).
+ * (no automation has been made or run yet, or it was deleted and nothing has run since). An older
+ * backend ignores `kind` and has no Automations chat: each item's own kind is checked.
  */
 export function useAutomationsChat() {
   return useQuery({
     queryKey: qk.automationsChat,
     queryFn: async (): Promise<Conversation | null> => {
       const page = await unwrap(api.GET("/v1/conversations", { params: { query: { limit: 1, kind: "automations" } } }));
-      return page.items.find(isAutomationsChat) ?? null;
+      return automationsChatIn(page.items);
     },
   });
+}
+
+/**
+ * What is pinned under "New chat": the Automations chat (`chat`) or, while the backend hasn't
+ * started it yet, a stand-in for it, so it can always be found. The backend starts it when an
+ * automation is made or runs, so someone whose automations were all made before it existed has none
+ * until the next run. `waiting` is the person's automations while the stand-in is pinned (at least
+ * one, on a backend that has the Automations chat), else null.
+ *
+ * The automations are asked for only while there is no Automations chat, and only when `lookForIt`
+ * (where the row is drawn, or when it was asked for). `pending`: not known yet.
+ */
+export function usePinnedAutomations(lookForIt: boolean) {
+  const chat = useAutomationsChat();
+  const list = useConversations();
+  const none = chat.isSuccess && chat.data === null && list.isSuccess && serverHasAutomationsChat(allConversations(list.data));
+  const automations = useAutomations({ enabled: lookForIt && none });
+  const waiting = none && automations.data?.length ? automations.data : null;
+  return {
+    chat: chat.data ?? null,
+    waiting,
+    pending: chat.isPending || (chat.data === null && list.isPending) || (none && lookForIt && automations.isPending),
+  };
 }
 
 const automationsChatOf = (qc: QueryClient) => qc.getQueryData<Conversation | null>(qk.automationsChat) ?? null;
@@ -496,11 +522,12 @@ export function invalidateAutomations(qc: QueryClient) {
   ]);
 }
 
-export function useAutomations() {
+export function useAutomations({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: qk.automations,
     queryFn: () => unwrap(api.GET("/v1/automations")),
     select: (data) => data.items,
+    enabled,
   });
 }
 
