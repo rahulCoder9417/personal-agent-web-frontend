@@ -1,11 +1,11 @@
 "use client";
 
 import { useId, useMemo, useState, type FormEvent } from "react";
+import { Combobox } from "@/components/select";
 import { toastError } from "@/components/toast";
 import { Button, Card, Field, inputClass, Pill, SectionLabel } from "@/components/ui";
 import type { Me } from "@/lib/api/client";
 import { useUpdateMe } from "@/lib/api/hooks";
-import { cn } from "@/lib/format";
 import { timezoneOptions } from "./timezones";
 
 const NAME_MAX = 80;
@@ -61,18 +61,15 @@ export function ProfileSection({ me }: { me: Me }) {
           </div>
 
           <Field label="Time zone" htmlFor={`${id}-tz`} hint="Automations and reminders run in this time zone.">
-            <select
+            <Combobox
               id={`${id}-tz`}
+              label="Time zone"
               value={timezone}
-              onChange={(event) => setTimezone(event.target.value)}
-              className={cn(inputClass, "pr-2")}
-            >
-              {zones.map((zone) => (
-                <option key={zone.value} value={zone.value}>
-                  {zone.label}
-                </option>
-              ))}
-            </select>
+              options={zones}
+              onChange={setTimezone}
+              placeholder="Search for a city or region"
+              emptyText={(query) => `No time zone matches “${query}”. Try a city, such as London or Kolkata.`}
+            />
           </Field>
 
           <div className="flex items-center gap-3">

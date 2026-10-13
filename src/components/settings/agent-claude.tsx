@@ -2,6 +2,7 @@
 
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { CheckIcon, ExternalIcon } from "@/components/icons";
+import { Select } from "@/components/select";
 import { toastError } from "@/components/toast";
 import { Button, Card, Field, inputClass, Meta } from "@/components/ui";
 import { refusedTypedValue } from "@/lib/action-errors";
@@ -141,13 +142,7 @@ export function ClaudeConnectSteps() {
 function ChoiceSelect({ id, label, value, options, onChange }: { id: string; label: string; value: string | null; options: SelectOption[]; onChange: (value: string) => void }) {
   return (
     <Field label={label} htmlFor={id}>
-      <select id={id} value={value ?? ""} onChange={(event) => onChange(event.target.value)} className={cn(inputClass, "pr-2")}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <Select id={id} label={label} value={value ?? ""} options={options} onChange={onChange} />
     </Field>
   );
 }
