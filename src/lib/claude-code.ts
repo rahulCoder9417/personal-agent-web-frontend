@@ -54,7 +54,8 @@ export function modelOptions(settings: Choices): SelectOption[] {
   const models = settings.claudeChoices.models.map((model) => ({
     value: model.id,
     label: model.label,
-    group: groupLabel(model.group),
+    // An older backend sends no group, levels or note: the web app can go live before it.
+    ...(model.group ? { group: groupLabel(model.group) } : {}),
     ...(model.note ? { note: model.note } : {}),
   }));
   return [DEFAULT_OPTION, ...withSaved(models, settings.claudeModel, (id) => id)];
@@ -108,10 +109,11 @@ export function choiceNotes(settings: Choices): string[] {
   if (!model) return [];
   const notes = model.note ? [`${model.label}: ${model.note}`] : [];
   const effort = settings.claudeEffort;
-  if (model.efforts.length === 0) {
+  const takes = modelEfforts(settings);
+  if (takes.length === 0) {
     notes.push(`${model.label} has no thinking effort, so this setting doesn’t apply to it.`);
-  } else if (effort && !model.efforts.includes(effort)) {
-    const level = runsAt(effort, model.efforts, settings.claudeChoices.efforts);
+  } else if (effort && !takes.includes(effort)) {
+    const level = runsAt(effort, takes, settings.claudeChoices.efforts);
     if (level) notes.push(`${model.label} doesn’t take ${effortLabel(effort)}: it thinks at ${effortLabel(level)}.`);
   }
   return notes;
