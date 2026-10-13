@@ -928,7 +928,8 @@ paths:
 
         `claudeModel` and `claudeEffort` are the Claude model and the thinking effort Claude Code
         uses (null: Claude Code's own default). They apply to turns that run on Claude Code, and
-        can be set whatever the engine is now. `claudeChoices` lists what may be chosen.
+        can be set whatever the engine is now. `claudeChoices` lists what may be chosen: every
+        Claude model Claude Code can use, each with the effort levels it takes.
       responses:
         "200":
           description: OK
@@ -2566,19 +2567,39 @@ components:
             is the engine.
         claudeChoices:
           type: object
-          description: What may be chosen for `claudeModel` and `claudeEffort`, in display order.
+          description: |
+            What may be chosen for `claudeModel` and `claudeEffort`, in display order: the current
+            models first, then the older ones Claude still offers, newest first.
           required: [models, efforts]
           properties:
             models:
               type: array
               items:
                 type: object
-                required: [id, label]
+                required: [id, label, group, efforts]
                 properties:
                   id: { type: string, examples: [claude-opus-5-5] }
                   label: { type: string, examples: [Opus 5.5] }
+                  group:
+                    type: string
+                    enum: [current, older]
+                    description: |
+                      `current`: Claude's newest models. `older`: earlier models Claude still offers.
+                  efforts:
+                    type: array
+                    items: { type: string, enum: [low, medium, high, xhigh, max] }
+                    description: |
+                      The effort levels this model takes, lowest first. Empty: the model has no
+                      effort setting, so `claudeEffort` does not apply to it. A level the model
+                      does not take runs at the nearest lower level it does take.
+                    examples: [[low, medium, high, max]]
+                  note:
+                    type: string
+                    description: A short word about the model worth showing next to it.
+                    examples: ["Pro: paid with usage credits. Max: up to half your weekly limit, then usage credits."]
             efforts:
               type: array
+              description: Every effort level, lowest first.
               items: { type: string, enum: [low, medium, high, xhigh, max] }
               examples: [[low, medium, high, xhigh, max]]
 
