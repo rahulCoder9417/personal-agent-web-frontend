@@ -12,8 +12,13 @@ export type ChannelType = Schemas["ChannelType"];
 export type ChannelLink = Schemas["ChannelLink"];
 export type LinkCode = Schemas["LinkCode"];
 export type Message = Schemas["Message"];
-/** One stretch of a chat between two "New chat" actions; Tex's context is separate for each. */
-export type Conversation = Schemas["Conversation"];
+/** `chat`, or `automations` for the Automations chat, where every run of every automation answers. */
+export type ConversationKind = Schemas["ConversationKind"];
+/**
+ * One stretch of a chat between two "New chat" actions; Tex's context is separate for each. An
+ * older backend sends no `kind`: that reads as `chat`.
+ */
+export type Conversation = Omit<Schemas["Conversation"], "kind"> & { kind?: ConversationKind };
 export type Approval = Schemas["Approval"];
 export type ApprovalStatus = Schemas["ApprovalStatus"];
 export type App = Schemas["App"];
