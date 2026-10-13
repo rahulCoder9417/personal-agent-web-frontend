@@ -469,6 +469,8 @@ export function Combobox({
 
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  // On a phone the list stays under the field (a sheet would sit under the keyboard), with big rows.
+  const narrow = useMediaQuery(SHEET_BELOW);
   // What is typed; null while the field shows the choice.
   const [query, setQuery] = useState<string | null>(null);
   const items = useMemo(() => (query === null ? options : filterItems(options, query)), [options, query]);
@@ -583,7 +585,7 @@ export function Combobox({
               {emptyText(query ?? "")}
             </p>
           ) : (
-            <OptionList id={listId} items={items} value={value} active={active} label={label} onActive={setActive} onPick={pick} />
+            <OptionList id={listId} items={items} value={value} active={active} label={label} roomy={narrow} onActive={setActive} onPick={pick} />
           )}
         </Floating>
       )}
