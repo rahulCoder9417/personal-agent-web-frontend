@@ -8,7 +8,7 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
                                          token on the server)
 ```
 
-- **Screens**: chat, approvals, automations and pull-request review, activity, apps and your own MCP servers, crew, settings (general, agent and AI, memory, credits, plans), onboarding, sign-in and sign-up.
+- **Screens**: chat, approvals, automations and pull-request review, activity, apps and your own MCP servers, crew and crew jobs, settings (general, agent and AI, memory, credits, plans), onboarding, sign-in and sign-up.
 - **One layout, two shapes**: on a wide screen a sidebar sits beside the current screen, and folds down to a rail of icons; on a phone there is a top bar, the screen edge to edge and five tabs along the bottom (the rest is under More). See [Panels that fold](#panels-that-fold).
 - **Every screen takes the whole width**, except Settings, which is one readable column beside its sections. See [Width](#width) and [Settings](#settings).
 - **Installable on a phone**: "Add to Home Screen" on Android and iPhone opens it in its own window. See [Installing on a phone](#installing-on-a-phone).
@@ -42,6 +42,7 @@ Things to try in the demo:
 - **The crew at work**: ask Tex in the web chat to research something ("research what other tools charge"), fix code ("fix the bug in…") or review ("review my pull request"). Scout, Byte or Patch reports three lines while it works, then Tex answers. Scout's search costs 1 credit.
 - **Replies written as they come**: send anything in the web chat and Tex's answer appears a few words at a time, then the finished message takes its place. Ask Tex to research something and it first says "I’ll hand this to Scout.", which goes when Scout sets to work, and the answer is written after Scout's last line. A fact to remember and a risky request are answered at once, as before.
 - **Replies drawn as Markdown**: the web chat opens on an answer with a heading, a table, a block of code, a numbered list and a link. Ask Tex to research something and the answer has a table, a list and links; ask it to fix code and it has code with a Copy button. Every other reply is a plain sentence and looks as it always did, and so do the Telegram chats.
+- **Crew jobs** (Crew → Give the crew a job): a finished review with its report and a failed job are seeded. "Give Patch a review" or "Give Byte a job" opens the brief: the repo is picked from five seeded GitHub repos, or typed. Given, the job waits a moment, works (Patch's or Byte's lines in the chat), and is done with a report in the report's shape, which is also posted in a web conversation of its own named after the job. Disconnect GitHub under Apps to see the repo typed instead, and the refusal.
 - **Pull-request review** (Automations → Pull-request review): two repos are seeded, one on and one paused after failures. Pro allows five automations and four are used, so one more repo can be given review and the next one hits the plan limit. A repo owned by `octocat` stands in for one the GitHub account can't administer. Disconnect GitHub under Apps to see the screen without it.
 - **Choosing Textcrew AI** (Settings → Agent & AI): the demo has an Anthropic key saved, so "Use Textcrew AI" and the way back are both there.
 - **The chat history**: four chats are seeded, two in the web chat and two on Telegram. Open the Telegram one to read it (it can't be answered from here), open the earlier web one and write in it (it moves to the top and Tex answers there), and start a "New chat". Rename or delete one from the three dots on its row. The 31st new chat in an hour is refused with a toast.
@@ -267,6 +268,19 @@ Automations → Pull-request review (`/automations/reviews`). The person turns r
 - **How the crew works**: four steps, from texting Tex to Tex answering.
 - One column on a phone, two beside the sidebar, four where they fit. The members' colours are design tokens (`--byte`, `--patch`, `--scout`, and the accent for Tex), mixed into the card's surface.
 
+## Crew jobs
+
+On the Crew screen, under the hero: "Give the crew a job". A crew job is a brief for Patch (a review) or Byte (a change). It runs as one turn of Tex's crew, in a folder of its own that is deleted afterwards, and ends with a report.
+
+- **The two buttons**: "Give Patch a review" and "Give Byte a job", each shown only when that member works here (`available` in `GET /v1/crew`). One opens its form under the buttons; the other one, or Cancel, closes it.
+- **The repo**: picked from the connected GitHub account's repos (`GET /v1/github/repos`, the 100 pushed to most recently, in the `Combobox`), or typed as `owner/repo` or a GitHub link with "Type it instead". A pull request's link pasted there fills in its number. When the list can't be had (GitHub isn't connected: 409; GitHub or Composio down: 503; a server from before crew jobs: 404), the field is typed, and for 409 it says to connect GitHub in Apps.
+- **The brief**: Patch reviews a pull request (its number or link) or a branch; Byte starts from the default branch, a branch or a pull request. Then the person's own words (for Byte, what to fix or build, which is needed), Patch's focus as tick boxes (bugs, security and tests ticked at first, performance and style), Byte's "what to test for", the commands to install, test or start the app, and Byte's "at the end": push and open a pull request, or only push the branch.
+- **What to do with the report**: "Send it to me in chat" is always ticked, with the chat (web chat, or the linked Telegram chat when there is one). Then "Post it on the pull request" (Patch, only for a pull request: as one review comment) or "Put it in the pull request Byte opens" (only when Byte opens one), and "Open an issue with it". Ticking Patch's is the person's OK for that one review, and the form says so.
+- **What is checked here** (`briefFrom` in `src/lib/crew-jobs.ts`): the repo as for pull-request review, a pull request number, a branch name by the server's rule, and Byte's "what to fix". Each refusal is under its field. The server's 400 is shown above the button; 402, 409, 429 and the rest are toasts, with "Add credits" or "Open Apps" where that is the way out (`describeCreateError`).
+- **One job per brief**: each brief has its own request id (`clientRequestId`), made again when anything in the form changes. A double tap, or sending again after a lost answer, gives the same job.
+- **The jobs**: `GET /v1/crew-jobs`, newest first, each with the member's face, its title, its state (Waiting, Working, Done, Failed), what it looks at, where the report goes and when it was given. A failed job says why. A done job's "Report" opens the report, drawn as Markdown like Tex's chat replies (`DrawnText` in `chat/agent-bubble.tsx`, the same lazy chunk). The list asks again every 4 seconds while a job waits or works; there is no live event for it.
+- **A server without crew jobs**: the list answers 404, and the whole section is not shown. A job state the app doesn't know reads as Waiting.
+
 ## The crew at work
 
 - **Chat**: `agent.progress` events (`{ text, crew, at }`) arrive on the live stream while a turn runs. The bubble that says "Tex is working…" shows the latest line of each member at work, with its face and name ("Scout · reading 4 pages"). The lines are live only: they are kept in the query cache, emptied when the agent stops being busy and when the stream reconnects, and are not there after a reload.
@@ -363,6 +377,7 @@ src/lib/
   action-errors.ts   which failures stay under a field (the API's verdict on a typed value) and which are toasts
   memory.ts          what Tex remembers: the kinds, their order and how a memory's dates read
   pr-review.ts       reading a repo as typed, a repo's state and the API's refusals in words
+  crew-jobs.ts       crew jobs: the form's brief and its checks, a job's state and where its report goes, the refusals
   conversations.ts   the chat history: which conversation is open, what can be done with it, and the list kept in order as things happen
   chat-thread.ts     the chat thread: whether Tex is at work in the open conversation
   drafts.ts          Tex's answer as it is written: which draft shows in which conversation, and when it goes
@@ -391,7 +406,8 @@ src/lib/
 - Scout's browser: the contract says it isn't built (`browser.available: false`), so there is nothing to show but the note. `browserSeconds` is in the usage and not shown yet.
 - What the screens would like and the contract doesn't offer:
   - A pull-request review repo has no history: which pull requests were reviewed, the verdicts, or why a review failed. The screen shows only when the last one ran.
-  - There is no way to list the repos of the connected GitHub account, or to check admin access before trying, so the repo is typed.
+  - Pull-request review can't check admin access before trying, so its repo is still typed. (Crew jobs pick from the GitHub account's repos.)
+  - A crew job has no live event and no address of its own: the list is asked for again while one runs, and a job started from chat shows up when the list is next asked for.
   - An automation doesn't carry its repo; the automations list finds it in `/v1/pr-reviews` by id.
   - The ledger has no field for the kind of charge, so a paid tool is known by its description.
   - Only progress lines carry `crew`. A web search or a refused page is logged as Tex's, though it is Scout's tool.
