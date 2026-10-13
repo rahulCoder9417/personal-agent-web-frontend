@@ -22,7 +22,9 @@ export default function GeneralSettingsPage() {
           ) : me.isError ? (
             <ErrorState error={me.error} onRetry={() => void me.refetch()} />
           ) : (
-            <ProfileSection key={me.data.id} me={me.data} />
+            // Starts again from the saved values once the time zone is first set (by the browser on a
+            // first visit, moments after this opens), so the form doesn't offer to put UTC back.
+            <ProfileSection key={`${me.data.id}-${me.data.timezoneSet}`} me={me.data} />
           )}
         </div>
         <div className={COLUMN_ITEM}>
