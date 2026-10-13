@@ -46,6 +46,7 @@ Things to try in the demo:
 - **Pull-request review** (Automations → Pull-request review): two repos are seeded, one on and one paused after failures. Pro allows five automations and four are used, so one more repo can be given review and the next one hits the plan limit. A repo owned by `octocat` stands in for one the GitHub account can't administer. Disconnect GitHub under Apps to see the screen without it.
 - **Choosing Textcrew AI** (Settings → Agent & AI): the demo has an Anthropic key saved, so "Use Textcrew AI" and the way back are both there.
 - **The chat history**: four chats are seeded, two in the web chat and two on Telegram. Open the Telegram one to read it (it can't be answered from here), open the earlier web one and write in it (it moves to the top and Tex answers there), and start a "New chat". Rename or delete one from the three dots on its row. The 31st new chat in an hour is refused with a toast.
+- **The Automations chat**: pinned under "New chat", it holds the runs of "Today's meetings" and the pull-request review's verdict. The later Telegram chat shows the copy of that verdict, the way the backend sends it there. Open another chat and wait: about 20 seconds after the app first connects, "Today's meetings" runs once more, and the Automations row (and, with the history put away, the header's Show chats button) gets a dot until it is opened. Write in it and Tex answers there, while the web chat you had open stays the one a new message goes to. Its menu only deletes it; the next run starts it again. Automations → "See every run in the Automations chat" opens it.
 - **Claude Code's model and effort** (Settings → Agent & AI): connect the Claude plan with any code of four characters or more, then pick a model and a thinking effort under Engine.
 - **The dropdowns**: the time zone (Settings → General) is searched by typing a city or an offset ("kolk", "new york", "5:30"); the model and effort open a list, and on a phone a sheet from the bottom of the screen. Both work with the keyboard alone.
 - **Memory** (Settings → Memory): eight memories are seeded. Tell Tex "remember that I send invoices on the 1st" in the web chat and it is saved; "remember that my password is…" is refused. Both are in the activity log.
@@ -134,7 +135,13 @@ The chat has a history, like ChatGPT or Claude.ai. A **conversation** is one str
 - **Rows come and go smoothly**: a chat that arrives (a new chat, one from Telegram, the next page of the list) fades and slides in; one that is deleted, here or elsewhere, stays where it was for a moment, out of reach, and folds shut while the rows below close up. A list that loads simply appears.
 - **The thread shows one conversation** (`GET /v1/messages?conversationId=`): the one picked from the history, or else the active web conversation, which is where a message from here is written. Earlier messages are asked for as you scroll up to them. The chat's header shows the conversation's title.
 - **Writing** sends the open conversation's id (`POST /v1/messages` with `conversationId`). Writing in an earlier web conversation makes it the active one, and Tex carries on with that conversation's own context. Nothing is open before the first thing ever said in web chat; that message starts the conversation.
-- **An automation's result** is saved by the backend in the conversation the automation was made in, or in a conversation of its own named after it (a pull-request review's too), never in the one that happens to be open. It joins that conversation's thread and moves it to the top of the history, like any message.
+- **The Automations chat** is where every run of every automation answers: a reminder, a schedule, an app event, a pull-request review's verdict, and the notices about them (out of credits, paused after failures). The backend keeps one per person and never puts a run's result in another conversation, whichever one is open.
+  - **Pinned**: it is asked for on its own (`GET /v1/conversations?kind=automations`) and sits under "New chat" with the automations icon, above the dated list, which asks for `kind=chat` and leaves it out. It shows when the last thing was said in it, or "No runs yet". It appears once the person has made an automation or one has run.
+  - **Opened and written in** like any web chat: the composer says "Follow up on a run…", and Tex carries on with the runs in mind. Writing there doesn't make it the active conversation, so the next message from a web chat goes where it went before (`conversationSpoke` and the stream handling keep it out of the dated list and never active).
+  - **Its mark**: a dot on its row, and on the header's Show chats button, when something arrived in it since it was last open. This browser remembers up to when it was seen (`src/lib/automations-seen.ts`, the rules in `src/lib/conversations.ts`). The first time a browser meets it, what is already there counts as seen; a new one started after a delete counts as unseen.
+  - **Its name stays**: its menu offers Delete only (the backend refuses a rename with 409). After a delete, the next run starts a new one.
+  - **An address of its own**: `/?chat=automations` opens it (the Automations screen's link, and the last line of each copy the backend sends to Telegram).
+  - **On Telegram**: an automation made there also sends a copy of each answer to that Telegram chat, which shows in its Telegram conversation here with the automation's name on its first line. The follow-up happens in the Automations chat.
 - **Telegram conversations are read here and answered there.** In place of the composer the screen says "Reply on Telegram to continue this chat". On Telegram, `/new` starts a new one (the backend's part).
 - **New chat** is at the top of the history, and in the chat's header while the history is put away. It calls `POST /v1/conversations`, opens the new conversation and puts the cursor in the composer. Nothing is lost, so it doesn't ask first. When nothing has been said in the active conversation yet, that one is opened again instead of starting another empty one. 30 an hour, after which a toast says so. It is in the activity log as "You · started a new chat".
 - **Rename and delete** are in the menu on each row (the three dots). Rename turns the title into a field: Enter or clicking away saves (`PATCH /v1/conversations/{id}` with `title`, 1 to 80 characters), Escape leaves it. Delete asks once more, because the conversation's messages and files go with it (`DELETE /v1/conversations/{id}`), then a toast confirms. When the conversation that was open is deleted the chat goes back to the active web conversation; when that was the one deleted, the newest web conversation left becomes the active one. It is in the activity log as "You · deleted a chat", without a word of what was in it.
@@ -245,16 +252,17 @@ Automations → All automations (`/automations`). An automation is made by askin
 - **With each one**: on or paused and why (with the way out), the next run, the last run, a note that it uses credits, the switch to pause or resume, and Delete, which asks once more.
 - **An empty list** says how one comes to exist, in three steps.
 - **The plan's limit** is in the header ("4 of 5 on Pro", with Upgrade once it is full) and beside the list. When the plan is full, the templates say so before anyone tries.
+- **Where the results are**: above the list, "See every run in the Automations chat" leads to the Automations chat (`/?chat=automations`), with its dot when a run arrived since it was last open (`AutomationsChatLink` in `src/components/automations/chat-link.tsx`). The guide says results are posted there.
 
 ## Pull-request review
 
-Automations → Pull-request review (`/automations/reviews`). The person turns review on per GitHub repo. When a pull request in that repo opens or gets new commits, Patch reviews it, comments on the pull request and Tex sends a short verdict to the person's chat. It never merges.
+Automations → Pull-request review (`/automations/reviews`). The person turns review on per GitHub repo. When a pull request in that repo opens or gets new commits, Patch reviews it, comments on the pull request and Tex sends a short verdict to the Automations chat, with a copy on Telegram when it was linked at the time. It never merges.
 
 - **Where it lives**: with the automations, because each repo with review on *is* an automation (`preset: pr_review`) and counts against the plan's limit. The two share a header and a plan meter. The crew page links there from Patch.
 - **The API**: `GET /v1/pr-reviews`, `PUT` and `DELETE /v1/pr-reviews/{owner}/{repo}`. A repo is paused and resumed as the automation it is (`PATCH /v1/automations/{id}`, the `id` of the review). "Turn off" deletes it.
 - **Typing a repo**: `owner/repo`, a GitHub link (also one to a pull request or a branch) or a clone address all work (`parseRepo` in `src/lib/pr-review.ts`).
 - **Refusals**, each with its own words (`describeEnableError`): 400 names the repo and says to check that it exists and that the connected GitHub account has admin access; 403 `plan_limit` names the plan's number of automations and links to Plans; 409 says GitHub isn't connected and links to Apps; 429 asks for patience. The 400 is about the repo as typed, so it stays under the field; the others are toasts, with their link as the toast's button. When the Apps list shows GitHub isn't connected, the screen says so before anything is typed.
-- **Each row** shows on or paused and why (by you, out of credits, after failures, each with its way out), where the verdict goes (`channel`) and when the last review ran.
+- **Each row** shows on or paused and why (by you, out of credits, after failures, each with its way out), where the verdict goes ("the Automations chat", plus "with a copy on Telegram" when `channel` is `telegram`) and when the last review ran.
 - **In the automations list** a repo with review on is labelled "Pull-request review" and shows its repo name; "Manage" leads to the review screen instead of a switch and a delete. Among the templates, "Review every pull request" leads here too.
 - Turning review on is the person's standing OK for Patch to comment on pull requests in that repo; the form says so. Everything else risky still asks.
 
@@ -373,12 +381,14 @@ src/lib/
   channels.ts        which chat apps to offer, from what the backend has switched on
   crew.ts            who is on the crew and what they are doing, from what the backend says; what each one does, in the app's words
   automations.ts     automations in plain words: the three kinds, the templates, when one runs, its status, runs and cost
+  automations-seen.ts  up to when this browser saw the Automations chat, for its unread mark
   chat-link.ts       the link that opens the chat with a request typed in
   action-errors.ts   which failures stay under a field (the API's verdict on a typed value) and which are toasts
   memory.ts          what Tex remembers: the kinds, their order and how a memory's dates read
   pr-review.ts       reading a repo as typed, a repo's state and the API's refusals in words
   crew-jobs.ts       crew jobs: the form's brief and its checks, a job's state and where its report goes, the refusals
-  conversations.ts   the chat history: which conversation is open, what can be done with it, and the list kept in order as things happen
+  conversations.ts   the chat history: which conversation is open, what can be done with it, and the list kept in order as things happen;
+                     the Automations chat, pinned apart, and when its mark is lit
   chat-thread.ts     the chat thread: whether Tex is at work in the open conversation
   drafts.ts          Tex's answer as it is written: which draft shows in which conversation, and when it goes
   markdown.ts        Markdown in Tex's replies: whether a reply has any, and where a link may lead
@@ -412,7 +422,8 @@ src/lib/
   - The ledger has no field for the kind of charge, so a paid tool is known by its description.
   - Only progress lines carry `crew`. A web search or a refused page is logged as Tex's, though it is Scout's tool.
   - A conversation doesn't say how many messages it has, so "New chat" only knows the active one is empty when its messages are already loaded.
-  - The history can't be searched, and a conversation has no address of its own: a reload opens the active web conversation again.
+  - The history can't be searched, and a conversation has no address of its own (only the Automations chat has one, `/?chat=automations`): a reload opens the active web conversation again.
+  - Whether the Automations chat has something unread is remembered by each browser, not by the account: on another device its dot starts from what is already there.
   - Progress lines are not replayed: after a reload in the middle of a turn the chat says "Tex is working…" until the next line.
   - Memory can't be added or edited from the app, and has no live event (the list is asked for again when a turn ends).
   - The activity log names a memory by id only. Once it is deleted, the log can't say what it was, and a `forget` entry doesn't say whether Tex removed or corrected (the app goes by the entry's summary).
