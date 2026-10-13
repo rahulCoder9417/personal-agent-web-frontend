@@ -16,7 +16,7 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
 
 This is the address the backend calls `WEB_APP_URL`: Polar returns here after checkout, app sign-in screens return here, and Tex's messages link here. The desktop app (`../user-frontend-desktop`) is a small window around this live web app, so it has no screens of its own: what is deployed here is what it shows.
 
-API contract: `openapi/openapi.yaml`, copied from `../beckend/openapi/openapi.yaml`. One field was written into the copy by hand ahead of the backend: `App.connectable` (see [Apps](#what-the-backend-decides)). The next `pnpm openapi:sync` should bring the same field from the backend; if it doesn't, the two have drifted.
+API contract: `openapi/openapi.yaml`, copied from `../beckend/openapi/openapi.yaml` (`pnpm openapi:sync`). The copy is the backend's own: nothing in it is written by hand.
 
 ## Quick start (demo mode, no backend needed)
 
@@ -47,6 +47,7 @@ Things to try in the demo:
 - **Claude Code's model and effort** (Settings → Agent & AI): connect the Claude plan with any code of four characters or more, then pick a model and a thinking effort.
 - **Memory** (Settings → Memory): eight memories are seeded. Tell Tex "remember that I send invoices on the 1st" in the web chat and it is saved; "remember that my password is…" is refused. Both are in the activity log.
 - **Apps that can't be connected yet** (Apps): HubSpot, Asana and Airtable say "Not available yet" and have no Connect button, the way an app without a setup on the server does.
+- **Connecting an app** (Apps, or onboarding's second step): Connect opens Textcrew's own connect screen first. Cancel changes nothing; "Continue to Google" connects at once (there is no provider to sign in to) and comes back saying so. Reconnect the expired Google Drive account to see the screen say why. `/connected?app=gmail&status=failed` shows the page for a sign-in that didn't go through.
 - **Toasts**: on Pull-request review, turn review on for one more repo (five of five), then for another. The refusal is a toast with "See plans". A repo owned by `octocat` is refused under the field instead, because that one is about what was typed.
 - **Automations**: click a template or a "Try it in chat" link and the chat opens with the request typed in. The demo's canned reply doesn't make an automation, so the list stays as seeded.
 
@@ -111,6 +112,11 @@ The screens don't know which chat apps or which AI are on offer. They ask.
 - `aiPreference` (`auto` or `platform`) is what the person chose. Someone with a key saved or a Claude plan connected can choose Textcrew AI anyway ("Use Textcrew AI" sends `{ aiPreference: "platform" }`) and go back ("Go back to your Anthropic key" sends `{ runtime: "hermes", aiPreference: "auto" }`; to the Claude plan, `{ runtime: "claude_code", aiPreference: "auto" }`). The key and the plan stay saved either way. With Textcrew AI chosen the agent shown as running is Hermes, and picking Claude Code goes back to the plan.
 
 **Apps.** `GET /v1/apps` lists the catalog with each app's connections, whether the plan includes it (`availableOnPlan`) and whether it can be connected on this server at all (`connectable`: the server has a Composio setup for it; today that is Gmail and GitHub). An app that isn't connectable is listed after the ones that are, says "Not available yet" and has no Connect button; a connected one loses "Add account" and "Reconnect". Onboarding offers only apps that are on the plan and connectable. A backend from before the field existed doesn't send it, and that reads as connectable (`isConnectable` in `src/components/apps/apps-logic.ts`), so an older server doesn't switch every app off.
+
+**Connecting an app.** No screen leaves for another site straight from a Connect button. Connect, Add account and Reconnect (Apps) and Connect (onboarding) open Textcrew's own connect screen first (`src/components/apps/connect-dialog.tsx`): Tex and the app side by side, what Tex can do with the app (`App.description`, in the backend's words), the rules that hold for every app (Tex asks before it sends, deletes or changes something that's already there; reading is free and a change costs 1 credit; the sign-in is on the provider's own page) and "Continue to Google" (`App.provider`). Its words are `connectCopy` in `apps-logic.ts`, with words of its own for a backend that doesn't send the two fields. Only Continue calls `POST /v1/apps/{appSlug}/connect`, so Cancel leaves no pending connection behind. The next page is the provider's own sign-in when the server uses our own sign-in app for that app, and Composio's connect page otherwise (the backend decides; the screen says the same either way).
+
+- **The way back.** Composio sends the browser back with `status=success` or `status=failed` added (`connectOutcome`). From Apps the sign-in takes over the tab and returns to `/apps?connected=<slug>`, where a toast says "Gmail connected" or, as an error, "Gmail didn't connect". Onboarding opens the sign-in in a new tab so the setup flow stays put; that tab returns to `/connected?app=<slug>`, which says "Gmail is connected" or "Gmail didn't connect" with the app's icon beside Tex. Anything else that lands on `/connected` still says "All set".
+- **A refusal** (the plan's limit, an app the server can't connect, Composio being down: 403, 404, 503) closes the screen and is a toast, the plan's limit with "See plans".
 
 **The crew.** `GET /v1/crew` lists Tex and the specialists with a name, role and description each, whether each one works on this deployment yet (`available`), and for Scout which plan the real browser needs and whether it is built yet (`browser`). The crew page, the "soon" note in the navigation and the browser note on the Plans screen are built from it (`src/lib/crew.ts`). The app keeps the figures and their colours, and what the backend doesn't say: three lines on what each member does, a request to try, and the four steps of how the crew works (`CREW_GUIDE` and `CREW_STEPS` in the same file).
 
@@ -277,6 +283,7 @@ src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell
   page.tsx           a screen's header and full-width body, columns of cards, the reading width
   chat/agent-bubble.tsx  the bubble for what Tex wrote: as typed, or drawn as Markdown
   chat/markdown.tsx      draws Markdown; loaded the first time a reply needs it
+  apps/connect-dialog.tsx  Textcrew's own connect screen, shown before any app's sign-in page
 src/lib/
   api/               generated types, typed client, TanStack Query hooks, SSE → cache
   auth-flow.ts       sign-in and sign-up: where to land, Clerk's refusals in words, what comes next
@@ -327,5 +334,6 @@ src/lib/
   - Only the web chat's new chat is known (`chatStartedAt`): one started on Telegram with `/new` draws no divider. A new chat started in another tab shows once the messages are asked for again (there is no live event for it).
   - A turn with no incoming message of its own (an automation, the follow-up to an approval) shows Tex at work only under All, because the agent's state carries no channel.
 - Installed on a phone, the app has not been tried on a real Android phone or iPhone.
+- The connect screen and the way back have been tried in demo mode only. With a real provider: whether Safari lets onboarding's new tab open after the API has answered (it opens once the request is back, not on the click itself), and how a real failed sign-in comes back, are not checked.
 - Not yet run with a real Clerk application, real Polar products or a real agent container. The sign-in pages have been rendered with the real (development) Clerk application, but no one has signed in or up through them yet: the steps against Clerk are covered by unit tests of the logic, not by a real sign-in.
 - Sign-in has no second factor beyond a code by email, no passkeys and no phone numbers, because none is switched on in Clerk.
