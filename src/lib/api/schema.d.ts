@@ -349,7 +349,17 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start connecting an app (returns the provider login URL) */
+        /**
+         * Start connecting an app (returns the provider login URL)
+         * @description `redirectUrl` is the provider's own sign-in page when the app is set up with our own sign-in
+         *     app at the provider, and Composio's connect page otherwise. After signing in, the browser
+         *     comes back to `returnUrl` (default: the web app's `/apps?connected=<appSlug>`) with
+         *     `status=success` or `status=failed` added by Composio. Only the app list says for sure that
+         *     the connection is active.
+         *
+         *     An app the server may set up by itself (`COMPOSIO_MANAGED_APPS`) gets its Composio setup on
+         *     the first connect; that is when the first user can wait a second longer.
+         */
         post: operations["connectApp"];
         delete?: never;
         options?: never;
@@ -369,6 +379,31 @@ export interface paths {
         post?: never;
         /** Disconnect an app */
         delete: operations["disconnectApp"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The way back from an app's sign-in, through our own address, on to Composio
+         * @description For an app set up with our own sign-in app at the provider (our own GitHub or Google OAuth
+         *     app), when that sign-in app's redirect address is `https://<api domain>/oauth/callback`.
+         *     After the user allows access, the provider sends the browser here, and this answers 302 to
+         *     Composio's callback (`COMPOSIO_API_URL` + `/api/v3/toolkits/auth/callback`) with the query
+         *     string unchanged. Composio then finishes the connection and sends the browser back to the
+         *     web app. It saves nothing, adds no job and never logs the query (it holds a one-time code).
+         */
+        get: operations["oauthCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1363,6 +1398,16 @@ export interface components {
             slug: string;
             /** @example Gmail */
             name: string;
+            /**
+             * @description The company whose sign-in screen the user sees when connecting ("Continue to Google").
+             * @example Google
+             */
+            provider: string;
+            /**
+             * @description In plain words, what the agent can do with the app once it is connected. One sentence.
+             * @example Read and search your email, write drafts and send email for you.
+             */
+            description: string;
             /** Format: uri */
             iconUrl?: string | null;
             /**
@@ -1377,9 +1422,10 @@ export interface components {
             category: string;
             availableOnPlan: boolean;
             /**
-             * @description True when this server has a Composio setup for the app, so it can be connected. False:
-             *     the app is listed but cannot be connected yet (`POST /v1/apps/{appSlug}/connect`
-             *     answers 404 for it); show it as "Not available yet", without a Connect button.
+             * @description True when this server can connect the app: it has a Composio setup for it, or may make
+             *     one on the first connect (`COMPOSIO_MANAGED_APPS`). False: the app is listed but cannot
+             *     be connected yet (`POST /v1/apps/{appSlug}/connect` answers 404 for it); show it as
+             *     "Not available yet", without a Connect button.
              */
             connectable: boolean;
             connections: {
@@ -2638,6 +2684,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PlanLimit"];
             404: components["responses"]["NotFound"];
+            /** @description Composio could not be reached, or could not make the app's setup. Nothing was saved. Retry later */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     disconnectApp: {
@@ -2660,6 +2715,25 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    oauthCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description On to Composio's callback, with the same query string */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listMcpServers: {

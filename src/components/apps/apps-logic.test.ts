@@ -15,6 +15,8 @@ import {
 const app = (slug: string, name: string, category: string, connected = false): App => ({
   slug,
   name,
+  provider: "Google",
+  description: `Do things in ${name}.`,
   category,
   availableOnPlan: true,
   connectable: true,

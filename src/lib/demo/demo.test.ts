@@ -653,6 +653,15 @@ describe("setup", () => {
     expect((await call("POST", "apps/linear/connect", { returnUrl: "https://evil.example/" })).status).toBe(400);
   });
 
+  it("says whose sign-in comes next and what Tex can do, for every app, as the backend does", async () => {
+    const apps = (await call<{ items: App[] }>("GET", "apps")).body.items;
+    for (const app of apps) {
+      expect(app.provider, app.slug).toMatch(/^[A-Z][A-Za-z]+$/);
+      expect(app.description, app.slug).toMatch(/^[A-Z][^.]{10,90}\.$/);
+    }
+    expect(apps.find((app) => app.slug === "gmail")).toMatchObject({ provider: "Google" });
+  });
+
   it("lists a few apps as not connectable yet, and refuses to connect them the way the backend does", async () => {
     const apps = (await call<{ items: App[] }>("GET", "apps")).body.items;
     const off = apps.filter((app) => !app.connectable).map((app) => app.slug);
