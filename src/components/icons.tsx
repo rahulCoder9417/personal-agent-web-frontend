@@ -199,6 +199,22 @@ export const PanelIcon = (p: IconProps) => (
   </Base>
 );
 
+/** A page with its right-hand column marked: show or hide the chat's side panel. */
+export const PanelRightIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+    <path d="M14.5 4.5v15" />
+  </Base>
+);
+
+/** Two chevrons pointing left: fold the sidebar down to its icons (turned round, open it again). */
+export const ChevronsLeftIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="m11 17-5-5 5-5" />
+    <path d="m18 17-5-5 5-5" />
+  </Base>
+);
+
 /** A pencil: rename. */
 export const PencilIcon = (p: IconProps) => (
   <Base {...p}>
