@@ -34,6 +34,11 @@ export type ClaudeEffort = NonNullable<AgentSettings["claudeEffort"]>;
 /** What `PATCH /v1/agent/settings` takes. */
 export type AgentSettingsUpdate = NonNullable<paths["/v1/agent/settings"]["patch"]["requestBody"]>["content"]["application/json"];
 export type CrewMember = Schemas["CrewMember"];
+/** A brief the person gave Patch or Byte, run as one turn of the agent, with its report when done. */
+export type CrewJob = Schemas["CrewJob"];
+export type CrewJobInput = Schemas["CrewJobInput"];
+export type CrewJobFocus = Schemas["CrewJobFocus"];
+export type GithubRepo = Schemas["GithubRepo"];
 export type Memory = Schemas["Memory"];
 export type ClaudeLoginStart = Schemas["ClaudeLoginStart"];
 export type Plan = Schemas["Plan"];

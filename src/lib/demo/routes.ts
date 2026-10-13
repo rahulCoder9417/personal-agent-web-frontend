@@ -5,6 +5,7 @@ import * as account from "./handlers-account";
 import * as chat from "./handlers-chat";
 import * as conversations from "./handlers-conversations";
 import * as crew from "./handlers-crew";
+import * as jobs from "./handlers-jobs";
 import * as memory from "./handlers-memory";
 import * as setup from "./handlers-setup";
 
@@ -61,6 +62,10 @@ const ROUTES: Route[] = [
   route("POST", "agent/claude/login/:loginId/complete", setup.completeClaudeLogin),
   route("DELETE", "agent/claude", setup.disconnectClaude),
   route("GET", "crew", crew.listCrew),
+  route("GET", "crew-jobs", jobs.listCrewJobs),
+  route("POST", "crew-jobs", jobs.createCrewJob),
+  route("GET", "crew-jobs/:crewJobId", jobs.getCrewJob),
+  route("GET", "github/repos", jobs.listGithubRepos),
 
   route("GET", "memories", memory.listMemories),
   route("DELETE", "memories", memory.deleteAllMemories),
