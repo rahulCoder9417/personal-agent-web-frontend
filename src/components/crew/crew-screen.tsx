@@ -10,6 +10,7 @@ import { cn, titleCase } from "@/lib/format";
 import { CheckIcon, ComputerIcon } from "../icons";
 import { Page, PageBody, PageHeader } from "../page";
 import { AgentFigure } from "../tex";
+import { CrewJobsSection } from "./crew-jobs";
 import { ButtonLink, Card, ErrorState, Pill, SkeletonRows } from "../ui";
 
 // Each member's own colour, from the design tokens. Who they are and what they do comes from the API.
@@ -238,6 +239,8 @@ export function CrewScreen() {
         ) : (
           <>
             <Hero crew={crew.data} />
+
+            <CrewJobsSection crew={crew.data} />
 
             {/* One column on a phone, two beside the sidebar, four when there is room for them. */}
             <div className="@container">
