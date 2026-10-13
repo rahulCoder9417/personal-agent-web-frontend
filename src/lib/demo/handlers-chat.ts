@@ -89,7 +89,7 @@ function setMessageStatus(state: DemoState, id: string, status: Message["status"
 }
 
 /** Tex says something in a conversation. Nothing is said in one that was deleted in the meantime. */
-function postFromTex(state: DemoState, conversationId: string, text: string, approvalId: string | null = null): void {
+export function postFromTex(state: DemoState, conversationId: string, text: string, approvalId: string | null = null): void {
   const conversation = findConversation(state, conversationId);
   if (!conversation) return;
   const message: Message = {
