@@ -1,14 +1,16 @@
 "use client";
 
-import { type QueryClient, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { addProgress, progressLine, type ProgressLine } from "../crew";
-import type { AgentProgress, AgentStatus, Approval, Conversation, CreditBalance, Message, StreamEvent } from "./client";
+import { draftArrived, DRAFTS_KEY, type Drafts, messageArrived, messageSettled, NO_DRAFTS, turnsOver } from "../drafts";
+import type { AgentProgress, AgentStatus, Approval, Conversation, CreditBalance, Message, MessageDraft, StreamEvent } from "./client";
 import { addMessage, invalidateAutomations, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
 
 const EVENT_TYPES: StreamEvent["type"][] = [
   "message.created",
   "message.status",
+  "message.draft",
   "approval.created",
   "approval.resolved",
   "agent.status",
@@ -37,6 +39,21 @@ export function catchUpAfterReconnect(qc: QueryClient, visible: boolean) {
   void qc.invalidateQueries({ queryKey: qk.agentStatus, refetchType });
   // Progress is live only, so what was on screen may belong to a turn that has since ended.
   qc.setQueryData<ProgressLine[]>(qk.agentProgress, []);
+  // So is a draft. If the turn still runs, its next draft brings the whole text back.
+  updateDrafts(qc, turnsOver);
+}
+
+function updateDrafts(qc: QueryClient, change: (drafts: Drafts) => Drafts) {
+  qc.setQueryData<Drafts>(DRAFTS_KEY, (drafts) => change(drafts ?? NO_DRAFTS));
+}
+
+/**
+ * What Tex is writing in a conversation right now (`message.draft` on the live stream), or null.
+ * Live only: it is never asked for, and goes when the answer arrives or the turn ends (`src/lib/drafts.ts`).
+ */
+export function useDraft(conversationId: string | null): MessageDraft | null {
+  const drafts = useQuery<Drafts>({ queryKey: DRAFTS_KEY, queryFn: () => NO_DRAFTS, enabled: false, initialData: NO_DRAFTS, staleTime: Infinity }).data;
+  return (conversationId && drafts.shown[conversationId]) || null;
 }
 
 /** Folds one event from the live stream into the query cache, so every screen shows it. */
@@ -45,9 +62,16 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
     case "message.created":
       // The message carries its conversation: it joins that thread, and the conversation moves up.
       addMessage(qc, event.data as Message);
+      // Tex's answer takes the place of what was shown of it while it was written.
+      updateDrafts(qc, (drafts) => messageArrived(drafts, event.data as Message));
       break;
     case "message.status":
       upsertMessage(qc, event.data as Message);
+      updateDrafts(qc, (drafts) => messageSettled(drafts, event.data as Message));
+      break;
+    case "message.draft":
+      // Live only: the whole answer so far, while Tex writes it in a web chat turn.
+      updateDrafts(qc, (drafts) => draftArrived(drafts, event.data as MessageDraft));
       break;
     case "conversation.updated":
       // A new one, a new title, something said in it, or it became (or stopped being) the active one.
@@ -67,8 +91,9 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
       const status = event.data as AgentStatus;
       qc.setQueryData(qk.agentStatus, status);
       if (status.state !== "busy") {
-        // The turn is over: its progress lines have nothing more to say.
+        // The turn is over: its progress lines have nothing more to say, and nothing is being written.
         qc.setQueryData<ProgressLine[]>(qk.agentProgress, []);
+        updateDrafts(qc, turnsOver);
         // Memory has no event of its own; a turn is when Tex saves, corrects or forgets.
         void qc.invalidateQueries({ queryKey: qk.memories });
       }

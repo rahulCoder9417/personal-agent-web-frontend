@@ -14,6 +14,7 @@ import type {
   Me,
   Memory,
   Message,
+  MessageDraft,
   PrReviewRepo,
   StreamEvent,
   UsagePeriod,
@@ -21,6 +22,7 @@ import type {
 } from "@/lib/api/client";
 import { threadIsWorking } from "@/lib/chat-thread";
 import { hasMarkdown } from "@/lib/markdown";
+import { draftCuts } from "./handlers-chat";
 import { handleDemoRequest, resetDemoStore } from "./index";
 import { getStore, subscribe } from "./store";
 
@@ -247,6 +249,65 @@ describe("chat", () => {
     await call<Message>("POST", "messages", { text: "Thanks", clientMessageId: uuid(26) });
     vi.advanceTimersByTime(2000);
     expect(hasMarkdown((await newest()).text)).toBe(false);
+  });
+
+  it("writes Tex's answer on screen as it is written, then posts it, as the backend does in web chat", async () => {
+    const events: StreamEvent[] = [];
+    subscribe(getStore(), (event) => events.push(event));
+    const sent = await call<Message>("POST", "messages", { text: "What's on my calendar today?", clientMessageId: uuid(27) });
+    vi.advanceTimersByTime(2000);
+
+    const drafts = events.filter((event) => event.type === "message.draft").map((event) => event.data as MessageDraft);
+    const answerAt = events.findIndex((event) => event.type === "message.created" && (event.data as Message).direction === "out");
+    const answer = events[answerAt].data as Message;
+    expect(drafts.length).toBeGreaterThan(5);
+    for (const draft of drafts) {
+      expect(draft).toMatchObject({ conversationId: sent.body.conversationId, turnId: `turn_${sent.body.id}`, messageId: sent.body.id });
+      // The whole text so far, ending at the end of a word.
+      expect(answer.text.startsWith(draft.text)).toBe(true);
+      expect(answer.text.slice(draft.text.length)).toMatch(/^(\s|$)/);
+    }
+    expect(drafts.map((draft) => draft.text.length)).toEqual([...drafts.map((draft) => draft.text.length)].sort((a, b) => a - b));
+    expect(drafts.at(-1)!.text).toBe(answer.text);
+    // Every draft comes before the answer; nothing of them is saved.
+    expect(events.findLastIndex((event) => event.type === "message.draft")).toBeLessThan(answerAt);
+    expect(getStore().messages.filter((message) => message.conversationId === sent.body.conversationId && message.direction === "out" && message.createdAt >= sent.body.createdAt)).toHaveLength(1);
+  });
+
+  it("starts the draft over when a specialist sets to work, and writes the answer after it", async () => {
+    const events: StreamEvent[] = [];
+    subscribe(getStore(), (event) => events.push(event));
+    await call<Message>("POST", "messages", { text: "Research what other tools charge for seats", clientMessageId: uuid(28) });
+    vi.advanceTimersByTime(5000);
+
+    const seen = events
+      .filter((event) => event.type === "message.draft" || event.type === "agent.progress" || event.type === "message.created")
+      .map((event) =>
+        event.type === "message.draft" ? `draft:${(event.data as MessageDraft).text}` : event.type === "agent.progress" ? "progress" : "created",
+      );
+    const firstProgress = seen.indexOf("progress");
+    expect(seen.slice(0, firstProgress).at(-2)).toBe("draft:I’ll hand this to Scout.");
+    expect(seen[firstProgress - 1], "the intro goes when Scout sets to work").toBe("draft:");
+    const lastProgress = seen.lastIndexOf("progress");
+    expect(seen.slice(lastProgress + 1, -1).every((step) => step.startsWith("draft:Scout looked into it"))).toBe(true);
+    expect(seen.at(-1)).toBe("created");
+  });
+
+  it("writes nothing ahead for a fact to remember or a risky request", async () => {
+    const events: StreamEvent[] = [];
+    subscribe(getStore(), (event) => events.push(event));
+    await call<Message>("POST", "messages", { text: "Remember that I send invoices on the 1st", clientMessageId: uuid(29) });
+    vi.advanceTimersByTime(2000);
+    await call<Message>("POST", "messages", { text: "Email Maya the kickoff notes", clientMessageId: uuid(30) });
+    vi.advanceTimersByTime(2000);
+    expect(events.filter((event) => event.type === "message.draft")).toEqual([]);
+  });
+
+  it("cuts a draft at the end of a word, a little further each step, the last at the end", () => {
+    expect(draftCuts("Got it. In the demo", 4)).toEqual([7, 10, 19]);
+    expect(draftCuts("Got it. In the demo", 5)).toEqual([7, 10, 14, 19]);
+    expect(draftCuts("Hello", 10)).toEqual([5]);
+    expect(draftCuts("", 3)).toEqual([]);
   });
 
   it("asks for an OK instead of acting when the request is risky", async () => {
