@@ -449,7 +449,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
       }}
       className="scroll-pane min-h-0 flex-1 overflow-y-auto"
     >
-      <div ref={content} className="mx-auto flex min-h-full max-w-[760px] flex-col gap-3.5 px-4 pt-2 pb-5 md:px-8" aria-live="polite">
+      <div ref={content} className="mx-auto flex min-h-full max-w-[944px] flex-col gap-3.5 px-4 pt-2 pb-5 md:px-8" aria-live="polite">
         {waiting && (
           <div className="m-auto text-muted">
             <Spinner size={20} />
