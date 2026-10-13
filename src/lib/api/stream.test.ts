@@ -1,7 +1,7 @@
 import { focusManager, QueryClient, QueryObserver } from "@tanstack/react-query";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { allConversations, type ConversationList } from "../conversations";
-import { DRAFTS_KEY, type Drafts } from "../drafts";
+import { DRAFTS_KEY, type Drafts, NO_DRAFTS, SHOW_AFTER_MS, turnOnScreen } from "../drafts";
 import type { Conversation, Message, MessageDraft, StreamEvent } from "./client";
 import { qk } from "./hooks";
 import { applyStreamEvent, catchUpAfterReconnect } from "./stream";
@@ -195,39 +195,91 @@ describe("applyStreamEvent, for the answer as it is written", () => {
     at: at("12:01"),
     ...rest,
   });
-  const shown = (qc: QueryClient, id = "cnv_now") => qc.getQueryData<Drafts>(DRAFTS_KEY)?.shown[id]?.text;
+  const drafts = (qc: QueryClient) => qc.getQueryData<Drafts>(DRAFTS_KEY) ?? NO_DRAFTS;
+  const shown = (qc: QueryClient, id = "cnv_now") => turnOnScreen(drafts(qc), id)?.writing ?? undefined;
+  const steps = (qc: QueryClient, id = "cnv_now") => turnOnScreen(drafts(qc), id)?.steps.map((step) => step.text);
+  const LONG = "Here are your meetings for today, with who is in each one and what you might want to prepare.";
+  const MORE = "And two emails from Maya ask about tomorrow’s review: she wants the numbers and a time that suits you.";
+
+  afterEach(() => vi.useRealTimers());
 
   it("shows the latest draft in its conversation, and Tex's answer in its place", () => {
     const chat = chatCache();
-    chat.send("message.draft", draft("Here are"));
-    chat.send("message.draft", draft("Here are your meetings"));
-    expect(shown(chat.qc)).toBe("Here are your meetings");
+    chat.send("message.draft", draft("Here are your meetings for today,"));
+    chat.send("message.draft", draft(LONG));
+    expect(shown(chat.qc)).toBe(LONG);
     expect(shown(chat.qc, "cnv_old")).toBeUndefined();
     // The answer arrives: it joins the thread, and the draft goes.
-    chat.send("message.created", message("m3", "cnv_now", "12:02", { direction: "out", text: "Here are your meetings: …" }));
+    chat.send("message.created", message("m3", "cnv_now", "12:02", { direction: "out", text: `${LONG} …` }));
     expect(chat.threadIds("cnv_now")).toEqual(["m3", "m2", "m1"]);
     expect(shown(chat.qc)).toBeUndefined();
     // The turn's last draft, overtaken by the answer on the way, is not shown again.
-    chat.send("message.draft", draft("Here are your meetings: …"));
+    chat.send("message.draft", draft(`${LONG} …`));
     expect(shown(chat.qc)).toBeUndefined();
     // Nothing of it was saved as a message.
     expect(chat.threadIds("cnv_now")).toEqual(["m3", "m2", "m1"]);
   });
 
-  it("clears the draft when the turn ends or fails, and after a reconnect", () => {
+  it("holds back a short draft until it has been written for 1.2 seconds without starting over", () => {
+    vi.useFakeTimers();
     const chat = chatCache();
-    chat.send("message.draft", draft("Half an ans"));
-    chat.send("agent.status", { state: "awake", lastActiveAt: at("12:03") });
-    expect(shown(chat.qc)).toBeUndefined();
+    chat.send("message.draft", draft("Let me check your calendar."));
+    vi.advanceTimersByTime(700);
+    chat.send("message.draft", draft(""));
+    vi.advanceTimersByTime(1000);
+    expect(drafts(chat.qc).turns.cnv_now).toMatchObject({ run: null, steps: [] });
 
-    chat.send("message.draft", draft("Half an ans", { turnId: "evt_2" }));
+    chat.send("message.draft", draft("Sure"));
+    vi.advanceTimersByTime(SHOW_AFTER_MS - 1);
+    expect(shown(chat.qc)).toBeUndefined();
+    chat.send("message.draft", draft("Sure, one"));
+    vi.advanceTimersByTime(1);
+    expect(shown(chat.qc)).toBe("Sure, one");
+  });
+
+  it("keeps a shown draft as a step when Tex starts over, with what it went on to do, and folds the steps into the answer", () => {
+    const chat = chatCache();
+    chat.send("message.draft", draft(LONG));
+    chat.send("message.draft", draft(""));
+    chat.send("agent.progress", { text: "using Google Calendar", crew: null, at: at("12:01") });
+    chat.send("message.draft", draft(MORE));
+    expect(steps(chat.qc)).toEqual([LONG]);
+    expect(turnOnScreen(drafts(chat.qc), "cnv_now")?.steps[0].progress.map((line) => line.text)).toEqual(["using Google Calendar"]);
+    expect(shown(chat.qc)).toBe(MORE);
+
+    chat.send("message.created", message("m3", "cnv_now", "12:02", { direction: "out", text: MORE }));
+    expect(steps(chat.qc)).toBeUndefined();
+    expect(drafts(chat.qc).folded.m3.map((step) => step.text)).toEqual([LONG]);
+  });
+
+  it("keeps the steps when the turn fails, until the apology arrives", () => {
+    const chat = chatCache();
+    chat.send("message.draft", draft(LONG));
+    chat.send("message.draft", draft(""));
     chat.send("message.status", message("m2", "cnv_now", "12:00", { status: "failed" }));
-    expect(shown(chat.qc)).toBeUndefined();
+    chat.send("agent.status", { state: "awake", lastActiveAt: at("12:03") });
+    expect(steps(chat.qc)).toEqual([LONG]);
+    chat.send("message.created", message("m3", "cnv_now", "12:03", { direction: "out", text: "I couldn't finish that." }));
+    expect(steps(chat.qc)).toBeUndefined();
+    expect(drafts(chat.qc).folded.m3.map((step) => step.text)).toEqual([LONG]);
+  });
 
-    chat.send("message.draft", draft("Again", { turnId: "evt_3" }));
-    chat.send("agent.status", { state: "busy", lastActiveAt: at("12:03") });
-    expect(shown(chat.qc), "still at work").toBe("Again");
+  it("keeps what is on screen after a reconnect while the agent is at work, and ends the turn if it is not", async () => {
+    const chat = chatCache();
+    chat.send("agent.status", { state: "busy", lastActiveAt: at("12:01") });
+    chat.send("message.draft", draft(LONG));
     catchUpAfterReconnect(chat.qc, true);
+    await settle();
+    expect(shown(chat.qc), "still at work").toBe(LONG);
+    // The next draft carries on from it.
+    chat.send("message.draft", draft(`${LONG} More.`));
+    expect(shown(chat.qc)).toBe(`${LONG} More.`);
+
+    // The turn ended while the stream was down: what was shown stays, as a step, until its answer.
+    chat.qc.setQueryData(qk.agentStatus, { state: "awake", lastActiveAt: at("12:03") });
+    catchUpAfterReconnect(chat.qc, true);
+    await settle();
     expect(shown(chat.qc)).toBeUndefined();
+    expect(steps(chat.qc)).toEqual([`${LONG} More.`]);
   });
 });
