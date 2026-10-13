@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { AgentFigure } from "@/components/tex";
 import { toastError } from "@/components/toast";
-import { Button, Card, Meta, Pill, SectionLabel } from "@/components/ui";
+import { Button, Meta, Pill } from "@/components/ui";
 import { ApiError, errorMessage, type AgentSettings } from "@/lib/api/client";
 import { useUpdateAgentSettings } from "@/lib/api/hooks";
 import { textcrewAiOffer, type AiChoiceState } from "./agent-summary";
@@ -23,30 +23,46 @@ export function ChoiceStatePill({ state }: { state: AiChoiceState }) {
   return null;
 }
 
-/** The heading over one of the three ways to get AI: its name, its tag, where it stands and a line about it. */
-export function ChoiceHeading({ title, tag, state, children }: { title: string; tag?: ReactNode; state: AiChoiceState; children: ReactNode }) {
+/**
+ * One of the three ways to get AI, as a card: its name, its tag, where it stands and a line about it
+ * at the top, then what can be done with it.
+ */
+export function ChoiceCard({
+  id,
+  title,
+  tag,
+  state,
+  description,
+  children,
+}: {
+  id?: string;
+  title: string;
+  tag?: ReactNode;
+  state: AiChoiceState;
+  description: ReactNode;
+  children: ReactNode;
+}) {
+  const headingId = useId();
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap items-center gap-2">
-        <SectionLabel>{title}</SectionLabel>
-        {tag}
-        <ChoiceStatePill state={state} />
+    <section id={id} aria-labelledby={headingId} className="scroll-mt-4 rounded-xl border border-line bg-surface">
+      <div className="flex flex-col gap-1 border-b border-line px-5 pt-4 pb-3.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 id={headingId} className="text-[14.5px] font-semibold">
+            {title}
+          </h3>
+          {tag}
+          <ChoiceStatePill state={state} />
+        </div>
+        <p className="text-[12.5px] text-muted">{description}</p>
       </div>
-      <p className="text-[12.5px] text-muted">{children}</p>
-    </div>
+      {children}
+    </section>
   );
 }
 
-export function AiChoicesIntro() {
-  return (
-    <div className="flex flex-col gap-1">
-      <h2 className="text-[16px] font-semibold tracking-[-0.01em]">Three ways to give Tex its AI</h2>
-      <p className="text-[13px] text-muted">
-        Bring your own and your provider or plan pays for the AI. Bring nothing, or choose Textcrew AI, and the AI is paid in credits.
-      </p>
-    </div>
-  );
-}
+/** What the three ways have in common, said once over them. */
+export const AI_CHOICES_INTRO =
+  "Three ways to give Tex its AI. Bring your own and your provider or plan pays for the AI. Bring nothing, or choose Textcrew AI, and the AI is paid in credits.";
 
 type TextcrewAiText = { title: string; meta: string; body: string };
 
@@ -89,13 +105,16 @@ export function TextcrewAiSection({ settings, state }: { settings: AgentSettings
   const text = TEXTCREW_AI[state === "unavailable" ? "unavailable" : state === "in_use" ? (offer?.action === "go_back" ? "chosen" : "in_use") : "ready"];
 
   return (
-    <section className="flex flex-col gap-3">
-      <ChoiceHeading title="Textcrew AI" state={state}>
-        {state === "unavailable"
+    <ChoiceCard
+      title="Textcrew AI"
+      state={state}
+      description={
+        state === "unavailable"
           ? "Nothing to set up, paid in credits. It isn’t on offer on this account right now."
-          : "Nothing to set up, paid in credits. It’s what Tex uses when you haven’t connected your own AI, and you can choose it when you have."}
-      </ChoiceHeading>
-      <Card className="flex flex-col gap-3 p-5">
+          : "Nothing to set up, paid in credits. It’s what Tex uses when you haven’t connected your own AI, and you can choose it when you have."
+      }
+    >
+      <div className="flex flex-col gap-3 p-5">
         <div className="flex items-center gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-[11px] bg-accent-soft">
             <AgentFigure who="tex" mood={state === "unavailable" ? "paused" : "ready"} glyph size={28} label="" />
@@ -126,7 +145,7 @@ export function TextcrewAiSection({ settings, state }: { settings: AgentSettings
             See what your credits were spent on
           </Link>
         )}
-      </Card>
-    </section>
+      </div>
+    </ChoiceCard>
   );
 }

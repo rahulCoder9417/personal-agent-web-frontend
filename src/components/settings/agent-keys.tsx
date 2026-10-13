@@ -3,12 +3,12 @@
 import { useId, useState, type FormEvent } from "react";
 import { KeyIcon } from "@/components/icons";
 import { toastError } from "@/components/toast";
-import { Button, Card, ErrorState, Field, IconTile, inputClass, Meta, Pill, SkeletonRows } from "@/components/ui";
+import { Button, ErrorState, Field, IconTile, inputClass, Meta, Pill, SkeletonRows } from "@/components/ui";
 import { refusedTypedValue } from "@/lib/action-errors";
 import type { ByokKey, ByokProvider } from "@/lib/api/client";
 import { useByokKeys, useDeleteByokKey, useSetByokKey } from "@/lib/api/hooks";
 import { cn, formatDate, listNames } from "@/lib/format";
-import { CHOICE_TAG, ChoiceHeading } from "./agent-choice";
+import { CHOICE_TAG, ChoiceCard } from "./agent-choice";
 import { PROVIDER_LABEL, PROVIDERS, type AiChoiceState } from "./agent-summary";
 import { ConfirmButton } from "@/components/confirm-button";
 
@@ -117,7 +117,7 @@ function KeyRow({ entry }: { entry: ByokKey }) {
 
   return (
     <li className="flex flex-col gap-3 border-b border-line px-5 py-3.5 last:border-b-0">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         {/* Providers are named in plain text; no logos. */}
         <IconTile size={36} className="text-nav">
           <KeyIcon size={17} />
@@ -127,7 +127,8 @@ function KeyRow({ entry }: { entry: ByokKey }) {
           <Meta className="truncate">{keyMeta(entry)}</Meta>
         </div>
         {entry.set ? (
-          <>
+          // On a phone the actions go on a line of their own, under the key's name.
+          <div className="flex items-center gap-2 max-sm:w-full max-sm:pl-12">
             {entry.inUse ? <Pill tone="done">In use</Pill> : <Pill tone="muted">Saved</Pill>}
             {!editing && (
               <Button size="sm" onClick={() => setEditing(true)} aria-label={`Replace ${name} key`}>
@@ -141,7 +142,7 @@ function KeyRow({ entry }: { entry: ByokKey }) {
               pending={remove.isPending}
               onConfirm={() => remove.mutate(entry.provider, { onError: (error) => toastError(`Couldn’t remove your ${name} key`, error) })}
             />
-          </>
+          </div>
         ) : (
           !editing && (
             <Button size="sm" onClick={() => setEditing(true)} aria-label={`Add ${name} key`}>
@@ -160,26 +161,28 @@ export function ApiKeysSection({ state }: { state: AiChoiceState }) {
   const keys = useByokKeys();
 
   return (
-    <section className="flex flex-col gap-3">
-      <ChoiceHeading title="Your own API key" tag={CHOICE_TAG.own_key} state={state}>
-        From {listNames(PROVIDERS.map((provider) => PROVIDER_LABEL[provider]))}. Your provider bills the AI directly, so the AI isn’t charged in
-        credits. Keys are encrypted, and only the last 4 characters are ever shown.
-      </ChoiceHeading>
+    <ChoiceCard
+      title="Your own API key"
+      tag={CHOICE_TAG.own_key}
+      state={state}
+      description={
+        <>
+          From {listNames(PROVIDERS.map((provider) => PROVIDER_LABEL[provider]))}. Your provider bills the AI directly, so the AI isn’t charged in
+          credits. Keys are encrypted, and only the last 4 characters are ever shown.
+        </>
+      }
+    >
       {keys.isPending ? (
-        <Card>
-          <SkeletonRows rows={3} />
-        </Card>
+        <SkeletonRows rows={3} />
       ) : keys.isError ? (
         <ErrorState error={keys.error} onRetry={() => void keys.refetch()} />
       ) : (
-        <Card>
-          <ul>
-            {PROVIDERS.map((provider) => (
-              <KeyRow key={provider} entry={keys.data.find((key) => key.provider === provider) ?? { provider, set: false, inUse: false, effectiveModel: "" }} />
-            ))}
-          </ul>
-        </Card>
+        <ul>
+          {PROVIDERS.map((provider) => (
+            <KeyRow key={provider} entry={keys.data.find((key) => key.provider === provider) ?? { provider, set: false, inUse: false, effectiveModel: "" }} />
+          ))}
+        </ul>
       )}
-    </section>
+    </ChoiceCard>
   );
 }

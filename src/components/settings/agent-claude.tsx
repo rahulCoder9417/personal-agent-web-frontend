@@ -4,16 +4,18 @@ import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { CheckIcon, ExternalIcon } from "@/components/icons";
 import { Select } from "@/components/select";
 import { toastError } from "@/components/toast";
-import { Button, Card, Field, inputClass, Meta } from "@/components/ui";
+import { Button, inputClass, Meta } from "@/components/ui";
 import { refusedTypedValue } from "@/lib/action-errors";
 import type { AgentSettings, ClaudeEffort, ClaudeLoginStart } from "@/lib/api/client";
 import { useCompleteClaudeLogin, useDisconnectClaude, useStartClaudeLogin, useUpdateClaudeCode } from "@/lib/api/hooks";
-import { choiceValue, effortOptions, modelOptions, type SelectOption } from "@/lib/claude-code";
+import { choiceValue, effortOptions, modelOptions } from "@/lib/claude-code";
+import type { ListItem } from "@/lib/listbox";
 import { openInNewTab } from "@/lib/navigate";
 import { cn, formatDate, formatTime } from "@/lib/format";
 import { ConfirmButton } from "@/components/confirm-button";
-import { CHOICE_TAG, ChoiceHeading } from "./agent-choice";
+import { CHOICE_TAG, ChoiceCard } from "./agent-choice";
 import type { AiChoiceState } from "./agent-summary";
+import { SettingRow } from "./settings-rows";
 
 function Step({ n, state, title, children }: { n: number; state: "todo" | "now" | "done"; title: ReactNode; children?: ReactNode }) {
   return (
@@ -139,49 +141,79 @@ export function ClaudeConnectSteps() {
   );
 }
 
-function ChoiceSelect({ id, label, value, options, onChange }: { id: string; label: string; value: string | null; options: SelectOption[]; onChange: (value: string) => void }) {
+function ChoiceSelect({
+  id,
+  label,
+  help,
+  value,
+  options,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  help: ReactNode;
+  value: string | null;
+  options: readonly ListItem[];
+  onChange: (value: string) => void;
+}) {
   return (
-    <Field label={label} htmlFor={id}>
-      <Select id={id} label={label} value={value ?? ""} options={options} onChange={onChange} />
-    </Field>
+    <SettingRow label={label} htmlFor={id} help={help}>
+      <Select id={id} label={label} value={value ?? ""} options={options} onChange={onChange} minListWidth={240} />
+    </SettingRow>
+  );
+}
+
+/** "Saved", after the help of the choice that was just saved. */
+function SavedNote() {
+  return (
+    <span role="status" className="text-success">
+      {" "}
+      · Saved
+    </span>
   );
 }
 
 /**
- * Which Claude model Claude Code uses and how hard it thinks. "Default" leaves it to Claude Code.
- * Each change is saved as it is made; it applies to turns that run on Claude Code.
+ * Which Claude model Claude Code uses and how hard it thinks, as two rows of the Engine group.
+ * "Default" leaves it to Claude Code. Each change is saved as it is made; it applies to turns that
+ * run on Claude Code. Only offered once a Claude plan is connected.
  */
-function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
+export function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
   const update = useUpdateClaudeCode();
   const id = useId();
   // The select goes back to what is saved when a change is refused; the toast says why.
   const refused = { onError: (error: unknown) => toastError("Couldn’t save that choice", error) };
+  const saved = update.isSuccess ? (update.variables && "claudeModel" in update.variables ? "model" : "effort") : null;
 
   return (
-    <div className="flex flex-col gap-3 border-t border-line pt-4">
-      <p className="text-[13px] text-muted">Model and thinking effort apply when Claude Code is the engine.</p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <ChoiceSelect
-          id={`${id}-model`}
-          label="Model"
-          value={settings.claudeModel}
-          options={modelOptions(settings)}
-          onChange={(value) => update.mutate({ claudeModel: choiceValue(value) }, refused)}
-        />
-        <ChoiceSelect
-          id={`${id}-effort`}
-          label="Thinking effort"
-          value={settings.claudeEffort}
-          options={effortOptions(settings)}
-          onChange={(value) => update.mutate({ claudeEffort: choiceValue<ClaudeEffort>(value) }, refused)}
-        />
-      </div>
-      {update.isSuccess && (
-        <span role="status" className="text-[12.5px] text-success">
-          Saved
-        </span>
-      )}
-    </div>
+    <>
+      <ChoiceSelect
+        id={`${id}-model`}
+        label="Model"
+        help={
+          <>
+            The Claude model Claude Code runs. Default is Claude Code’s own.
+            {saved === "model" && <SavedNote />}
+          </>
+        }
+        value={settings.claudeModel}
+        options={modelOptions(settings)}
+        onChange={(value) => update.mutate({ claudeModel: choiceValue(value) }, refused)}
+      />
+      <ChoiceSelect
+        id={`${id}-effort`}
+        label="Thinking effort"
+        help={
+          <>
+            How hard Claude Code thinks before it answers. Default is Claude Code’s own.
+            {saved === "effort" && <SavedNote />}
+          </>
+        }
+        value={settings.claudeEffort}
+        options={effortOptions(settings)}
+        onChange={(value) => update.mutate({ claudeEffort: choiceValue<ClaudeEffort>(value) }, refused)}
+      />
+    </>
   );
 }
 
@@ -195,11 +227,14 @@ export function ClaudePlanSection({ settings, state }: { settings: AgentSettings
   const connected = settings.claude.connected;
 
   return (
-    <section className="flex flex-col gap-3">
-      <ChoiceHeading title="Your Claude plan" tag={CHOICE_TAG.claude_plan} state={state}>
-        Runs Claude Code in your private workspace, on the plan you already pay for. Your plan covers the AI, so the AI isn’t charged in credits.
-      </ChoiceHeading>
-      <Card className="flex flex-col gap-4 p-5">
+    <ChoiceCard
+      id={CLAUDE_PLAN_ANCHOR}
+      title="Your Claude plan"
+      tag={CHOICE_TAG.claude_plan}
+      state={state}
+      description="Runs Claude Code in your private workspace, on the plan you already pay for. Your plan covers the AI, so the AI isn’t charged in credits."
+    >
+      <div className="flex flex-col gap-4 p-5">
         <div className="flex items-center gap-3">
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="text-[14.5px] font-semibold">{connected ? "Claude plan connected" : "Connect your Claude plan"}</span>
@@ -223,20 +258,20 @@ export function ClaudePlanSection({ settings, state }: { settings: AgentSettings
         </div>
 
         {connected ? (
-          <>
-            <p className="text-[13px] text-muted">
-              {state === "in_use"
-                ? "Disconnecting signs Claude Code out in your workspace, and Tex goes back to Hermes."
-                : "Tex is running Hermes at the moment. Choose Claude Code under Agent to run on your plan."}
-            </p>
-            <ClaudeCodeChoices settings={settings} />
-          </>
+          <p className="text-[13px] text-muted">
+            {state === "in_use"
+              ? "Disconnecting signs Claude Code out in your workspace, and Tex goes back to Hermes."
+              : "Tex is running Hermes at the moment. Choose Claude Code under Engine to run on your plan."}
+          </p>
         ) : (
           <ClaudeConnectSteps />
         )}
 
         <p className="border-t border-line pt-4 text-[13px] text-muted">{CLAUDE_SIGN_IN_NOTE}</p>
-      </Card>
-    </section>
+      </div>
+    </ChoiceCard>
   );
 }
+
+/** Where the Claude plan's card is on the page, for the link that leads to it. */
+export const CLAUDE_PLAN_ANCHOR = "claude-plan";
