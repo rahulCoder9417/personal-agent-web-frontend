@@ -99,6 +99,19 @@ export function connectCopy(app: Pick<App, "name" | "provider" | "description">,
   return { title, intro, can, points, continueLabel: `Continue to ${provider}`, leaving: `Taking you to ${provider}…` };
 }
 
+/**
+ * Where the sign-in left off, from the address it came back to: our own `app` (or the Apps page's
+ * `connected`) names the app, and Composio adds `status` (`success` or `failed`). Without a status
+ * it counts as done; anything else but `success` counts as not connected. Null: no app named, so
+ * this isn't the way back from a sign-in.
+ */
+export function connectOutcome(params: { get(name: string): string | null }): { slug: string; ok: boolean } | null {
+  const slug = (params.get("app") ?? params.get("connected") ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9_]{1,40}$/.test(slug)) return null;
+  const status = params.get("status");
+  return { slug, ok: status === null || status === "success" };
+}
+
 /** The first few apps onboarding offers: on the plan and ready to connect. */
 export function appsToOffer(apps: readonly App[], count: number): App[] {
   return apps.filter((app) => app.availableOnPlan && isConnectable(app)).slice(0, count);

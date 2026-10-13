@@ -38,7 +38,9 @@ export const connectApp: Handler = async ({ state, request, params, url }) => {
 
   const body = await readJson(request, { optional: true });
   const redirectUrl = readReturnUrl(body.returnUrl, url.origin);
+  // What the real way back carries: the app (ours) and how it went (Composio's `status`).
   redirectUrl.searchParams.set("app", app.slug);
+  redirectUrl.searchParams.set("status", "success");
 
   // There's no provider to sign in to, so the app counts as connected straight away.
   app.connections = app.connections.filter((connection) => connection.status === "active");
