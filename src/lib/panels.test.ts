@@ -43,21 +43,60 @@ describe("PANELS: what this browser remembers about the panels", () => {
 });
 
 describe("focusAfterToggle", () => {
-  function page(activeElement: unknown) {
-    const target = { focus: vi.fn() };
+  /** A page whose button with the id `chats-show` takes the keyboard from the `ready`th try on. */
+  function page(pressed: object, ready = 1) {
+    const body = {};
+    const doc = { activeElement: pressed as unknown, body, getElementById: (id: string) => (id === "chats-show" ? target : null) };
+    const target = {
+      focus: vi.fn(() => {
+        if (target.focus.mock.calls.length >= ready) doc.activeElement = target;
+      }),
+    };
     const frames: (() => void)[] = [];
-    vi.stubGlobal("document", { activeElement, getElementById: (id: string) => (id === "chats-show" ? target : null) });
+    vi.stubGlobal("document", doc);
     vi.stubGlobal("window", { requestAnimationFrame: (callback: () => void) => frames.push(callback) });
-    return { target, frames };
+    const runFrames = () => {
+      while (frames.length > 0) frames.shift()?.();
+    };
+    return { doc, body, target, frames, runFrames };
   }
 
   it("gives the keyboard to the button that undoes it, once the page has caught up", () => {
     const pressed = {} as Element;
-    const { target, frames } = page(pressed);
+    const { doc, target, frames, runFrames } = page(pressed);
     focusAfterToggle(pressed, "chats-show");
     expect(target.focus).not.toHaveBeenCalled();
+    expect(frames).toHaveLength(1);
+    runFrames();
+    expect(target.focus).toHaveBeenCalledTimes(1);
+    expect(doc.activeElement).toBe(target);
+  });
+
+  it("tries again while that button is still on its way in, and no longer than a fold takes", () => {
+    const pressed = {} as Element;
+    const arriving = page(pressed, 3);
+    focusAfterToggle(pressed, "chats-show");
+    arriving.runFrames();
+    expect(arriving.target.focus).toHaveBeenCalledTimes(3);
+    expect(arriving.doc.activeElement).toBe(arriving.target);
+
+    const never = page(pressed, Infinity);
+    focusAfterToggle(pressed, "chats-show");
+    never.runFrames();
+    expect(never.target.focus).toHaveBeenCalledTimes(20);
+  });
+
+  it("stops as soon as the keyboard has gone somewhere else", () => {
+    const pressed = {} as Element;
+    const { doc, target, frames } = page(pressed, Infinity);
+    focusAfterToggle(pressed, "chats-show");
     frames.shift()?.();
     expect(target.focus).toHaveBeenCalledTimes(1);
+    // The person tabbed on while the button was still arriving.
+    doc.activeElement = { elsewhere: true };
+    frames.shift()?.();
+    expect(target.focus).toHaveBeenCalledTimes(1);
+    expect(frames).toHaveLength(0);
   });
 
   it("leaves the keyboard alone when the pressed button didn't have it", () => {

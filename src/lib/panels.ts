@@ -16,12 +16,26 @@ export const PANELS = {
   sidePanel: storedFlag("textcrew.sidepanel.hidden"),
 } as const;
 
+/** About as many frames as a panel takes to fold (`PANEL_MS`), and a few more. */
+const FOCUS_TRIES = 20;
+
 /**
  * After a button that folds or opens a panel is pressed, the button that undoes it may be the one
  * that has just been folded away with its panel. If the pressed button had the keyboard, it goes
- * to the button with this id once the page has caught up.
+ * to the button with this id once the page has caught up. That button may still be on its way in
+ * (hidden until its first frame on screen), so it is tried again each frame for as long as a fold
+ * takes, while the keyboard is nowhere else.
  */
 export function focusAfterToggle(pressed: Element, id: string): void {
   if (document.activeElement !== pressed) return;
-  window.requestAnimationFrame(() => document.getElementById(id)?.focus());
+  const lost = () => !document.activeElement || document.activeElement === document.body || document.activeElement === pressed;
+  let tries = 0;
+  const attempt = () => {
+    if (!lost()) return;
+    document.getElementById(id)?.focus();
+    tries += 1;
+    if (lost() && tries < FOCUS_TRIES) window.requestAnimationFrame(attempt);
+  };
+  window.requestAnimationFrame(attempt);
 }
+
