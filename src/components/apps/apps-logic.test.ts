@@ -3,10 +3,13 @@ import { ApiError, type App } from "@/lib/api/client";
 import {
   appsToOffer,
   categoriesOf,
+  connectCopy,
+  connectOutcome,
   describeConnectError,
   filterApps,
   isConnectable,
   NOT_AVAILABLE_LABEL,
+  providerOf,
   splitApps,
   toMcpServerCreate,
   validateMcpServer,
@@ -15,6 +18,8 @@ import {
 const app = (slug: string, name: string, category: string, connected = false): App => ({
   slug,
   name,
+  provider: "Google",
+  description: `Do things in ${name}.`,
   category,
   availableOnPlan: true,
   connectable: true,
@@ -137,5 +142,75 @@ describe("toMcpServerCreate", () => {
       authHeaderName: "Authorization",
       authSecret: "tok",
     });
+  });
+});
+
+describe("the connect screen", () => {
+  const gmail = { name: "Gmail", provider: "Google", description: "Read and search your email, write drafts and send email for you." };
+
+  it("names the app, says what Tex can do with it, and continues to the provider", () => {
+    const copy = connectCopy(gmail, "connect");
+    expect(copy).toMatchObject({
+      title: "Connect Gmail",
+      intro: "",
+      can: gmail.description,
+      continueLabel: "Continue to Google",
+      leaving: "Taking you to Google…",
+    });
+    expect(copy.points.map((p) => p.kind)).toEqual(["approval", "credits", "signin"]);
+    expect(copy.points[0]!.text).toBe("Before Tex sends, deletes or changes something that’s already there, it asks you first.");
+    expect(copy.points[1]!.text).toBe("Reading is free. Each change Tex makes costs 1 credit.");
+    expect(copy.points[2]!.text).toContain("You sign in on Google’s own page. Textcrew never sees your password");
+  });
+
+  it("says why it is open when adding an account or reconnecting", () => {
+    expect(connectCopy(gmail, "add")).toMatchObject({
+      title: "Add another Gmail account",
+      intro: "Sign in with the other account on Google’s page. Tex can then use both.",
+    });
+    const again = connectCopy(gmail, "reconnect");
+    expect(again.title).toBe("Reconnect Gmail");
+    expect(again.intro).toMatch(/^Gmail stopped letting Tex in\./);
+  });
+
+  it("says the provider's page opens in a new tab, when it does", () => {
+    expect(connectCopy(gmail, "connect", true).points.at(-1)).toEqual({
+      kind: "tab",
+      text: "Google’s page opens in a new tab. Come back here when you’re done.",
+    });
+  });
+
+  it("has words of its own for a backend that doesn't send the provider or the description", () => {
+    const old = { name: "Linear" } as Parameters<typeof connectCopy>[0];
+    expect(providerOf(old)).toBe("Linear");
+    expect(connectCopy(old, "connect")).toMatchObject({
+      can: "Use Linear for you, when you ask.",
+      continueLabel: "Continue to Linear",
+    });
+    expect(providerOf({ name: "Jira", provider: "  " })).toBe("Jira");
+  });
+});
+
+describe("the way back from a sign-in", () => {
+  const read = (query: string) => connectOutcome(new URLSearchParams(query));
+
+  it("reads the app and Composio's status", () => {
+    expect(read("app=gmail&status=success&connected_account_id=ca_1")).toEqual({ slug: "gmail", ok: true });
+    expect(read("app=gmail&status=failed")).toEqual({ slug: "gmail", ok: false });
+    // The Apps page's own way back.
+    expect(read("connected=github&status=success")).toEqual({ slug: "github", ok: true });
+    expect(read("connected=github&status=failed")).toEqual({ slug: "github", ok: false });
+  });
+
+  it("counts a missing status as done, and any other status as not connected", () => {
+    expect(read("app=notion")).toEqual({ slug: "notion", ok: true });
+    expect(read("app=notion&status=error")).toEqual({ slug: "notion", ok: false });
+  });
+
+  it("is not a way back without an app, or with something that isn't an app name", () => {
+    expect(read("")).toBeNull();
+    expect(read("checkout=demo")).toBeNull();
+    expect(read("app=%3Cscript%3E")).toBeNull();
+    expect(read("app=" + "a".repeat(41))).toBeNull();
   });
 });

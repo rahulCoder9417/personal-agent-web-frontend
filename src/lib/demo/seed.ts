@@ -448,10 +448,27 @@ function seedPlans(): Plan[] {
  */
 export const NOT_CONNECTABLE: readonly string[] = ["hubspot", "asana", "airtable"];
 
+/** Whose sign-in comes next and what Tex can do with each app, in the backend's own words (its catalog). */
+const APP_ABOUT: Record<string, { provider: string; description: string }> = {
+  gmail: { provider: "Google", description: "Read and search your email, write drafts and send email for you." },
+  googlecalendar: { provider: "Google", description: "See your events, find free time, and add or change events." },
+  notion: { provider: "Notion", description: "Search and read your pages, and write new ones." },
+  slack: { provider: "Slack", description: "Read your channels and messages, and send messages for you." },
+  github: { provider: "GitHub", description: "Read your repos, issues and pull requests, and open or comment on them." },
+  googledrive: { provider: "Google", description: "Find and read the files in your Drive, and add or organize files." },
+  googlesheets: { provider: "Google", description: "Read your spreadsheets, and add or update rows." },
+  linear: { provider: "Linear", description: "See your issues and projects, and open or update issues." },
+  hubspot: { provider: "HubSpot", description: "Look up contacts, companies and deals, and add or update them." },
+  trello: { provider: "Trello", description: "See your boards and cards, and add or move cards." },
+  asana: { provider: "Asana", description: "See your projects and tasks, and add or update tasks." },
+  todoist: { provider: "Todoist", description: "See your tasks, add new ones and tick them off." },
+  airtable: { provider: "Airtable", description: "Read your bases, and add or update records." },
+};
+
 function seedApps(): App[] {
   const active = (id: string, accountLabel: string) => ({ id, accountLabel, status: "active" as const });
   const app = (slug: string, name: string, category: string, connections: App["connections"] = []): App => ({
-    slug, name, iconUrl: null, category, availableOnPlan: true, connectable: !NOT_CONNECTABLE.includes(slug), connections,
+    slug, name, ...APP_ABOUT[slug], iconUrl: null, category, availableOnPlan: true, connectable: !NOT_CONNECTABLE.includes(slug), connections,
   });
   return [
     app("gmail", "Gmail", "email", [active("con_gmail_1", "aarav@northwind.studio"), active("con_gmail_2", "aarav.shah@gmail.com")]),

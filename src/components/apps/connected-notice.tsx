@@ -4,25 +4,30 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { useApps } from "@/lib/api/hooks";
 import { titleCase } from "@/lib/format";
-import { toast } from "../toast";
+import { toast, toastError } from "../toast";
+import { connectOutcome } from "./apps-logic";
 
 /**
- * After a provider's sign-in screen, the backend sends the browser to /apps?connected=<slug>.
- * Confirm it, look the catalog up again and tidy the address.
+ * After a provider's sign-in screen, the browser comes back to /apps?connected=<slug>, with
+ * Composio's `status` added. Say how it went, look the catalog up again and tidy the address.
  */
 export function ConnectedNotice() {
   const router = useRouter();
-  const slug = useSearchParams().get("connected");
+  const params = useSearchParams();
+  const outcome = connectOutcome(params);
   const { data: apps, refetch } = useApps();
+  const key = outcome ? `${outcome.slug}:${outcome.ok}` : null;
 
   useEffect(() => {
-    if (!slug) return;
+    if (!outcome) return;
     void refetch();
-    toast({ title: `${apps?.find((app) => app.slug === slug)?.name ?? titleCase(slug)} connected`, body: "Tex can use it from now on." });
+    const name = apps?.find((app) => app.slug === outcome.slug)?.name ?? titleCase(outcome.slug);
+    if (outcome.ok) toast({ title: `${name} connected`, body: "Tex can use it from now on." });
+    else toastError(`${name} didn’t connect`, "Nothing was changed. Try again when you’re ready.");
     router.replace("/apps");
-    // Only when the address carries a new slug; `apps` is read for its name if already loaded.
+    // Only when the address carries a new outcome; `apps` is read for its name if already loaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
+  }, [key]);
 
   return null;
 }

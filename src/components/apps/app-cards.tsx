@@ -1,60 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import { AppIcon } from "@/components/brand-icon";
 import { LockIcon } from "@/components/icons";
 import { ConfirmButton } from "@/components/confirm-button";
 import { toastError } from "@/components/toast";
 import { Button, Card, Meta, Pill } from "@/components/ui";
 import type { App } from "@/lib/api/client";
-import { useConnectApp, useDisconnectApp } from "@/lib/api/hooks";
-import { leaveTo } from "@/lib/navigate";
+import { useDisconnectApp } from "@/lib/api/hooks";
 import { cn, titleCase } from "@/lib/format";
-import { describeConnectError, isConnectable, NOT_AVAILABLE_LABEL } from "./apps-logic";
+import { isConnectable, NOT_AVAILABLE_LABEL } from "./apps-logic";
+import { useConnectDialog } from "./connect-dialog";
 
 type Connection = App["connections"][number];
 
 /**
- * Starting a connection: ask the API for the provider's sign-in URL, open it in the system
- * page, which returns to /apps when it is done. A refusal is a toast.
+ * Connect, Add account and Reconnect open Textcrew's own connect screen first. Its Continue asks
+ * the API for the sign-in link; the sign-in takes over this tab and comes back to /apps, where
+ * `ConnectedNotice` says how it went.
  */
-function useConnectFlow(app: App) {
-  const connect = useConnectApp();
-  const [waiting, setWaiting] = useState(false);
-
-  const start = () => {
-    setWaiting(false);
-    connect.mutate(
-      { appSlug: app.slug, returnUrl: `${window.location.origin}/apps?connected=${encodeURIComponent(app.slug)}` },
-      {
-        onSuccess: ({ redirectUrl }) => {
-          // The provider's sign-in takes over this tab and returns to /apps when it's done.
-          setWaiting(true);
-          leaveTo(redirectUrl);
-        },
-        onError: (error) => {
-          const refusal = describeConnectError(app.name, error);
-          toastError(refusal.title, refusal.detail, refusal.plans ? { label: "See plans", href: "/settings/plans" } : undefined);
-        },
-      },
-    );
-  };
-
-  return { start, pending: connect.isPending, waiting };
+function useConnectFlow() {
+  return useConnectDialog({ returnPath: (app) => `/apps?connected=${encodeURIComponent(app.slug)}` });
 }
 
 type ConnectFlow = ReturnType<typeof useConnectFlow>;
-
-/** After Connect was pressed and the API said yes: the sign-in screen is on its way. */
-function ConnectNotice({ flow }: { flow: ConnectFlow }) {
-  if (!flow.waiting) return null;
-  return (
-    <p role="status" className="text-[12.5px] text-muted">
-      Taking you to the sign-in screen…
-    </p>
-  );
-}
 
 function AppHeading({ app, tile = 40, dim }: { app: App; tile?: number; dim?: boolean }) {
   return (
@@ -82,7 +51,7 @@ function ConnectionRow({ app, connection, flow }: { app: App; connection: Connec
           <Pill tone="danger">{connection.status === "expired" ? "Expired" : "Not working"}</Pill>
           {/* Reconnecting goes through the same sign-in, so it needs the app to be connectable. */}
           {isConnectable(app) && (
-            <Button variant="primary" size="sm" className="h-7 px-3" pending={flow.pending} onClick={flow.start}>
+            <Button variant="primary" size="sm" className="h-7 px-3" onClick={() => flow.open(app, "reconnect")} aria-label={`Reconnect ${app.name} ${label}`}>
               Reconnect
             </Button>
           )}
@@ -101,7 +70,7 @@ function ConnectionRow({ app, connection, flow }: { app: App; connection: Connec
 
 /** An app with at least one connected account. */
 export function ConnectedAppCard({ app }: { app: App }) {
-  const flow = useConnectFlow(app);
+  const flow = useConnectFlow();
   return (
     <Card className="flex flex-col gap-3.5 p-4">
       <div className="flex items-center justify-between gap-3">
@@ -109,8 +78,7 @@ export function ConnectedAppCard({ app }: { app: App }) {
         {isConnectable(app) && (
           <button
             type="button"
-            disabled={flow.pending}
-            onClick={flow.start}
+            onClick={() => flow.open(app, "add")}
             aria-label={`Add another ${app.name} account`}
             className="shrink-0 rounded px-1 text-[12.5px] font-medium text-accent hover:text-accent-dark disabled:opacity-50"
           >
@@ -123,14 +91,14 @@ export function ConnectedAppCard({ app }: { app: App }) {
           <ConnectionRow key={connection.id} app={app} connection={connection} flow={flow} />
         ))}
       </ul>
-      <ConnectNotice flow={flow} />
+      {flow.dialog}
     </Card>
   );
 }
 
 /** An app that isn't connected yet: Connect, the way to a plan that has it, or "Not available yet". */
 export function AvailableAppCard({ app }: { app: App }) {
-  const flow = useConnectFlow(app);
+  const flow = useConnectFlow();
   const connectable = isConnectable(app);
   return (
     <div className={cn("flex flex-col gap-2 rounded-xl px-3 py-2.5 transition-colors", connectable && "hover:bg-surface-2")}>
@@ -142,7 +110,7 @@ export function AvailableAppCard({ app }: { app: App }) {
           // The server has no setup for this app yet, so there is nothing to press.
           <span className="shrink-0 px-1 text-[12.5px] text-muted">{NOT_AVAILABLE_LABEL}</span>
         ) : app.availableOnPlan ? (
-          <Button size="sm" pending={flow.pending} onClick={flow.start} aria-label={`Connect ${app.name}`}>
+          <Button size="sm" onClick={() => flow.open(app)} aria-label={`Connect ${app.name}`}>
             Connect
           </Button>
         ) : (
@@ -156,7 +124,7 @@ export function AvailableAppCard({ app }: { app: App }) {
           </Link>
         )}
       </div>
-      <ConnectNotice flow={flow} />
+      {flow.dialog}
     </div>
   );
 }

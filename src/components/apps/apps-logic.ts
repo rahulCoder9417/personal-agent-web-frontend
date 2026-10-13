@@ -54,6 +54,64 @@ export function splitApps(apps: readonly App[]): { connected: App[]; available: 
   };
 }
 
+/** Why the connect screen opened: a first connection, one more account, or one that stopped working. */
+export type ConnectPurpose = "connect" | "add" | "reconnect";
+
+/**
+ * Whose sign-in page comes next ("Continue to Google"). A backend from before the field existed
+ * doesn't send it, and then the app's own name is the best guess.
+ */
+export function providerOf(app: Pick<App, "name" | "provider">): string {
+  return (app.provider as string | undefined)?.trim() || app.name;
+}
+
+/** What the connect screen says before anyone leaves for the provider's page. */
+export type ConnectCopy = {
+  title: string;
+  /** One sentence under the title; empty for a first connection. */
+  intro: string;
+  /** What Tex can do with the app, in the backend's words (a fallback for an older backend). */
+  can: string;
+  /** The rules that hold for every app: approvals, credits, the sign-in. */
+  points: { kind: "approval" | "credits" | "signin" | "tab"; text: string }[];
+  continueLabel: string;
+  /** Shown once the API said yes and the browser is on its way. */
+  leaving: string;
+};
+
+export function connectCopy(app: Pick<App, "name" | "provider" | "description">, purpose: ConnectPurpose, newTab = false): ConnectCopy {
+  const provider = providerOf(app);
+  const can = (app.description as string | undefined)?.trim() || `Use ${app.name} for you, when you ask.`;
+  const title =
+    purpose === "add" ? `Add another ${app.name} account` : purpose === "reconnect" ? `Reconnect ${app.name}` : `Connect ${app.name}`;
+  const intro =
+    purpose === "add"
+      ? `Sign in with the other account on ${provider}’s page. Tex can then use both.`
+      : purpose === "reconnect"
+        ? `${app.name} stopped letting Tex in. That usually follows a password change or access being removed. Signing in again fixes it.`
+        : "";
+  const points: ConnectCopy["points"] = [
+    { kind: "approval", text: "Before Tex sends, deletes or changes something that’s already there, it asks you first." },
+    { kind: "credits", text: "Reading is free. Each change Tex makes costs 1 credit." },
+    { kind: "signin", text: `You sign in on ${provider}’s own page. Textcrew never sees your password, and you can disconnect at any time.` },
+  ];
+  if (newTab) points.push({ kind: "tab", text: `${provider}’s page opens in a new tab. Come back here when you’re done.` });
+  return { title, intro, can, points, continueLabel: `Continue to ${provider}`, leaving: `Taking you to ${provider}…` };
+}
+
+/**
+ * Where the sign-in left off, from the address it came back to: our own `app` (or the Apps page's
+ * `connected`) names the app, and Composio adds `status` (`success` or `failed`). Without a status
+ * it counts as done; anything else but `success` counts as not connected. Null: no app named, so
+ * this isn't the way back from a sign-in.
+ */
+export function connectOutcome(params: { get(name: string): string | null }): { slug: string; ok: boolean } | null {
+  const slug = (params.get("app") ?? params.get("connected") ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9_]{1,40}$/.test(slug)) return null;
+  const status = params.get("status");
+  return { slug, ok: status === null || status === "success" };
+}
+
 /** The first few apps onboarding offers: on the plan and ready to connect. */
 export function appsToOffer(apps: readonly App[], count: number): App[] {
   return apps.filter((app) => app.availableOnPlan && isConnectable(app)).slice(0, count);

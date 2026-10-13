@@ -645,12 +645,21 @@ describe("setup", () => {
 
   it("connects an app and reconnects an expired one", async () => {
     const connect = await call<{ redirectUrl: string }>("POST", "apps/linear/connect", { returnUrl: `${ORIGIN}/apps` });
-    expect(connect.body.redirectUrl).toBe(`${ORIGIN}/apps?app=linear`);
+    expect(connect.body.redirectUrl).toBe(`${ORIGIN}/apps?app=linear&status=success`);
     await call("POST", "apps/googledrive/connect");
     const apps = (await call<{ items: App[] }>("GET", "apps")).body.items;
     expect(apps.find((app) => app.slug === "linear")?.connections).toMatchObject([{ status: "active" }]);
     expect(apps.find((app) => app.slug === "googledrive")?.connections).toMatchObject([{ status: "active" }]);
     expect((await call("POST", "apps/linear/connect", { returnUrl: "https://evil.example/" })).status).toBe(400);
+  });
+
+  it("says whose sign-in comes next and what Tex can do, for every app, as the backend does", async () => {
+    const apps = (await call<{ items: App[] }>("GET", "apps")).body.items;
+    for (const app of apps) {
+      expect(app.provider, app.slug).toMatch(/^[A-Z][A-Za-z]+$/);
+      expect(app.description, app.slug).toMatch(/^[A-Z][^.]{10,90}\.$/);
+    }
+    expect(apps.find((app) => app.slug === "gmail")).toMatchObject({ provider: "Google" });
   });
 
   it("lists a few apps as not connectable yet, and refuses to connect them the way the backend does", async () => {
