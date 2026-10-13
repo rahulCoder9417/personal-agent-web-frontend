@@ -1,13 +1,13 @@
 "use client";
 
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useId, useState, type FormEvent, type ReactNode } from "react";
 import { CheckIcon, ExternalIcon } from "@/components/icons";
 import { toastError } from "@/components/toast";
 import { Button, Card, Field, inputClass, Meta } from "@/components/ui";
 import { refusedTypedValue } from "@/lib/action-errors";
 import type { AgentSettings, ClaudeEffort, ClaudeLoginStart } from "@/lib/api/client";
 import { useCompleteClaudeLogin, useDisconnectClaude, useStartClaudeLogin, useUpdateClaudeCode } from "@/lib/api/hooks";
-import { choiceValue, effortOptions, modelOptions, type SelectOption } from "@/lib/claude-code";
+import { choiceNotes, choiceValue, effortApplies, effortOptions, modelOptions, optionGroups, type SelectOption } from "@/lib/claude-code";
 import { openInNewTab } from "@/lib/navigate";
 import { cn, formatDate, formatTime } from "@/lib/format";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -138,15 +138,25 @@ export function ClaudeConnectSteps() {
   );
 }
 
-function ChoiceSelect({ id, label, value, options, onChange }: { id: string; label: string; value: string | null; options: SelectOption[]; onChange: (value: string) => void }) {
+function ChoiceSelect({ id, label, value, options, disabled, onChange }: { id: string; label: string; value: string | null; options: SelectOption[]; disabled?: boolean; onChange: (value: string) => void }) {
+  const items = (list: SelectOption[]) =>
+    list.map((option) => (
+      <option key={option.value} value={option.value}>
+        {option.label}
+      </option>
+    ));
   return (
     <Field label={label} htmlFor={id}>
-      <select id={id} value={value ?? ""} onChange={(event) => onChange(event.target.value)} className={cn(inputClass, "pr-2")}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
+      <select id={id} value={value ?? ""} disabled={disabled} onChange={(event) => onChange(event.target.value)} className={cn(inputClass, "pr-2")}>
+        {optionGroups(options).map((group, i) =>
+          group.label ? (
+            <optgroup key={group.label} label={group.label}>
+              {items(group.options)}
+            </optgroup>
+          ) : (
+            <Fragment key={`ungrouped-${i}`}>{items(group.options)}</Fragment>
+          ),
+        )}
       </select>
     </Field>
   );
@@ -178,9 +188,15 @@ function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
           label="Thinking effort"
           value={settings.claudeEffort}
           options={effortOptions(settings)}
+          disabled={!effortApplies(settings)}
           onChange={(value) => update.mutate({ claudeEffort: choiceValue<ClaudeEffort>(value) }, refused)}
         />
       </div>
+      {choiceNotes(settings).map((note) => (
+        <p key={note} className="text-[12.5px] text-muted">
+          {note}
+        </p>
+      ))}
       {update.isSuccess && (
         <span role="status" className="text-[12.5px] text-success">
           Saved
