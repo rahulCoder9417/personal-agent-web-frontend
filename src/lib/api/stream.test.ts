@@ -1,7 +1,8 @@
 import { focusManager, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it } from "vitest";
 import { allConversations, type ConversationList } from "../conversations";
-import type { Conversation, Message, StreamEvent } from "./client";
+import { DRAFTS_KEY, type Drafts } from "../drafts";
+import type { Conversation, Message, MessageDraft, StreamEvent } from "./client";
 import { qk } from "./hooks";
 import { applyStreamEvent, catchUpAfterReconnect } from "./stream";
 
@@ -147,5 +148,51 @@ describe("applyStreamEvent, for the chat", () => {
     expect(chat.history().map((item) => item.id)).toEqual(["cnv_now", "cnv_tg"]);
     expect(chat.threadIds("cnv_old")).toBeUndefined();
     expect(chat.threadIds("cnv_now")).toEqual(["m2", "m1"]);
+  });
+});
+
+describe("applyStreamEvent, for the answer as it is written", () => {
+  const draft = (text: string, rest: Partial<MessageDraft> = {}): MessageDraft => ({
+    conversationId: "cnv_now",
+    turnId: "evt_1",
+    messageId: "m2",
+    text,
+    at: at("12:01"),
+    ...rest,
+  });
+  const shown = (qc: QueryClient, id = "cnv_now") => qc.getQueryData<Drafts>(DRAFTS_KEY)?.shown[id]?.text;
+
+  it("shows the latest draft in its conversation, and Tex's answer in its place", () => {
+    const chat = chatCache();
+    chat.send("message.draft", draft("Here are"));
+    chat.send("message.draft", draft("Here are your meetings"));
+    expect(shown(chat.qc)).toBe("Here are your meetings");
+    expect(shown(chat.qc, "cnv_old")).toBeUndefined();
+    // The answer arrives: it joins the thread, and the draft goes.
+    chat.send("message.created", message("m3", "cnv_now", "12:02", { direction: "out", text: "Here are your meetings: …" }));
+    expect(chat.threadIds("cnv_now")).toEqual(["m3", "m2", "m1"]);
+    expect(shown(chat.qc)).toBeUndefined();
+    // The turn's last draft, overtaken by the answer on the way, is not shown again.
+    chat.send("message.draft", draft("Here are your meetings: …"));
+    expect(shown(chat.qc)).toBeUndefined();
+    // Nothing of it was saved as a message.
+    expect(chat.threadIds("cnv_now")).toEqual(["m3", "m2", "m1"]);
+  });
+
+  it("clears the draft when the turn ends or fails, and after a reconnect", () => {
+    const chat = chatCache();
+    chat.send("message.draft", draft("Half an ans"));
+    chat.send("agent.status", { state: "awake", lastActiveAt: at("12:03") });
+    expect(shown(chat.qc)).toBeUndefined();
+
+    chat.send("message.draft", draft("Half an ans", { turnId: "evt_2" }));
+    chat.send("message.status", message("m2", "cnv_now", "12:00", { status: "failed" }));
+    expect(shown(chat.qc)).toBeUndefined();
+
+    chat.send("message.draft", draft("Again", { turnId: "evt_3" }));
+    chat.send("agent.status", { state: "busy", lastActiveAt: at("12:03") });
+    expect(shown(chat.qc), "still at work").toBe("Again");
+    catchUpAfterReconnect(chat.qc, true);
+    expect(shown(chat.qc)).toBeUndefined();
   });
 });

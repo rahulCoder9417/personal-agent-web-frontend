@@ -38,6 +38,8 @@ const ANSWER_MS = 1500;
 const FOLLOW_UP_MS = 900;
 /** How long a specialist takes over each step it reports. */
 const CREW_STEP_MS = 1300;
+/** How often Tex's answer grows on screen while it writes it (`message.draft`). */
+const DRAFT_STEP_MS = 50;
 /** What a demo answer costs in AI when Tex runs on Textcrew AI. */
 const TEXTCREW_AI_CREDITS = 2;
 
@@ -173,6 +175,49 @@ function reportProgress(state: DemoState, job: CrewJob, step: string): void {
   logActivity(state, { actor: "agent", action: "crew_progress", summary: text, crew: job.crew });
 }
 
+/** Tex's answer to a request that isn't a fact to remember, a risky action or a job for the crew. */
+function plainReply(text: string): string {
+  return `Got it. In the demo account nothing is really done, but this is where I’d tell you how “${truncate(text, 80)}” went.`;
+}
+
+/**
+ * The words Tex will answer a request with, when they are known ahead: so they can be written on
+ * screen before they are posted. A fact to remember is answered as it is saved, and a risky request
+ * with an approval card, so neither is written ahead.
+ */
+function plannedReply(request: Message, job: CrewJob | null): string | null {
+  if (memoryRequestOf(request.text) || riskOf(request.text)) return null;
+  return job ? job.reply : plainReply(request.text);
+}
+
+/**
+ * Where the drafts of `text` end, one per step: a little further each time, always at the end of a
+ * word, the last one at the end of the text.
+ */
+export function draftCuts(text: string, steps: number): number[] {
+  const cuts: number[] = [];
+  for (let step = 1; step <= steps; step++) {
+    let end = Math.ceil((text.length * step) / steps);
+    while (end < text.length && !/\s/.test(text[end])) end++;
+    if (end > (cuts[cuts.length - 1] ?? 0)) cuts.push(end);
+  }
+  return cuts;
+}
+
+/** What Tex has written of its answer so far, as the backend sends it for a web chat turn: the whole text. */
+function showDraft(state: DemoState, request: Message, text: string): void {
+  emit(state, "message.draft", { conversationId: request.conversationId, turnId: `turn_${request.id}`, messageId: request.id, text, at: nowIso() });
+}
+
+/**
+ * Tex writes `text` on screen, a few words at a time, from `fromMs` until just before `toMs` (when
+ * the answer itself is posted, or Tex goes on to a tool). The last draft is the whole text.
+ */
+function writeDraft(state: DemoState, request: Message, text: string, fromMs: number, toMs: number): void {
+  const cuts = draftCuts(text, Math.max(1, Math.floor((toMs - fromMs) / DRAFT_STEP_MS)));
+  cuts.forEach((end, index) => schedule(state, fromMs + index * DRAFT_STEP_MS, () => showDraft(state, request, text.slice(0, end))));
+}
+
 function answer(state: DemoState, request: Message, job: CrewJob | null = null): void {
   setMessageStatus(state, request.id, "read");
   // "Remember that…" is a fact to keep, not a job: it comes first, so its words can't be taken for one.
@@ -192,8 +237,7 @@ function answer(state: DemoState, request: Message, job: CrewJob | null = null):
     }
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
   } else {
-    const quote = truncate(request.text, 80);
-    postFromTex(state, request.conversationId, `Got it. In the demo account nothing is really done, but this is where I’d tell you how “${quote}” went.`);
+    postFromTex(state, request.conversationId, plainReply(request.text));
     // The time Tex ran is charged, and the AI too when it ran on Textcrew AI. Nothing was changed in an app.
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
     logActivity(state, { actor: "agent", action: "run_app_action", summary: upperFirst(truncate(request.text, 70)), creditsCharged: 0 });
@@ -252,10 +296,18 @@ export const sendMessage: Handler = async ({ state, request }) => {
   });
   // A job for a specialist takes longer, and says what it is doing on the way.
   const job = memoryRequestOf(text) || riskOf(text) ? null : crewJobOf(state, text);
+  // Tex's answer is written on screen as it is written, as in web chat for real.
+  const reply = plannedReply(message, job);
   if (job) {
+    // Tex says who it hands the job to, then starts over when the specialist sets to work.
+    writeDraft(state, message, `I’ll hand this to ${job.name}.`, PICKUP_MS + DRAFT_STEP_MS, PICKUP_MS + 8 * DRAFT_STEP_MS);
+    schedule(state, CREW_STEP_MS - 1, () => showDraft(state, message, ""));
     job.steps.forEach((step, index) => schedule(state, CREW_STEP_MS * (index + 1), () => reportProgress(state, job, step)));
-    schedule(state, CREW_STEP_MS * job.steps.length + FOLLOW_UP_MS, () => answer(state, message, job));
+    const answerAt = CREW_STEP_MS * job.steps.length + FOLLOW_UP_MS;
+    if (reply) writeDraft(state, message, reply, CREW_STEP_MS * job.steps.length + DRAFT_STEP_MS, answerAt);
+    schedule(state, answerAt, () => answer(state, message, job));
   } else {
+    if (reply) writeDraft(state, message, reply, PICKUP_MS + DRAFT_STEP_MS, ANSWER_MS);
     schedule(state, ANSWER_MS, () => answer(state, message));
   }
   return json(message, 202);
