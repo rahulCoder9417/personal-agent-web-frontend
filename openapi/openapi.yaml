@@ -951,6 +951,136 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ---------------------------------------------------------------- crew jobs
+  /v1/github/repos:
+    get:
+      operationId: listGithubRepos
+      tags: [agent]
+      summary: The repositories of the connected GitHub account, to pick one for a crew job
+      description: |
+        Asked through Composio's GitHub action for the signed-in account's repositories
+        (`GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER`): the 100 pushed to most recently
+        that the account can see, its own and its organisations'. The answer is kept for 60
+        seconds per user. Reading is free.
+
+        409 when GitHub is not connected. 503 when GitHub or Composio can't be asked right now;
+        a repository can always be typed as `owner/repo` instead.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/GithubRepo" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: GitHub is not connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: GitHub or Composio can't be asked right now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/crew-jobs:
+    get:
+      operationId: listCrewJobs
+      tags: [agent]
+      summary: The user's crew jobs, newest first
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/CrewJob" }
+                  nextCursor: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createCrewJob
+      tags: [agent]
+      summary: Give Patch a review or Byte a coding job
+      description: |
+        A crew job is a brief the user fills in. It runs as one turn of the agent, as soon as the
+        user's agent is free: the lead hands it to Patch (a review) or Byte (a change), the
+        specialist works in a folder of its own, and at the end every program it started is
+        stopped, the folder is deleted and a report comes back. The report always goes to the
+        chat named in `reportTo.channel`, and is kept on the job (`report`).
+
+        `reportTo.pullRequest` is the user's yes for one thing only: Patch's report posted as ONE
+        review of type comment on that pull request, once, during this job. Byte puts its report
+        in the description of the pull request it opens. Approving, requesting changes, merging,
+        closing and pushing to the default branch are never covered.
+
+        The job costs what a turn costs, plus 1 credit for each app action that changes something
+        (the posted review, the issue, the pull request Byte opens). A job that fails on our side
+        is not charged, like any turn.
+
+        Sending the same `clientRequestId` again returns the job it made (200), and makes no
+        second one. 400 for a brief that doesn't hold together (see the fields), 402 at zero
+        credits, 409 when GitHub is not connected or five jobs are already waiting, 429 after 20
+        jobs in an hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CrewJobInput" }
+      responses:
+        "200":
+          description: This `clientRequestId` made a job before; that job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrewJob" }
+        "201":
+          description: Saved and queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrewJob" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/OutOfCredits" }
+        "409":
+          description: GitHub is not connected, or five jobs are already queued or running
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/crew-jobs/{crewJobId}:
+    get:
+      operationId: getCrewJob
+      tags: [agent]
+      summary: One crew job, with its report when it is done
+      parameters:
+        - name: crewJobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrewJob" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ---------------------------------------------------------------- agent
   /v1/agent/status:
     get:
@@ -2301,6 +2431,149 @@ components:
           description: Where the verdict is sent.
         lastReviewAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
+
+    GithubRepo:
+      type: object
+      required: [owner, name, fullName, private, defaultBranch, pushedAt]
+      properties:
+        owner: { type: string, examples: [acme] }
+        name: { type: string, examples: [website] }
+        fullName: { type: string, examples: [acme/website] }
+        private: { type: boolean }
+        defaultBranch: { type: [string, "null"], examples: [main] }
+        pushedAt: { type: [string, "null"], format: date-time }
+
+    CrewJobFocus:
+      type: string
+      enum: [bugs, security, tests, performance, style]
+
+    CrewJobReportTo:
+      type: object
+      description: What to do with the final report.
+      properties:
+        channel:
+          type: string
+          enum: [web, telegram]
+          default: web
+          description: |
+            The chat the report is sent to (always). `web`: a web conversation of the job's own,
+            named after it. `telegram`: the user's linked Telegram chat (400 when there is none).
+        pullRequest:
+          type: boolean
+          default: false
+          description: |
+            Patch: post the report on the pull request (`pullNumber`) as ONE review of type
+            comment. Byte: put it in the description of the pull request it opens (needs
+            `finish: pull_request`).
+        issue:
+          type: boolean
+          default: false
+          description: Open one issue in the repository with the report.
+
+    CrewJobInput:
+      type: object
+      required: [member, owner, repo, clientRequestId]
+      properties:
+        member:
+          type: string
+          enum: [patch, byte]
+          description: "`patch` reviews (it never changes code); `byte` changes code on a new branch."
+        owner: { type: string, pattern: "^[A-Za-z0-9_.-]{1,100}$", examples: [acme] }
+        repo: { type: string, pattern: "^[A-Za-z0-9_.-]{1,100}$", examples: [website] }
+        pullNumber:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 999999999
+          description: |
+            Patch: the pull request to review. Byte: a pull request to start from (its branch).
+        branch:
+          type: [string, "null"]
+          maxLength: 200
+          description: |
+            Patch: the branch to review against the default branch, when there is no pull request.
+            Byte: the branch to start from (left out: the default branch). Letters, digits and
+            `. _ - /` only.
+        instructions:
+          type: string
+          maxLength: 4000
+          description: |
+            The user's own words. Patch: anything to look at or know. Byte: what to fix or build
+            (required for Byte).
+        focus:
+          type: array
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/CrewJobFocus" }
+          description: "Patch only: what to look for. Left out or empty: bugs, security and tests."
+        acceptance:
+          type: string
+          maxLength: 2000
+          description: "Byte only: what to test for, the checks that say the job is done."
+        commands:
+          type: string
+          maxLength: 2000
+          description: The commands to install, run the tests or start the app, if needed.
+        finish:
+          type: string
+          enum: [pull_request, branch]
+          default: pull_request
+          description: "Byte only: push a branch and open a pull request, or only push the branch."
+        reportTo: { $ref: "#/components/schemas/CrewJobReportTo" }
+        clientRequestId:
+          type: string
+          format: uuid
+          description: Idempotency key; sending it again returns the same job.
+
+    CrewJob:
+      type: object
+      required:
+        [id, member, status, title, owner, repo, pullNumber, branch, instructions, focus, acceptance,
+         commands, finish, reportTo, source, report, error, conversationId, createdAt, startedAt,
+         finishedAt]
+      properties:
+        id: { type: string, examples: [crj_01jb2k3m4n5p6q7r8s9t0v1w2x] }
+        member: { type: string, enum: [patch, byte] }
+        status:
+          type: string
+          enum: [queued, running, done, failed]
+          description: |
+            `queued` until the agent is free, `running` during its turn, then `done` (with the
+            report) or `failed` (with `error`).
+        title: { type: string, examples: ["Review acme/website#42", "Fix the login redirect in acme/website"] }
+        owner: { type: string }
+        repo: { type: string }
+        pullNumber: { type: [integer, "null"] }
+        branch: { type: [string, "null"] }
+        instructions: { type: string }
+        focus:
+          type: array
+          items: { $ref: "#/components/schemas/CrewJobFocus" }
+          description: Patch's focus (empty for Byte).
+        acceptance: { type: string }
+        commands: { type: string }
+        finish: { type: [string, "null"], enum: [pull_request, branch, null], description: Byte only. }
+        reportTo:
+          type: object
+          required: [channel, pullRequest, issue]
+          properties:
+            channel: { $ref: "#/components/schemas/ChannelType" }
+            pullRequest: { type: boolean }
+            issue: { type: boolean }
+        source:
+          type: string
+          enum: [app, chat]
+          description: "`app`: given in the web app. `chat`: the lead started it from a chat message."
+        report:
+          type: [string, "null"]
+          description: The final report as the agent wrote it (Markdown). Null until the job is done.
+        error:
+          type: [string, "null"]
+          description: Why a failed job failed, in plain words.
+        conversationId:
+          type: [string, "null"]
+          description: The web conversation the report was sent to, once known.
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: [string, "null"], format: date-time }
+        finishedAt: { type: [string, "null"], format: date-time }
 
     CrewMember:
       type: object
