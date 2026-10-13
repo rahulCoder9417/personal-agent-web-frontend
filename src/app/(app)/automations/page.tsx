@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AutomationRow } from "@/components/automations/automation-row";
+import { AutomationsChatLink } from "@/components/automations/chat-link";
 import { AutomationGuide } from "@/components/automations/guide";
 import { usePlanAutomations } from "@/components/automations/plan-meter";
 import { AutomationTemplates } from "@/components/automations/templates";
@@ -90,6 +91,8 @@ export default function AutomationsPage() {
             </div>
             {all.length > 1 && <FilterPills label="Filter by kind" options={FILTERS} value={kind} onChange={setKind} />}
           </div>
+
+          {all.length > 0 && <AutomationsChatLink />}
 
           {automations.isError ? (
             <ErrorState error={automations.error} onRetry={() => void automations.refetch()} />
