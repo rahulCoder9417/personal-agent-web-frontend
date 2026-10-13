@@ -38,7 +38,7 @@ export default function PrReviewsPage() {
             <div className="flex min-w-0 flex-col gap-1">
               <h2 className="text-[17px] font-semibold tracking-[-0.01em]">Patch reviews your pull requests</h2>
               <p className="max-w-xl text-[13.5px] text-muted">
-                When a pull request opens or gets new commits, Patch reviews it, comments on the pull request and sends a short verdict to your chat. It
+                When a pull request opens or gets new commits, Patch reviews it, comments on the pull request and sends a short verdict to your Automations chat. It
                 never merges.
               </p>
             </div>

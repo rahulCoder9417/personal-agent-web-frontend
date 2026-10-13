@@ -72,8 +72,8 @@ describe("describeReviewState", () => {
 
 describe("verdictPlace", () => {
   it("names the chat the verdict goes to", () => {
-    expect(verdictPlace("telegram")).toBe("Telegram");
-    expect(verdictPlace("web")).toBe("web chat");
+    expect(verdictPlace("telegram")).toBe("the Automations chat, with a copy on Telegram");
+    expect(verdictPlace("web")).toBe("the Automations chat");
   });
 });
 

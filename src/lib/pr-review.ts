@@ -93,9 +93,12 @@ export function describeReviewState(review: Pick<PrReviewRepo, "enabled" | "paus
   return { label: "Paused", tone: "muted", why: review.pausedReason === "user" ? "Paused by you." : "Paused." };
 }
 
-/** Where the short verdict is sent: "Telegram", or "web chat" for this app's own chat. */
+/**
+ * Where the short verdict is sent. Always the Automations chat; with a linked chat app (Telegram),
+ * a copy goes there too.
+ */
 export function verdictPlace(channel: ChannelType): string {
-  return channel === "web" ? "web chat" : CHANNEL_LABEL[channel];
+  return channel === "web" ? "the Automations chat" : `the Automations chat, with a copy on ${CHANNEL_LABEL[channel]}`;
 }
 
 // ---------------------------------------------------------------- refusals

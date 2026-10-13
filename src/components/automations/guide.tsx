@@ -19,8 +19,8 @@ export function AutomationGuide() {
             Things Tex does on its own
           </h2>
           <p className={cn("text-[14px] text-muted", READING)}>
-            An automation is a standing request. You ask Tex once, in plain words, and it does the job at the time or the moment you named, then tells
-            you in your chat. There is no form to fill in: you make one by asking.
+            An automation is a standing request. You ask Tex once, in plain words, and it does the job at the time or the moment you named, then posts
+            the result in your Automations chat. There is no form to fill in: you make one by asking.
           </p>
         </div>
         <ButtonLink href="/" variant="primary">
