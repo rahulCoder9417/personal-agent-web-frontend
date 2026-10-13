@@ -14,10 +14,13 @@ import {
   type AiChoice,
   type AiChoiceState,
 } from "@/components/settings/agent-summary";
+import { Select } from "@/components/select";
 import { toastError } from "@/components/toast";
 import { Button, Card, ErrorState, Field, inputClass, SkeletonRows } from "@/components/ui";
 import { refusedTypedValue } from "@/lib/action-errors";
 import { cn, listNames } from "@/lib/format";
+
+const PROVIDER_OPTIONS = PROVIDERS.map((provider) => ({ value: provider, label: PROVIDER_LABEL[provider] }));
 
 const KEY_PLACEHOLDER: Record<ByokProvider, string> = { anthropic: "sk-ant-…", openai: "sk-…", openrouter: "sk-or-…" };
 
@@ -102,21 +105,16 @@ function KeyForm({ onDone }: { onDone: () => void }) {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       <Field label="Provider" htmlFor={`${id}-provider`}>
-        <select
+        <Select
           id={`${id}-provider`}
+          label="Provider"
           value={provider}
-          onChange={(event) => {
-            setProvider(event.target.value as ByokProvider);
+          options={PROVIDER_OPTIONS}
+          onChange={(value) => {
+            setProvider(value as ByokProvider);
             save.reset();
           }}
-          className={cn(inputClass, "appearance-auto pr-2")}
-        >
-          {PROVIDERS.map((option) => (
-            <option key={option} value={option}>
-              {PROVIDER_LABEL[option]}
-            </option>
-          ))}
-        </select>
+        />
       </Field>
 
       <Field

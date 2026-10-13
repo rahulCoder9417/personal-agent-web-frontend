@@ -2,8 +2,9 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { COLUMN_ITEM, Columns, PageBody, READING } from "@/components/page";
+import { PageBody, READING } from "@/components/page";
 import { MemoryCapacity, MemoryGroupCard } from "@/components/settings/memory-list";
+import { SETTINGS_COLUMN } from "@/components/settings/settings-rows";
 import { Card, EmptyState, ErrorState, Meta, SkeletonRows } from "@/components/ui";
 import { useMemories } from "@/lib/api/hooks";
 import { groupMemories } from "@/lib/memory";
@@ -52,14 +53,12 @@ function MemoryScreen() {
               Tell Tex something worth keeping, like “remember that I prefer short replies”, and it shows up here.
             </EmptyState>
           ) : (
-            // The kinds sit side by side where there is room: two columns on a laptop, more on a wide monitor.
-            <Columns min={420}>
+            // One kind under another, in the settings' one column.
+            <div className="flex flex-col gap-6">
               {groupMemories(items).map((group) => (
-                <div key={group.kind} className={COLUMN_ITEM}>
-                  <MemoryGroupCard group={group} highlightedId={highlightedId} />
-                </div>
+                <MemoryGroupCard key={group.kind} group={group} highlightedId={highlightedId} />
               ))}
-            </Columns>
+            </div>
           )}
 
           <Meta className={`text-[12px] ${READING}`}>
@@ -75,7 +74,7 @@ function MemoryScreen() {
 /** Settings → Memory: what Tex has saved about the person, by kind, with the ways to delete it. */
 export default function MemoryPage() {
   return (
-    <PageBody>
+    <PageBody className={SETTINGS_COLUMN}>
       {/* Reads ?memory= from the URL, which needs a Suspense boundary. */}
       <Suspense fallback={<Loading />}>
         <MemoryScreen />

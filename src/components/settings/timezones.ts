@@ -1,4 +1,4 @@
-export type TimezoneOption = { value: string; label: string };
+import type { ListOption } from "@/lib/listbox";
 
 /** "GMT+5:30" for a zone right now, or "" when the runtime doesn't know the zone. */
 export function gmtOffset(timeZone: string, at = new Date()): string {
@@ -19,13 +19,15 @@ function supportedZones(): string[] {
 }
 
 /**
- * Options for the time zone select: every zone the runtime knows, labelled with its offset.
- * The account's current zone is always in the list, even if this runtime doesn't list it.
+ * Options for the time zone field: every zone the runtime knows, with its offset beside it (and
+ * found by it: "5:30" finds Kolkata). The account's current zone is always in the list, even if
+ * this runtime doesn't list it.
  */
-export function timezoneOptions(current: string, zones: readonly string[] = supportedZones(), at = new Date()): TimezoneOption[] {
+export function timezoneOptions(current: string, zones: readonly string[] = supportedZones(), at = new Date()): ListOption[] {
   const all = zones.includes(current) || !current ? [...zones] : [current, ...zones];
   return all.map((value) => {
     const offset = gmtOffset(value, at);
-    return { value, label: offset ? `${value.replace(/_/g, " ")} (${offset})` : value.replace(/_/g, " ") };
+    const label = value.replace(/_/g, " ");
+    return offset ? { value, label, hint: offset } : { value, label };
   });
 }

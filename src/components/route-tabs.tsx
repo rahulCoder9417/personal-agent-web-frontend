@@ -39,3 +39,32 @@ export function RouteTabs({ label, tabs }: { label: string; tabs: RouteTab[] }) 
     </nav>
   );
 }
+
+/**
+ * The same pages as a column of links, for the left of a screen with several pages (Settings on a
+ * wide screen, where a strip of tabs would sit over a column it has nothing to do with).
+ */
+export function RouteNav({ label, tabs, className }: { label: string; tabs: RouteTab[]; className?: string }) {
+  const pathname = usePathname();
+  return (
+    <nav aria-label={label} className={cn("flex w-[204px] shrink-0 flex-col gap-0.5 pt-2 pr-3 pb-6 pl-5", className)}>
+      {tabs.map((tab) => {
+        const active = tab.exact ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+        return (
+          <Link
+            key={tab.href}
+            href={tab.href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "flex h-[34px] items-center gap-1.5 rounded-[9px] px-3 text-[13.5px] font-medium transition-colors",
+              active ? "bg-surface-2 text-fg" : "text-nav hover:bg-surface-2/70 hover:text-fg",
+            )}
+          >
+            {tab.label}
+            {tab.chip && <span className="rounded bg-accent-soft px-1.5 text-[11px] font-semibold text-accent-dark">{tab.chip}</span>}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}

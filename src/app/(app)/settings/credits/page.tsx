@@ -67,8 +67,10 @@ export default function CreditsPage() {
   const topUpsAllowed = plan ? plan.limits.topUps : me.data ? me.data.plan !== "free" : true;
 
   return (
-    <PageBody>
-      <div className="grid grid-cols-1 items-start gap-6 min-[980px]:grid-cols-[minmax(0,1fr)_300px]">
+    // The two columns follow the room the page has, not the window: beside the settings' own
+    // column of sections there is less of it.
+    <PageBody className="@container">
+      <div className="grid grid-cols-1 items-start gap-6 @min-[760px]:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-w-0 flex-col gap-6">
           {credits.isPending ? (
             <Card>
