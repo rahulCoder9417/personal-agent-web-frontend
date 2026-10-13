@@ -731,15 +731,41 @@ describe("setup", () => {
   it("offers Claude Code's models and efforts, with Claude Code's defaults to start", async () => {
     const settings = (await call<AgentSettings>("GET", "agent/settings")).body;
     expect(settings).toMatchObject({ claudeModel: null, claudeEffort: null });
-    expect(settings.claudeChoices).toEqual({
-      models: [
-        { id: "claude-opus-5-5", label: "Opus 5.5" },
-        { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-        { id: "claude-haiku-4-5", label: "Haiku 4.5" },
-        { id: "claude-fable-5-1", label: "Fable 5.1" },
-      ],
-      efforts: ["low", "medium", "high", "xhigh", "max"],
-    });
+    // Every Claude model Claude Code can use, as the backend lists them: the current ones, then the older ones.
+    expect(settings.claudeChoices.models.map((model) => model.id)).toEqual([
+      "claude-opus-5-5",
+      "claude-sonnet-5-5",
+      "claude-haiku-5-5",
+      "claude-fable-5-1",
+      "claude-fable-5",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "claude-opus-4-8",
+      "claude-opus-4-7",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+      "claude-opus-4-5",
+      "claude-haiku-4-5",
+    ]);
+    const byId = Object.fromEntries(settings.claudeChoices.models.map((model) => [model.id, model]));
+    expect(settings.claudeChoices.models.filter((model) => model.group === "current").map((model) => model.label)).toEqual([
+      "Opus 5.5",
+      "Sonnet 5.5",
+      "Haiku 5.5",
+      "Fable 5.1",
+    ]);
+    expect(byId["claude-opus-5-5"].efforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(byId["claude-sonnet-4-6"].efforts).toEqual(["low", "medium", "high", "max"]);
+    expect(byId["claude-haiku-4-5"].efforts).toEqual([]);
+    expect(byId["claude-fable-5-1"].note).toMatch(/usage credits/);
+    expect(byId["claude-opus-5-5"].note).toBeUndefined();
+    expect(settings.claudeChoices.efforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
+  it("saves an older Claude model too", async () => {
+    const chosen = await call<AgentSettings>("PATCH", "agent/settings", { claudeModel: "claude-opus-4-6", claudeEffort: "max" });
+    expect(chosen.status).toBe(200);
+    expect(chosen.body).toMatchObject({ claudeModel: "claude-opus-4-6", claudeEffort: "max" });
   });
 
   it("saves Claude Code's model and effort whatever runs now, and null goes back to the default", async () => {

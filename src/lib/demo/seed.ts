@@ -378,18 +378,32 @@ export function demoAiMode(): AiMode {
   return process.env.TEXTCREW_DEMO_AI_ACCESS_MODE === "own_only" ? "own_only" : "platform";
 }
 
+const ALL_EFFORTS: AgentSettings["claudeChoices"]["efforts"] = ["low", "medium", "high", "xhigh", "max"];
+const NO_XHIGH: AgentSettings["claudeChoices"]["efforts"] = ["low", "medium", "high", "max"];
+const FABLE_NOTE = "Pro: paid with usage credits. Max: up to half your weekly limit, then usage credits.";
+
 /**
- * What Claude Code's model and effort can be set to, as the backend offers them (`claudeChoices`).
+ * What Claude Code's model and effort can be set to, as the backend offers them (`claudeChoices`):
+ * every Claude model Claude Code can use, the current ones first, each with the levels it takes.
  * Null in the settings is Claude Code's own default.
  */
 export const CLAUDE_CHOICES: AgentSettings["claudeChoices"] = {
   models: [
-    { id: "claude-opus-5-5", label: "Opus 5.5" },
-    { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-    { id: "claude-haiku-4-5", label: "Haiku 4.5" },
-    { id: "claude-fable-5-1", label: "Fable 5.1" },
+    { id: "claude-opus-5-5", label: "Opus 5.5", group: "current", efforts: ALL_EFFORTS },
+    { id: "claude-sonnet-5-5", label: "Sonnet 5.5", group: "current", efforts: ALL_EFFORTS },
+    { id: "claude-haiku-5-5", label: "Haiku 5.5", group: "current", efforts: ALL_EFFORTS },
+    { id: "claude-fable-5-1", label: "Fable 5.1", group: "current", efforts: ALL_EFFORTS, note: FABLE_NOTE },
+    { id: "claude-fable-5", label: "Fable 5", group: "older", efforts: ALL_EFFORTS, note: FABLE_NOTE },
+    { id: "claude-opus-5", label: "Opus 5", group: "older", efforts: ALL_EFFORTS },
+    { id: "claude-sonnet-5", label: "Sonnet 5", group: "older", efforts: ALL_EFFORTS },
+    { id: "claude-opus-4-8", label: "Opus 4.8", group: "older", efforts: ALL_EFFORTS },
+    { id: "claude-opus-4-7", label: "Opus 4.7", group: "older", efforts: ALL_EFFORTS },
+    { id: "claude-opus-4-6", label: "Opus 4.6", group: "older", efforts: NO_XHIGH },
+    { id: "claude-sonnet-4-6", label: "Sonnet 4.6", group: "older", efforts: NO_XHIGH },
+    { id: "claude-opus-4-5", label: "Opus 4.5", group: "older", efforts: [] },
+    { id: "claude-haiku-4-5", label: "Haiku 4.5", group: "older", efforts: [] },
   ],
-  efforts: ["low", "medium", "high", "xhigh", "max"],
+  efforts: ALL_EFFORTS,
 };
 
 const SPECIALISTS = ["byte", "patch", "scout"] as const;
