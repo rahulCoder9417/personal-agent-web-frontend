@@ -142,7 +142,7 @@ export function PlanColumns({ plans, topUps, subscription }: { plans: Plan[]; to
   const crew = useCrew();
   const browserReady = crew.data ? crewBrowser(crew.data)?.available : undefined;
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(250px,100%),1fr))] items-stretch gap-4">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(228px,100%),1fr))] items-stretch gap-4">
       {plans.map((plan) => (
         <PlanColumn key={plan.id} plan={plan} currentPlan={currentPlan} subscription={subscription} topUp={topUps[0]} browserReady={browserReady} />
       ))}
