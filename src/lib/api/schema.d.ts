@@ -141,6 +141,10 @@ export interface paths {
          *     continues that conversation's own context, not the latest one's. 404 if the conversation
          *     isn't this user's; 409 if it is not a web conversation (a Telegram conversation can only be
          *     read in the web app).
+         *
+         *     The Automations chat (`kind: automations`) can be written in too: the agent continues the
+         *     context of the automations' runs there. It never becomes the active one, so the next
+         *     message sent without `conversationId` still goes into the active conversation.
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -165,6 +169,11 @@ export interface paths {
          *     Without `channel`, every channel's conversations are listed. Web conversations can be
          *     opened and written in; Telegram conversations are listed for reading only (Telegram always
          *     writes in its chat's latest one, and `/new` there starts a new one).
+         *
+         *     Every run of every automation answers in one conversation of its own, the Automations chat
+         *     (`kind: automations`, at most one per user). `kind=chat` leaves it out of the list, and
+         *     `kind=automations` lists only it (an empty list until the first automation is made or
+         *     runs), so a client can pin it apart from the dated list.
          */
         get: operations["listConversations"];
         put?: never;
@@ -201,7 +210,8 @@ export interface paths {
          *     `conversation_deleted` (the channel, never any text). Deleting the active web conversation
          *     makes the newest remaining web conversation the active one, or starts an empty one when
          *     none is left. After the active conversation of a Telegram chat is deleted, the next message
-         *     from that chat starts a new one.
+         *     from that chat starts a new one. After the Automations chat is deleted, the next run of an
+         *     automation starts a new one, with a fresh context for the agent.
          */
         delete: operations["deleteConversation"];
         options?: never;
@@ -212,6 +222,9 @@ export interface paths {
          *     web chat's next message goes there and the agent continues that conversation's own
          *     context. A Telegram conversation cannot be made active from the web (409). At least one of
          *     the two fields is required.
+         *
+         *     The Automations chat keeps its name and is never the active one: both fields answer 409
+         *     for it. It can be opened and written in all the same (`POST /v1/messages` with its id).
          */
         patch: operations["updateConversation"];
         trace?: never;
@@ -526,6 +539,10 @@ export interface paths {
          * @description Automations are created by chatting with the agent; the web app can list, pause and delete
          *     them. A repo with pull-request review on is an automation too (`preset: pr_review`); it is
          *     turned on and off with `/v1/pr-reviews`.
+         *
+         *     Every run answers in the Automations chat (`GET /v1/conversations?kind=automations`), never
+         *     in the user's other conversations. An automation made in a Telegram chat also sends a copy
+         *     of each run's answer to that chat.
          */
         get: operations["listAutomations"];
         put?: never;
@@ -582,8 +599,9 @@ export interface paths {
         /**
          * Turn on pull-request review for one GitHub repo
          * @description When a pull request in this repo is opened or gets new commits, the agent has Patch review
-         *     it, posts one review on the pull request and sends a short verdict to the user's chat
-         *     (their linked Telegram chat if there is one, otherwise web chat).
+         *     it, posts one review on the pull request and sends a short verdict to the Automations chat
+         *     (see `Conversation.kind`). When the user has a linked Telegram chat, a copy of the verdict
+         *     goes there too.
          *
          *     Turning it on is the user's standing approval for one thing: posting a new review or
          *     comment on a pull request **in this repo**. Those run without a per-comment approval.
@@ -1424,11 +1442,25 @@ export interface components {
              */
             deepLink?: string | null;
         };
+        /**
+         * @description `chat`: a conversation of a chat (web chat, or one Telegram chat). `automations`: the
+         *     Automations chat, where every automation's runs answer (one per user, in web chat).
+         * @enum {string}
+         */
+        ConversationKind: "chat" | "automations";
         /** @description One stretch of a chat between two "New chat" actions. The agent keeps a context of its own for each. */
         Conversation: {
             /** @example cnv_01jz3m8q4kd2v7x9w0t5b6c8ya */
             id: string;
             channel: components["schemas"]["ChannelType"];
+            /**
+             * @description `automations` for the Automations chat: every run of every automation answers there
+             *     (timers, app events, pull-request review verdicts, and the automations' notices), never
+             *     in the conversation the user has open. It is titled "Automations", is a web
+             *     conversation that is never the active one, keeps its name, and the agent keeps a
+             *     context of its own for it. Older servers leave the field out: read that as `chat`.
+             */
+            kind: components["schemas"]["ConversationKind"];
             /** @description The conversation's number within its chat. It never changes and is never used again. */
             epoch: number;
             /** Format: date-time */
@@ -1440,13 +1472,15 @@ export interface components {
             lastMessageAt: string;
             /**
              * @description The name the user gave it, else the first incoming message's text cut to 60 characters
-             *     at a word, else "New chat" while it has no such message.
+             *     at a word, else "New chat" while it has no such message. "Automations" for the
+             *     Automations chat.
              * @example Plan a trip to Goa
              */
             title: string;
             /**
              * @description True for the one conversation of its chat that the next message goes into. Web chat:
-             *     the one the user has open to write in. Telegram: the chat's latest one.
+             *     the one the user has open to write in. Telegram: the chat's latest one. Always false
+             *     for the Automations chat.
              */
             active: boolean;
         };
@@ -1688,7 +1722,10 @@ export interface components {
             enabled: boolean;
             /** @enum {string|null} */
             pausedReason: "out_of_credits" | "failures" | "user" | null;
-            /** @description Where the verdict is sent. */
+            /**
+             * @description `telegram`: a copy of each verdict is also sent to the user's Telegram chat. The
+             *     verdict itself is always in the Automations chat.
+             */
             channel: components["schemas"]["ChannelType"];
             /** Format: date-time */
             lastReviewAt: string | null;
@@ -2626,7 +2663,8 @@ export interface operations {
                     attachmentIds?: string[];
                     /**
                      * @description The web conversation to write in. Left out: the active one. A conversation that
-                     *     is not active becomes the active one first.
+                     *     is not active becomes the active one first, except the Automations chat, which
+                     *     is never the active one.
                      */
                     conversationId?: string;
                 };
@@ -2657,6 +2695,8 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
                 channel?: components["schemas"]["ChannelType"];
+                /** @description Only conversations of this kind. Left out, both kinds are listed. */
+                kind?: components["schemas"]["ConversationKind"];
             };
             header?: never;
             path?: never;
