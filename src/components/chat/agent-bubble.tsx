@@ -26,7 +26,9 @@ class PlainIfItFails extends Component<{ plain: ReactNode; children: ReactNode }
 }
 
 /**
- * The bubble for something Tex wrote. `children` go above the text (a message's files).
+ * The bubble for something Tex wrote. `children` go above the text (a message's files). `writing`:
+ * the text is Tex's answer as it is being written, which changes every moment, so screen readers
+ * skip it (the thread says once that Tex is writing, and the finished answer is read out).
  *
  * A reply with nothing for Markdown to draw is shown as typed, line breaks and spaces kept, as
  * every reply was before replies were drawn as Markdown. One with Markdown is drawn from it; until
@@ -35,11 +37,12 @@ class PlainIfItFails extends Component<{ plain: ReactNode; children: ReactNode }
  * A bubble is 560px wide at most, a comfortable line to read. A reply with a table or a block of
  * code may take the thread's whole width instead, so that less of it has to scroll sideways.
  */
-export function AgentBubble({ text, children }: { text: string; children?: ReactNode }) {
+export function AgentBubble({ text, children, writing }: { text: string; children?: ReactNode; writing?: boolean }) {
   const drawn = hasMarkdown(text);
   const plain = <div className="whitespace-pre-wrap">{text}</div>;
   return (
     <div
+      aria-hidden={writing || undefined}
       className={cn(
         "max-w-[min(560px,100%)] rounded-[18px] rounded-bl-[6px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.45] break-words",
         drawn ? "has-[pre]:max-w-full has-[table]:max-w-full" : "whitespace-pre-wrap",

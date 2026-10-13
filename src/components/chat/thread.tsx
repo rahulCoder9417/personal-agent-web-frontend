@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { Conversation, Message } from "@/lib/api/client";
 import { useAgentProgress, useAgentStatus, useThread } from "@/lib/api/hooks";
+import { useDraft } from "@/lib/api/stream";
 import { threadIsWorking } from "@/lib/chat-thread";
 import { readOnlyNote } from "@/lib/conversations";
 import type { ProgressLine } from "@/lib/crew";
@@ -136,6 +137,27 @@ function Working({ lines }: { lines: ProgressLine[] }) {
   );
 }
 
+/**
+ * Tex's answer as it is written (`message.draft`), in place of the "working" bubble: drawn the way
+ * the answer will be, Markdown included (half-written Markdown reads well enough until the answer
+ * takes its place). Screen readers hear once that Tex is writing, not every few words; the answer is
+ * read out when it arrives.
+ */
+function Writing({ text }: { text: string }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <TexAvatar working />
+      <div className="flex min-w-0 flex-1 flex-col items-start gap-[5px]">
+        <AgentBubble text={text} writing />
+        <p className="flex items-center gap-1.5 px-1 text-[12px] text-muted">
+          <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-accent" />
+          Tex is writing…
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /** What an open conversation with nothing in it says. */
 function emptyWords(conversation: Conversation | null, hasHistory: boolean): { title: string; body: string } {
   if (conversation && conversation.channel !== "web") {
@@ -160,6 +182,9 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
   const query = useThread(conversation?.id ?? null);
   const busy = useAgentStatus().data?.state === "busy";
   const progress = useAgentProgress().data;
+  // What Tex is writing in this conversation right now, if anything.
+  const draft = useDraft(conversation?.id ?? null);
+  const writing = draft !== null;
   const scroller = useRef<HTMLDivElement>(null);
   const older = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -182,7 +207,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
 
   const waiting = loading || (conversation !== null && query.isPending);
   const failed = conversation !== null && query.isError && !query.data;
-  const empty = !waiting && !failed && count === 0;
+  const empty = !waiting && !failed && count === 0 && !writing;
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -194,7 +219,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
     } else if (stick.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [count, newestId, working]);
+  }, [count, newestId, working, writing]);
 
   // Content can grow after it first renders (an approval card loading, a font swapping in).
   // While following, stay pinned to the newest message through that too.
@@ -258,7 +283,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
           </div>
         ))}
 
-        {working && count > 0 && <Working lines={progress} />}
+        {draft ? <Writing text={draft.text} /> : working && count > 0 && <Working lines={progress} />}
       </div>
     </div>
   );
