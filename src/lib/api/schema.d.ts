@@ -606,6 +606,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/github/repos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The repositories of the connected GitHub account, to pick one for a crew job
+         * @description Asked through Composio's GitHub action for the signed-in account's repositories
+         *     (`GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER`): the 100 pushed to most recently
+         *     that the account can see, its own and its organisations'. The answer is kept for 60
+         *     seconds per user. Reading is free.
+         *
+         *     409 when GitHub is not connected. 503 when GitHub or Composio can't be asked right now;
+         *     a repository can always be typed as `owner/repo` instead.
+         */
+        get: operations["listGithubRepos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/crew-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The user's crew jobs, newest first */
+        get: operations["listCrewJobs"];
+        put?: never;
+        /**
+         * Give Patch a review or Byte a coding job
+         * @description A crew job is a brief the user fills in. It runs as one turn of the agent, as soon as the
+         *     user's agent is free: the lead hands it to Patch (a review) or Byte (a change), the
+         *     specialist works in a folder of its own, and at the end every program it started is
+         *     stopped, the folder is deleted and a report comes back. The report always goes to the
+         *     chat named in `reportTo.channel`, and is kept on the job (`report`).
+         *
+         *     `reportTo.pullRequest` is the user's yes for one thing only: Patch's report posted as ONE
+         *     review of type comment on that pull request, once, during this job. Byte puts its report
+         *     in the description of the pull request it opens. Approving, requesting changes, merging,
+         *     closing and pushing to the default branch are never covered.
+         *
+         *     The job costs what a turn costs, plus 1 credit for each app action that changes something
+         *     (the posted review, the issue, the pull request Byte opens). A job that fails on our side
+         *     is not charged, like any turn.
+         *
+         *     Sending the same `clientRequestId` again returns the job it made (200), and makes no
+         *     second one. 400 for a brief that doesn't hold together (see the fields), 402 at zero
+         *     credits, 409 when GitHub is not connected or five jobs are already waiting, 429 after 20
+         *     jobs in an hour.
+         */
+        post: operations["createCrewJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/crew-jobs/{crewJobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One crew job, with its report when it is done */
+        get: operations["getCrewJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agent/status": {
         parameters: {
             query?: never;
@@ -1612,6 +1694,138 @@ export interface components {
             lastReviewAt: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        GithubRepo: {
+            /** @example acme */
+            owner: string;
+            /** @example website */
+            name: string;
+            /** @example acme/website */
+            fullName: string;
+            private: boolean;
+            /** @example main */
+            defaultBranch: string | null;
+            /** Format: date-time */
+            pushedAt: string | null;
+        };
+        /** @enum {string} */
+        CrewJobFocus: "bugs" | "security" | "tests" | "performance" | "style";
+        /** @description What to do with the final report. */
+        CrewJobReportTo: {
+            /**
+             * @description The chat the report is sent to (always). `web`: a web conversation of the job's own,
+             *     named after it. `telegram`: the user's linked Telegram chat (400 when there is none).
+             * @default web
+             * @enum {string}
+             */
+            channel: "web" | "telegram";
+            /**
+             * @description Patch: post the report on the pull request (`pullNumber`) as ONE review of type
+             *     comment. Byte: put it in the description of the pull request it opens (needs
+             *     `finish: pull_request`).
+             * @default false
+             */
+            pullRequest: boolean;
+            /**
+             * @description Open one issue in the repository with the report.
+             * @default false
+             */
+            issue: boolean;
+        };
+        CrewJobInput: {
+            /**
+             * @description `patch` reviews (it never changes code); `byte` changes code on a new branch.
+             * @enum {string}
+             */
+            member: "patch" | "byte";
+            /** @example acme */
+            owner: string;
+            /** @example website */
+            repo: string;
+            /** @description Patch: the pull request to review. Byte: a pull request to start from (its branch). */
+            pullNumber?: number | null;
+            /**
+             * @description Patch: the branch to review against the default branch, when there is no pull request.
+             *     Byte: the branch to start from (left out: the default branch). Letters, digits and
+             *     `. _ - /` only.
+             */
+            branch?: string | null;
+            /**
+             * @description The user's own words. Patch: anything to look at or know. Byte: what to fix or build
+             *     (required for Byte).
+             */
+            instructions?: string;
+            /** @description Patch only: what to look for. Left out or empty: bugs, security and tests. */
+            focus?: components["schemas"]["CrewJobFocus"][];
+            /** @description Byte only: what to test for, the checks that say the job is done. */
+            acceptance?: string;
+            /** @description The commands to install, run the tests or start the app, if needed. */
+            commands?: string;
+            /**
+             * @description Byte only: push a branch and open a pull request, or only push the branch.
+             * @default pull_request
+             * @enum {string}
+             */
+            finish: "pull_request" | "branch";
+            reportTo?: components["schemas"]["CrewJobReportTo"];
+            /**
+             * Format: uuid
+             * @description Idempotency key; sending it again returns the same job.
+             */
+            clientRequestId: string;
+        };
+        CrewJob: {
+            /** @example crj_01jb2k3m4n5p6q7r8s9t0v1w2x */
+            id: string;
+            /** @enum {string} */
+            member: "patch" | "byte";
+            /**
+             * @description `queued` until the agent is free, `running` during its turn, then `done` (with the
+             *     report) or `failed` (with `error`).
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "failed";
+            /**
+             * @example Review acme/website#42
+             * @example Fix the login redirect in acme/website
+             */
+            title: string;
+            owner: string;
+            repo: string;
+            pullNumber: number | null;
+            branch: string | null;
+            instructions: string;
+            /** @description Patch's focus (empty for Byte). */
+            focus: components["schemas"]["CrewJobFocus"][];
+            acceptance: string;
+            commands: string;
+            /**
+             * @description Byte only.
+             * @enum {string|null}
+             */
+            finish: "pull_request" | "branch" | null;
+            reportTo: {
+                channel: components["schemas"]["ChannelType"];
+                pullRequest: boolean;
+                issue: boolean;
+            };
+            /**
+             * @description `app`: given in the web app. `chat`: the lead started it from a chat message.
+             * @enum {string}
+             */
+            source: "app" | "chat";
+            /** @description The final report as the agent wrote it (Markdown). Null until the job is done. */
+            report: string | null;
+            /** @description Why a failed job failed, in plain words. */
+            error: string | null;
+            /** @description The web conversation the report was sent to, once known. */
+            conversationId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            finishedAt: string | null;
         };
         CrewMember: {
             /** @enum {string} */
@@ -3189,6 +3403,145 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listGithubRepos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["GithubRepo"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description GitHub is not connected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description GitHub or Composio can't be asked right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listCrewJobs: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["CrewJob"][];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createCrewJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrewJobInput"];
+            };
+        };
+        responses: {
+            /** @description This `clientRequestId` made a job before; that job */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrewJob"];
+                };
+            };
+            /** @description Saved and queued */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrewJob"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["OutOfCredits"];
+            /** @description GitHub is not connected, or five jobs are already queued or running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getCrewJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                crewJobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrewJob"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
