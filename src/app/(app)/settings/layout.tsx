@@ -11,19 +11,20 @@ const SECTIONS: RouteTab[] = [
 ];
 
 /**
- * Settings: the sections in a column on the left from 1024px, and as tabs under the title below
- * that (on a phone, and on a tablet where the app's own sidebar already takes the left).
+ * Settings: the sections in a column on the left from 1280px, and as tabs under the title below
+ * that. The app's own sidebar already takes 236px from 768px; with a second column beside it any
+ * earlier, Credits and Plans would be squeezed.
  */
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
     <Page>
       <PageHeader title="Settings">
-        <div className="max-w-full min-w-0 lg:hidden">
+        <div className="max-w-full min-w-0 xl:hidden">
           <RouteTabs label="Settings sections" tabs={SECTIONS} />
         </div>
       </PageHeader>
       <div className="flex min-h-0 min-w-0 flex-1">
-        <RouteNav label="Settings sections" tabs={SECTIONS} className="max-lg:hidden" />
+        <RouteNav label="Settings sections" tabs={SECTIONS} className="max-xl:hidden" />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
       </div>
     </Page>
