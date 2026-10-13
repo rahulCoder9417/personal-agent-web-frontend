@@ -7,7 +7,7 @@ import { builtAuthMode } from "@/lib/auth-mode";
 export const metadata: Metadata = { title: "Create an account" };
 
 /**
- * Static, served from the CDN. The proxy does what needs the request: it sends someone who is
+ * Static, served from the CDN. the proxy does what needs the request: it sends someone who is
  * already signed in on to the page they came for, and leads home when there are no accounts.
  */
 export default function SignUpPage() {
