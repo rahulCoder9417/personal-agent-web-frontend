@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from "react";
 import type { App } from "@/lib/api/client";
-import { useApps, useConnectApp } from "@/lib/api/hooks";
-import { appsToOffer, describeConnectError } from "@/components/apps/apps-logic";
+import { useApps } from "@/lib/api/hooks";
+import { appsToOffer } from "@/components/apps/apps-logic";
+import { useConnectDialog } from "@/components/apps/connect-dialog";
 import { AppIcon } from "@/components/brand-icon";
 import { CheckIcon, LockIcon } from "@/components/icons";
-import { toastError } from "@/components/toast";
 import { Button, Card, ErrorState, Pill, SkeletonRows } from "@/components/ui";
-import { openInNewTab } from "@/lib/navigate";
 import { titleCase } from "@/lib/format";
 
 const SHOWN = 6;
@@ -17,11 +16,18 @@ function isConnected(app: App): boolean {
   return app.connections.some((connection) => connection.status === "active");
 }
 
-/** Step 2: connect the first few apps. Each opens the app's own sign-in screen in the browser. */
+/**
+ * Step 2: connect the first few apps. Connect shows Textcrew's own connect screen; its Continue
+ * opens the app's sign-in in a new tab, which comes back to /connected, so this flow stays put.
+ */
 export function StepApps({ onDone }: { onDone: () => void }) {
   const apps = useApps();
-  const connect = useConnectApp();
   const [opened, setOpened] = useState<string | null>(null);
+  const connect = useConnectDialog({
+    returnPath: (app) => `/connected?app=${encodeURIComponent(app.slug)}`,
+    newTab: true,
+    onOpened: setOpened,
+  });
 
   // Signing in happens in the browser; look again when this window gets focus back.
   const refetch = apps.refetch;
@@ -35,21 +41,6 @@ export function StepApps({ onDone }: { onDone: () => void }) {
   // Only apps that can be connected right now: on the plan, and set up on the server.
   const shown = appsToOffer(apps.data ?? [], SHOWN);
   const connectedCount = (apps.data ?? []).filter(isConnected).length;
-
-  const start = (app: App) =>
-    connect.mutate(
-      { appSlug: app.slug, returnUrl: `${window.location.origin}/connected` },
-      {
-        onSuccess: ({ redirectUrl }) => {
-          openInNewTab(redirectUrl);
-          setOpened(app.slug);
-        },
-        onError: (error) => {
-          const refusal = describeConnectError(app.name, error);
-          toastError(refusal.title, refusal.detail);
-        },
-      },
-    );
 
   return (
     <div className="flex max-w-[760px] flex-col gap-6">
@@ -72,7 +63,6 @@ export function StepApps({ onDone }: { onDone: () => void }) {
             {shown.map((app) => {
               const connected = isConnected(app);
               const account = app.connections.find((c) => c.status === "active")?.accountLabel;
-              const mine = connect.variables?.appSlug === app.slug;
               return (
                 <li key={app.slug} className="flex items-center gap-3.5 border-b border-line px-5 py-3.5 last:border-b-0">
                   <AppIcon name={app.slug} iconUrl={app.iconUrl} size={38} />
@@ -89,7 +79,7 @@ export function StepApps({ onDone }: { onDone: () => void }) {
                       Connected
                     </Pill>
                   ) : (
-                    <Button size="sm" pending={connect.isPending && mine} disabled={connect.isPending && !mine} onClick={() => start(app)} aria-label={`Connect ${app.name}`}>
+                    <Button size="sm" onClick={() => connect.open(app)} aria-label={`Connect ${app.name}`}>
                       Connect
                     </Button>
                   )}
@@ -99,6 +89,7 @@ export function StepApps({ onDone }: { onDone: () => void }) {
           </ul>
         </Card>
       )}
+      {connect.dialog}
 
       <p className="flex items-start gap-2.5 text-[13px] text-muted">
         <LockIcon size={16} className="mt-px shrink-0" />
