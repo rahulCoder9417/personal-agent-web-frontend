@@ -40,6 +40,7 @@ The demo account behaves like the backend at launch: Telegram and the web chat a
 Things to try in the demo:
 
 - **The crew at work**: ask Tex in the web chat to research something ("research what other tools charge"), fix code ("fix the bug in…") or review ("review my pull request"). Scout, Byte or Patch reports three lines while it works, then Tex answers. Scout's search costs 1 credit.
+- **Replies written as they come**: send anything in the web chat and Tex's answer appears a few words at a time, then the finished message takes its place. Ask Tex to research something and it first says "I’ll hand this to Scout.", which goes when Scout sets to work, and the answer is written after Scout's last line. A fact to remember and a risky request are answered at once, as before.
 - **Replies drawn as Markdown**: the web chat opens on an answer with a heading, a table, a block of code, a numbered list and a link. Ask Tex to research something and the answer has a table, a list and links; ask it to fix code and it has code with a Copy button. Every other reply is a plain sentence and looks as it always did, and so do the Telegram chats.
 - **Pull-request review** (Automations → Pull-request review): two repos are seeded, one on and one paused after failures. Pro allows five automations and four are used, so one more repo can be given review and the next one hits the plan limit. A repo owned by `octocat` stands in for one the GitHub account can't administer. Disconnect GitHub under Apps to see the screen without it.
 - **Choosing Textcrew AI** (Settings → Agent & AI): the demo has an Anthropic key saved, so "Use Textcrew AI" and the way back are both there.
@@ -129,6 +130,7 @@ The chat has a history, like ChatGPT or Claude.ai. A **conversation** is one str
 - **Rename and delete** are in the menu on each row (the three dots). Rename turns the title into a field: Enter or clicking away saves (`PATCH /v1/conversations/{id}` with `title`, 1 to 80 characters), Escape leaves it. Delete asks once more, because the conversation's messages and files go with it (`DELETE /v1/conversations/{id}`), then a toast confirms. When the conversation that was open is deleted the chat goes back to the active web conversation; when that was the one deleted, the newest web conversation left becomes the active one. It is in the activity log as "You · deleted a chat", without a word of what was in it.
 - **Errors and confirmations of these actions are toasts** (`toast()` in `src/components/toast.tsx`), not red lines under a row.
 - **Live**: `message.created` and `message.status` carry the message with its `conversationId`, so it joins that conversation's thread and no other, and its conversation moves to the top of the history. `conversation.updated` (a new one, a new title, something said in it, or it became the active one) and `conversation.deleted` change the history as they arrive (`applyStreamEvent` in `src/lib/api/stream.ts`, `src/lib/conversations.ts`).
+- **Tex's answer as it is written**: see [below](#texs-answer-is-shown-as-it-is-written).
 - **Tex at work**: the "Tex is working" bubble and its progress lines show only in the conversation that has a turn going: its newest incoming message that has left the queue is `processing` (the backend sets that when the agent takes the message and moves it on when the turn ends) and the agent is busy (`src/lib/chat-thread.ts`). A turn in another web conversation or on Telegram doesn't show in the one that is open.
 - **Web chat switched off**: there is no "New chat" and no composer, and the chat opens on the newest conversation, to read.
 
@@ -145,6 +147,20 @@ What Tex writes for the web chat may be Markdown; a chat app such as Telegram ge
 - **Width**: a bubble is 560px wide at most, a comfortable line to read. A reply with a table or a block of code may take the thread's whole width instead (654px on a wide screen). A table or a block of code wider than its bubble scrolls sideways inside it; the page and the thread never do. On a phone, a table of three or more columns may be 11em a column wide before its text wraps, so its columns aren't squeezed into slivers.
 - **Loaded when needed**: the renderer is a chunk of its own, fetched the first time a reply has something to draw; a chat of plain replies never asks for it. Until it arrives the reply reads as typed, and it stays that way if the chunk can't be fetched or a reply can't be drawn.
 - **The libraries**: `react-markdown` with `remark-gfm` (tables, task lists, strikethrough, bare addresses as links) and `remark-breaks` (a line break stays a line break). `react-markdown` builds React elements from the text and never sets HTML. `rehype-raw`, which would draw raw HTML, must not be added.
+
+### Tex's answer is shown as it is written
+
+In web chat Tex's answer appears a few words at a time while it is written, instead of all at once at the end. The backend sends it on the live stream as `message.draft` (web chat turns only; Telegram gets the finished answer): `{ conversationId, turnId, messageId, text, at }`, where `text` is the whole answer so far, not only the new words. Nothing of it is saved; the answer itself arrives as a message like any other.
+
+- **Where it shows**: in the conversation the draft names, in place of the "Tex is working" bubble (`Writing` in `src/components/chat/thread.tsx`), drawn the way the answer will be, Markdown included: half-written Markdown (an open list, a table without its last rows, a block of code not yet closed) reads well enough for the moment it is on screen. Under it: "Tex is writing…". A screen reader hears that line once, not every few words (the changing text is `aria-hidden`), and hears the answer when it arrives.
+- **The rules** (`src/lib/drafts.ts`, fed by `applyStreamEvent`):
+  - The latest draft of a conversation is shown. An empty one means Tex started over (it went on to a tool, or started a new message): the "working" bubble with its progress lines comes back.
+  - Tex's message in that conversation (not an approval card) takes the draft's place, and any later draft of that turn is dropped. The answer comes from the API and the drafts from the worker, so the answer can arrive just before the turn's last draft.
+  - The draft goes when the turn ends or fails: `agent.status` other than `busy`, or the incoming message it answers moving to `delivered` or `failed`. A failed turn's apology arrives after an empty draft.
+  - The draft goes when the stream reconnects. If the turn still runs, its next draft brings the whole text back.
+  - Each conversation has its own. A turn in another conversation doesn't show in the open one.
+- **Live only**, like the progress lines: kept in the query cache, never asked for, not there after a reload.
+- **Demo mode** writes its canned replies this way, a few words every 50 ms, and posts the answer at the same moment as before (`writeDraft` in `src/lib/demo/handlers-chat.ts`).
 
 ## Toasts and errors
 
@@ -292,6 +308,7 @@ src/lib/
   pr-review.ts       reading a repo as typed, a repo's state and the API's refusals in words
   conversations.ts   the chat history: which conversation is open, what can be done with it, and the list kept in order as things happen
   chat-thread.ts     the chat thread: whether Tex is at work in the open conversation
+  drafts.ts          Tex's answer as it is written: which draft shows in which conversation, and when it goes
   markdown.ts        Markdown in Tex's replies: whether a reply has any, and where a link may lead
   in-view.ts         asks for the next page when the end of a list scrolls into view
   stored-flag.ts     a yes or no this browser remembers (the chat history folded away)
