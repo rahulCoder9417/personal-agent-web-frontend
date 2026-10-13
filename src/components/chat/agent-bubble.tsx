@@ -26,6 +26,24 @@ class PlainIfItFails extends Component<{ plain: ReactNode; children: ReactNode }
 }
 
 /**
+ * Text the agent wrote, drawn as Markdown when it has any, as typed otherwise (and until the
+ * renderer has arrived, or if it can't draw it). For text outside a chat bubble: a crew job's report.
+ */
+export function DrawnText({ text, className }: { text: string; className?: string }) {
+  const plain = <div className={cn("whitespace-pre-wrap", className)}>{text}</div>;
+  if (!hasMarkdown(text)) return plain;
+  return (
+    <div className={className}>
+      <PlainIfItFails plain={plain}>
+        <Suspense fallback={plain}>
+          <Markdown text={text} />
+        </Suspense>
+      </PlainIfItFails>
+    </div>
+  );
+}
+
+/**
  * The bubble for something Tex wrote. `children` go above the text (a message's files). `writing`:
  * the text is Tex's answer as it is being written, which changes every moment, so screen readers
  * skip it (the thread says once that Tex is writing, and the finished answer is read out).
