@@ -645,7 +645,7 @@ describe("setup", () => {
 
   it("connects an app and reconnects an expired one", async () => {
     const connect = await call<{ redirectUrl: string }>("POST", "apps/linear/connect", { returnUrl: `${ORIGIN}/apps` });
-    expect(connect.body.redirectUrl).toBe(`${ORIGIN}/apps?app=linear`);
+    expect(connect.body.redirectUrl).toBe(`${ORIGIN}/apps?app=linear&status=success`);
     await call("POST", "apps/googledrive/connect");
     const apps = (await call<{ items: App[] }>("GET", "apps")).body.items;
     expect(apps.find((app) => app.slug === "linear")?.connections).toMatchObject([{ status: "active" }]);

@@ -4,6 +4,7 @@ import {
   appsToOffer,
   categoriesOf,
   connectCopy,
+  connectOutcome,
   describeConnectError,
   filterApps,
   isConnectable,
@@ -187,5 +188,29 @@ describe("the connect screen", () => {
       continueLabel: "Continue to Linear",
     });
     expect(providerOf({ name: "Jira", provider: "  " })).toBe("Jira");
+  });
+});
+
+describe("the way back from a sign-in", () => {
+  const read = (query: string) => connectOutcome(new URLSearchParams(query));
+
+  it("reads the app and Composio's status", () => {
+    expect(read("app=gmail&status=success&connected_account_id=ca_1")).toEqual({ slug: "gmail", ok: true });
+    expect(read("app=gmail&status=failed")).toEqual({ slug: "gmail", ok: false });
+    // The Apps page's own way back.
+    expect(read("connected=github&status=success")).toEqual({ slug: "github", ok: true });
+    expect(read("connected=github&status=failed")).toEqual({ slug: "github", ok: false });
+  });
+
+  it("counts a missing status as done, and any other status as not connected", () => {
+    expect(read("app=notion")).toEqual({ slug: "notion", ok: true });
+    expect(read("app=notion&status=error")).toEqual({ slug: "notion", ok: false });
+  });
+
+  it("is not a way back without an app, or with something that isn't an app name", () => {
+    expect(read("")).toBeNull();
+    expect(read("checkout=demo")).toBeNull();
+    expect(read("app=%3Cscript%3E")).toBeNull();
+    expect(read("app=" + "a".repeat(41))).toBeNull();
   });
 });
