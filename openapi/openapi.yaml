@@ -83,6 +83,9 @@ paths:
       operationId: updateMe
       tags: [me]
       summary: Update profile settings
+      description: |
+        A `timezone` (an IANA name such as `Asia/Kolkata`, 400 for an unknown one) also makes
+        `timezoneSet` true.
       requestBody:
         required: true
         content:
@@ -1954,13 +1957,20 @@ components:
 
     Me:
       type: object
-      required: [id, email, emailVerified, name, timezone, plan, role, credits, createdAt]
+      required: [id, email, emailVerified, name, timezone, timezoneSet, plan, role, credits, createdAt]
       properties:
         id: { type: string }
         email: { type: string, format: email }
         emailVerified: { type: boolean }
         name: { type: string }
         timezone: { type: string, examples: [Asia/Kolkata] }
+        timezoneSet:
+          type: boolean
+          description: |
+            False while the account still has the time zone it started with (`UTC`) and nobody has
+            set one. The web app then sets it once, from the browser's time zone. True once a
+            `PATCH /v1/me` with `timezone` was made (by the user, or by the web app that once), so
+            a time zone someone set is never replaced.
         plan: { $ref: "#/components/schemas/PlanId" }
         role: { type: string, enum: [user, admin] }
         credits:

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BrowserTimezone } from "@/components/browser-timezone";
 import { Brand } from "@/components/shell/brand";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -59,6 +60,8 @@ export function OnboardingFlow() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/* Before the first Telegram message: "every Monday at 9" must mean 9 where they are. */}
+      <BrowserTimezone />
       <header className="flex h-[60px] shrink-0 items-center justify-between gap-3 border-b border-line px-4 md:px-7">
         <Brand />
         <StepIndicator current={step} onPick={setStep} />
