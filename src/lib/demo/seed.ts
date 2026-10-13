@@ -418,6 +418,15 @@ export const CLAUDE_CHOICES: AgentSettings["claudeChoices"] = {
   efforts: ALL_EFFORTS,
 };
 
+/**
+ * `TEXTCREW_DEMO_AUTOMATIONS_CHAT=none`: the account's automations were all made before the
+ * Automations chat existed and none has run since, so the backend hasn't started it yet. The demo's
+ * run, about 20 seconds after the app first connects, starts it.
+ */
+export function demoHasAutomationsChat(): boolean {
+  return process.env.TEXTCREW_DEMO_AUTOMATIONS_CHAT !== "none";
+}
+
 const SPECIALISTS = ["byte", "patch", "scout"] as const;
 export type SpecialistId = (typeof SPECIALISTS)[number];
 
@@ -640,7 +649,7 @@ export function runCopyText(title: string, icon: "⏰" | "⚡", text: string): s
  * Each conversation's title and `lastMessageAt` come from its messages, as the backend derives them.
  * The pull-request review was turned on with Telegram linked, so its verdict also went there as a copy.
  */
-function seedChats(now: Date): { conversations: Conversation[]; messages: Message[] } {
+function seedChats(now: Date, withAutomationsChat: boolean): { conversations: Conversation[]; messages: Message[] } {
   type Line = Omit<Message, "id" | "createdAt" | "conversationId" | "channel" | "approvalId"> & { approvalId?: string };
   const conversations: Conversation[] = [];
   const messages: Message[] = [];
@@ -705,7 +714,7 @@ function seedChats(now: Date): { conversations: Conversation[]; messages: Messag
     ["msg_review", earlierToday(now, 92), { direction: "out", status: "sent", text: verdict }],
     ["msg_run_2", lastMeetings, { direction: "out", status: "sent", text: "Today: “Roadmap sync” at 3pm with Maya and Dev, and the dentist at 5:30. Nothing before noon." }],
   ];
-  chat("cnv_automations", "web", 2, false, runs.sort((a, b) => Date.parse(a[1]) - Date.parse(b[1])), "automations");
+  if (withAutomationsChat) chat("cnv_automations", "web", 2, false, runs.sort((a, b) => Date.parse(a[1]) - Date.parse(b[1])), "automations");
 
   // The API lists messages newest first. Two said in the same minute keep the order they were said in.
   messages.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
@@ -779,7 +788,7 @@ function seedMcpServers(plan: PlanId, now: Date): McpServer[] {
 
 export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
   const money = seedMoney(now);
-  const chats = seedChats(now);
+  const chats = seedChats(now, demoHasAutomationsChat());
   const aiMode = demoAiMode();
   const signedUp = atDay(now, SIGNUP_DAYS_AGO, 9, 40);
   return {

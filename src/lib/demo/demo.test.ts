@@ -509,6 +509,19 @@ describe("conversations", () => {
     expect((await list("?kind=automations")).items[0]).toMatchObject({ title: "Automations", active: false });
   });
 
+  it("starts with no Automations chat when the automations were made before it existed, and the next run starts it", async () => {
+    vi.stubEnv("TEXTCREW_DEMO_AUTOMATIONS_CHAT", "none");
+    try {
+      resetDemoStore(NOW);
+      expect((await list("?kind=automations")).items).toEqual([]);
+      expect((await call<Page<Automation>>("GET", "automations")).body.items.length).toBeGreaterThan(0);
+      runDemoAutomation(getStore());
+      expect((await list("?kind=automations")).items).toMatchObject([{ kind: "automations", title: "Automations" }]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("a run answers in the Automations chat, and starts it again after it was deleted", async () => {
     const seen = events();
     expect((await call("DELETE", "conversations/cnv_automations")).status).toBe(204);
