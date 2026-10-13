@@ -16,10 +16,13 @@ import { approvalReason } from "@/lib/approvals";
 import { linkableChannels } from "@/lib/channels";
 import { CHANNEL_LABEL, cn, describeAutomationNext, describeAutomationSchedule, formatCredits, formatTime, listNames } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
+import { PANEL_MOTION, useStaysDrawn } from "@/lib/motion";
+import { focusAfterToggle } from "@/lib/panels";
 import { AppIcon } from "../brand-icon";
-import { CheckIcon, ChevronRightIcon, ClockIcon } from "../icons";
+import { CheckIcon, ChevronRightIcon, ClockIcon, PanelRightIcon } from "../icons";
 import { AgentFigure } from "../tex";
-import { ButtonLink } from "../ui";
+import { ButtonLink, IconButton } from "../ui";
+import { FoldingPane } from "./folding-pane";
 
 function Section({ title, count, href, children }: { title: string; count?: number; href: string; children: ReactNode }) {
   return (
@@ -92,25 +95,121 @@ const MOOD_LINE: Record<string, string> = {
   paused: "Something needs fixing before it can work.",
 };
 
-// When the panel is hidden. Whole class names, so Tailwind finds them.
-const HIDDEN_BELOW = { alone: "max-[1100px]:hidden", besideChats: "max-[1340px]:hidden" } as const;
+/**
+ * Where there is no room for the panel, and so none for the header's button that brings it back:
+ * below 1100px, or 1340px with the list of conversations open beside the thread. The panel folds
+ * there as it does when it is closed, so opening the list beside it moves the two together rather
+ * than making the panel jump. Whole class names, so Tailwind finds them.
+ */
+const ROOM = {
+  alone: {
+    panel: "max-[1100px]:invisible max-[1100px]:w-0",
+    inside: "max-[1100px]:opacity-0",
+    reopen: "min-[1100px]:visible min-[1100px]:max-w-9 min-[1100px]:opacity-100",
+  },
+  besideChats: {
+    panel: "max-[1340px]:invisible max-[1340px]:w-0",
+    inside: "max-[1340px]:opacity-0",
+    reopen: "min-[1340px]:visible min-[1340px]:max-w-9 min-[1340px]:opacity-100",
+  },
+} as const;
+
+const PANEL_ID = "side-panel";
+const HIDE_ID = "side-panel-hide";
+const SHOW_ID = "side-panel-show";
 
 /**
  * The right-hand panel of the chat: Tex itself, what's waiting on you, what's done and what's next.
- * Below 1100px it is hidden, and then its contents aren't drawn at all, so a phone or a narrow
+ * Below 1100px it is folded away, and then its contents aren't drawn at all, so a phone or a narrow
  * window never asks for what it shows. With the list of conversations open beside the thread
  * (`besideChats`) it needs 1340px, so three columns never squeeze the thread. The empty panel
  * keeps its place on a wide screen until the browser has said how wide it is.
+ *
+ * Its own button folds it away (`hidden`, which this browser remembers) and `SidePanelReopen`, in
+ * the chat's header, brings it back.
  */
-export function SidePanel({ besideChats = false }: { besideChats?: boolean }) {
+export function SidePanel({
+  besideChats = false,
+  hidden = false,
+  motion = false,
+  onHide,
+}: {
+  besideChats?: boolean;
+  /** The person folded it away. */
+  hidden?: boolean;
+  /** Whether it may move yet (`useMotionReady`). */
+  motion?: boolean;
+  onHide?: () => void;
+}) {
   const shown = useMediaQuery(besideChats ? SHOWN_AT.sidePanelBesideChats : SHOWN_AT.sidePanel);
+  const room = besideChats ? ROOM.besideChats : ROOM.alone;
+  // Drawn while it is on screen, and while it folds away.
+  const drawn = useStaysDrawn(shown && !hidden);
   return (
-    <aside
-      aria-label="Right now"
-      className={cn("scroll-pane flex w-[320px] shrink-0 flex-col gap-6 overflow-y-auto border-l border-line px-5 pt-5 pb-5", besideChats ? HIDDEN_BELOW.besideChats : HIDDEN_BELOW.alone)}
+    <FoldingPane
+      id={PANEL_ID}
+      label="Right now"
+      side="right"
+      width="w-[320px]"
+      open={!hidden}
+      motion={motion}
+      className={room.panel}
+      innerClassName={cn("flex flex-col border-l border-line", room.inside)}
     >
-      {shown && <SidePanelContents />}
-    </aside>
+      <div className="flex shrink-0 items-center gap-1 pt-3.5 pr-2 pb-2 pl-5">
+        <h2 className="flex-1 text-[13px] font-semibold">Right now</h2>
+        <IconButton
+          id={HIDE_ID}
+          label="Hide side panel"
+          aria-controls={PANEL_ID}
+          aria-expanded
+          onClick={(event) => {
+            onHide?.();
+            focusAfterToggle(event.currentTarget, SHOW_ID);
+          }}
+        >
+          <PanelRightIcon size={17} />
+        </IconButton>
+      </div>
+      <div className="scroll-pane flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 pt-1 pb-5">{drawn && <SidePanelContents />}</div>
+    </FoldingPane>
+  );
+}
+
+/**
+ * The header's button that brings the side panel back after it was folded away. It is there only
+ * while the panel is folded and there is room for it, and fades in and out as the panel goes and
+ * comes.
+ */
+export function SidePanelReopen({
+  besideChats = false,
+  hidden,
+  motion,
+  onShow,
+}: {
+  besideChats?: boolean;
+  hidden: boolean;
+  motion: boolean;
+  onShow: () => void;
+}) {
+  const room = besideChats ? ROOM.besideChats : ROOM.alone;
+  return (
+    // The wrapper fades and folds, so the button keeps its own hover transition and its focus ring.
+    <span className={cn("invisible flex max-w-0 shrink-0 opacity-0", motion && cn("transition-[max-width,opacity,visibility]", PANEL_MOTION), hidden && room.reopen)}>
+      <IconButton
+        id={SHOW_ID}
+        label="Show side panel"
+        aria-controls={PANEL_ID}
+        aria-expanded={false}
+        onClick={(event) => {
+          onShow();
+          focusAfterToggle(event.currentTarget, HIDE_ID);
+        }}
+        className="size-9"
+      >
+        <PanelRightIcon size={18} />
+      </IconButton>
+    </span>
   );
 }
 
