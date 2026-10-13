@@ -10,7 +10,7 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
 
 - **Screens**: chat, approvals, automations and pull-request review, activity, apps and your own MCP servers, crew, settings (general, agent and AI, memory, credits, plans), onboarding, sign-in and sign-up.
 - **One layout, two shapes**: on a wide screen a sidebar sits beside the current screen, and folds down to a rail of icons; on a phone there is a top bar, the screen edge to edge and five tabs along the bottom (the rest is under More). See [Panels that fold](#panels-that-fold).
-- **Every screen takes the whole width.** See [Width](#width).
+- **Every screen takes the whole width**, except Settings, which is one readable column beside its sections. See [Width](#width) and [Settings](#settings).
 - **Installable on a phone**: "Add to Home Screen" on Android and iPhone opens it in its own window. See [Installing on a phone](#installing-on-a-phone).
 - **The pages only talk to this app's own `/api/v1/*`.** `src/app/api/v1/[...path]/route.ts` forwards to the backend and adds the Clerk session token on the server, so the token never sits in page JavaScript or in an `EventSource` URL. Only user-facing paths are allowed through (no admin, waitlist or webhook routes).
 
@@ -44,7 +44,8 @@ Things to try in the demo:
 - **Pull-request review** (Automations → Pull-request review): two repos are seeded, one on and one paused after failures. Pro allows five automations and four are used, so one more repo can be given review and the next one hits the plan limit. A repo owned by `octocat` stands in for one the GitHub account can't administer. Disconnect GitHub under Apps to see the screen without it.
 - **Choosing Textcrew AI** (Settings → Agent & AI): the demo has an Anthropic key saved, so "Use Textcrew AI" and the way back are both there.
 - **The chat history**: four chats are seeded, two in the web chat and two on Telegram. Open the Telegram one to read it (it can't be answered from here), open the earlier web one and write in it (it moves to the top and Tex answers there), and start a "New chat". Rename or delete one from the three dots on its row. The 31st new chat in an hour is refused with a toast.
-- **Claude Code's model and effort** (Settings → Agent & AI): connect the Claude plan with any code of four characters or more, then pick a model and a thinking effort.
+- **Claude Code's model and effort** (Settings → Agent & AI): connect the Claude plan with any code of four characters or more, then pick a model and a thinking effort under Engine.
+- **The dropdowns**: the time zone (Settings → General) is searched by typing a city or an offset ("kolk", "new york", "5:30"); the model and effort open a list, and on a phone a sheet from the bottom of the screen. Both work with the keyboard alone.
 - **Memory** (Settings → Memory): eight memories are seeded. Tell Tex "remember that I send invoices on the 1st" in the web chat and it is saved; "remember that my password is…" is refused. Both are in the activity log.
 - **Apps that can't be connected yet** (Apps): HubSpot, Asana and Airtable say "Not available yet" and have no Connect button, the way an app without a setup on the server does.
 - **Toasts**: on Pull-request review, turn review on for one more repo (five of five), then for another. The refusal is a toast with "See plans". A repo owned by `octocat` is refused under the field instead, because that one is about what was typed.
@@ -100,14 +101,14 @@ The screens don't know which chat apps or which AI are on offer. They ask.
 **AI, three ways.** Settings → Agent & AI and the third onboarding step offer the same three choices:
 
 1. **Your own API key** (recommended): Anthropic, OpenAI or OpenRouter. The provider bills the AI.
-2. **Your Claude plan** (beta): runs Claude Code in the person's private workspace. Plain text only, no logos. Once it is connected, its section has two selects, "Model" and "Thinking effort", each with "Default" (Claude Code's own) first.
+2. **Your Claude plan** (beta): runs Claude Code in the person's private workspace. Plain text only, no logos. Once it is connected, the Engine group has two dropdowns, "Model" and "Thinking effort", each with "Default" (Claude Code's own) first. Before that, the Engine group says they come with the plan and links to its card.
 3. **Textcrew AI**: nothing to set up, paid in credits. It is what Tex uses when no key or plan is connected.
 
 `GET /v1/agent/settings` says all of it (`src/components/settings/agent-summary.ts` puts it into words):
 
 - `aiAccess` (`own_key`, `claude_plan`, `platform` or `none`) is what pays for the AI right now.
 - `platformAvailable` is whether Textcrew AI is on offer. When it is false (`AI_ACCESS_MODE=own_only` on the backend) the card says "Not available" rather than hiding.
-- `claudeModel` and `claudeEffort` are what Claude Code runs with (null is its default), and `claudeChoices` is what they can be set to, in the order the selects offer them (`src/lib/claude-code.ts`). `models` holds every Claude model Claude Code can use, each with an id, a label, a group (`current` or `older`, shown as the select's headings "Current models" and "Older models"), the effort levels it takes, and sometimes a short note (Fable's usage credits). The effort select offers only the levels of the chosen model (all of them on "Default"); it is greyed out for a model with none (Opus 4.5, Haiku 4.5). Under the selects: the chosen model's note, and a line when the saved effort does not apply to it or runs at a lower level (xhigh on Sonnet 4.6 runs at high). `efforts` is every level. A change is saved as it is made (`PATCH /v1/agent/settings` with `claudeModel` or `claudeEffort`; "Default" sends null), shown at once and put back if refused. They can be set whatever runs now and apply to turns on Claude Code; a value not offered is 400 `invalid_request`.
+- `claudeModel` and `claudeEffort` are what Claude Code runs with (null is its default), and `claudeChoices` is what they can be set to, in the order the dropdowns offer them (`src/lib/claude-code.ts`). `models` holds every Claude model Claude Code can use, each with an id, a label, a group (`current` or `older`, shown as the dropdown's headings "Current models" and "Older models"), the effort levels it takes, and sometimes a short note (Fable's usage credits), which is the model's second line in the list. The effort dropdown offers only the levels of the chosen model (all of them on "Default"); it is greyed out for a model with none (Opus 4.5, Haiku 4.5). At the foot of the Engine card: the chosen model's note, and a line when the saved effort does not apply to it or runs at a lower level (xhigh on Sonnet 4.6 runs at high). `efforts` is every level. A change is saved as it is made (`PATCH /v1/agent/settings` with `claudeModel` or `claudeEffort`; "Default" sends null), shown at once and put back if refused. They can be set whatever runs now and apply to turns on Claude Code; a value not offered is 400 `invalid_request`.
 - `aiPreference` (`auto` or `platform`) is what the person chose. Someone with a key saved or a Claude plan connected can choose Textcrew AI anyway ("Use Textcrew AI" sends `{ aiPreference: "platform" }`) and go back ("Go back to your Anthropic key" sends `{ runtime: "hermes", aiPreference: "auto" }`; to the Claude plan, `{ runtime: "claude_code", aiPreference: "auto" }`). The key and the plan stay saved either way. With Textcrew AI chosen the agent shown as running is Hermes, and picking Claude Code goes back to the plan.
 
 **Apps.** `GET /v1/apps` lists the catalog with each app's connections, whether the plan includes it (`availableOnPlan`) and whether it can be connected on this server at all (`connectable`: the server has a Composio setup for it; today that is Gmail and GitHub). An app that isn't connectable is listed after the ones that are, says "Not available yet" and has no Connect button; a connected one loses "Add account" and "Reconnect". Onboarding offers only apps that are on the plan and connectable. A backend from before the field existed doesn't send it, and that reads as connectable (`isConnectable` in `src/components/apps/apps-logic.ts`), so an older server doesn't switch every app off.
@@ -162,10 +163,32 @@ When something the person asked for doesn't work, a toast says so in the corner 
 Every screen under the shell takes the whole width of the sheet. `PageBody` (`src/components/page.tsx`) no longer caps it.
 
 - **Lists and tables** fill the width: activity, the credit history, the automations.
-- **Cards** sit in as many columns as fit. Apps, plans and templates use a grid; Settings → General and Memory use `Columns`, which fills each column top to bottom so cards of different heights leave no gaps (one column on a phone, two on a laptop, three on a wide monitor).
+- **Cards** sit in as many columns as fit. Apps, plans and templates use a grid. `Columns` (in `page.tsx`) fills each column top to bottom so cards of different heights leave no gaps; nothing uses it at the moment.
+- **Settings is the exception.** General, Agent & AI and Memory are one column at most 720px wide, beside the column of sections on a wide screen, because a setting is read with its control and a wide page scatters them. Credits and Plans fill the width beside the sections: Credits puts its side column beside the rest when the page itself has 760px (a container query, not the window's width), and the plans sit three across from 228px each. See [Settings](#settings).
 - **Text that is read**, not scanned, keeps a comfortable line with the `READING` class (72 characters): the intro paragraphs, the message in an approval.
 - **Approvals** show the list and the open approval side by side from 1024px, the list taking about a third; below that they stack, which includes a tablet with the sidebar showing.
 - Checked at 1440, 1100, 768 and 390 pixels wide.
+
+## Settings
+
+Settings has five sections: General, Agent & AI, Memory, Credits and Plans (`src/app/(app)/settings/`).
+
+- **Where the sections are**: from 1280px a column of links on the left of the screen (`RouteNav` in `src/components/route-tabs.tsx`); below that a strip of tabs under the title, as on the other screens. The app's own sidebar takes the left from 768px, and a second column beside it any earlier would squeeze Credits and Plans.
+- **One column of groups**: a group is a heading, a line on what is in it, and a card of rows (`SettingsGroup` and `SettingRow` in `src/components/settings/settings-rows.tsx`). A row has the setting's name and a line of help on the left and its control on the right, 280px wide; on a phone the control goes under the words. A control that needs the room (the choice of agent) sits under its name at every width.
+- **General**: Profile (name, email, time zone, and Save changes), Linked chats, Your data, and Account (who is signed in and Sign out; Delete account, which asks for DELETE first).
+- **Agent & AI**: on top, what runs now and what pays for it, with "How it’s decided" folded away under it (a `<details>`). Then **Engine**: the agent (Hermes or Claude Code) and Claude Code's model and thinking effort. Then **AI access**: the three ways to give Tex its AI, each a card with its name, its tag ("Recommended", "Beta") and where it stands ("In use", "Not available") at the top.
+- **Memory**: the kinds one under another.
+
+### Dropdowns
+
+There is no native `<select>` in the app. `src/components/select.tsx` has two dropdowns in the app's own look, with no library behind them:
+
+- **`Select`**: a button that shows the choice and opens a list of options. Options can have a second line (`description`), a note at the end of the row (`hint`), and can be shown but not picked (`disabled`); they can sit in groups under a heading. The list opens under the field, or above it when the field is near the bottom of the window. Below 640px it is a sheet from the bottom of the screen with rows 48px tall, over a dimmed page; a tap outside closes it. Used for Claude Code's model and thinking effort and for onboarding's provider.
+- **`Combobox`**: a field that is typed in to find an option, for long lists. Typing filters the list (every word typed must be in the option's name, value, note or keywords; accents and case don't matter) and puts the keys on the first option left, so a few letters and Enter is a choice. Used for the time zone, where the offset is each zone's note: "5:30" finds Kolkata. On a phone the list stays under the field, where the keyboard leaves it room, with the sheet's big rows.
+- **Keys**: they follow WAI-ARIA's combobox patterns. On a Select: the arrows, Enter or Space open the list on the chosen option, Home and End on the first and last, a letter on the option it starts (typed quickly, letters make a word; one letter again goes to the next option that starts with it). Open: the arrows, Home, End, Page Up and Page Down move, skipping options that can't be picked; Enter or Space chooses; Escape closes; Tab closes as focus moves on. Neither Escape nor Tab changes the choice. On a Combobox the arrows open and move, Enter chooses (and never submits the form while the list is open), Home and End stay with the text, and Escape, Tab or leaving the field put the chosen value back.
+- **For screen readers**: the field is a `combobox` that controls a `listbox` of `option`s (in `group`s with their heading as the name). The keys stay on the field and `aria-activedescendant` says which option they are on; the chosen one is `aria-selected` and the ones that can't be picked are `aria-disabled`. A press in the list never takes focus from the field.
+- **Choosing the option already chosen** just closes the list: nothing is saved again.
+- **Where the rules are**: which option a key moves to, type-ahead, the search and where the list goes are in `src/lib/listbox.ts`, tested without a browser. The colours are all design tokens.
 
 ## Panels that fold
 
@@ -297,6 +320,9 @@ src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell
   chat/folding-pane.tsx  a column beside the thread that slides shut and open (the chat history, the side panel)
   toast.tsx          toasts, drawn by sonner: a confirmation, or an action that failed
   page.tsx           a screen's header and full-width body, columns of cards, the reading width
+  select.tsx         the dropdowns: Select (a button and a list) and Combobox (a field that searches a list)
+  route-tabs.tsx     a screen's pages as tabs under its title, or as a column of links (Settings)
+  settings/settings-rows.tsx  the parts of a settings screen: a group, and a row with its control on the right
   chat/agent-bubble.tsx  the bubble for what Tex wrote: as typed, or drawn as Markdown
   chat/markdown.tsx      draws Markdown; loaded the first time a reply needs it
 src/lib/
@@ -316,10 +342,11 @@ src/lib/
   chat-thread.ts     the chat thread: whether Tex is at work in the open conversation
   markdown.ts        Markdown in Tex's replies: whether a reply has any, and where a link may lead
   in-view.ts         asks for the next page when the end of a list scrolls into view
+  listbox.ts         the rules of the dropdowns: the keys, type-ahead, the search and where the list opens
   stored-flag.ts     a yes or no this browser remembers
   panels.ts          the panels that fold, each remembered under its own key, and where the keyboard goes after one does
   motion.ts          how the panels move: their timing, no sliding on load, and a list whose rows fold away as they go
-  claude-code.ts     Claude Code's model and thinking effort as the selects offer them
+  claude-code.ts     Claude Code's model and thinking effort as the dropdowns offer them
   credit-costs.ts    what credits pay for, in the words every screen uses
   checkout.ts        what a Polar checkout is waiting for, and when it has arrived
 ```
@@ -329,7 +356,7 @@ src/lib/
 ## Not done yet
 
 - Admin screens (`/v1/admin/*`).
-- A dark theme. The app is light only, on purpose (`color-scheme: only light` in `globals.css`). The toasts, the crew page and the automations page take every colour from the design tokens, so they would follow a dark set of tokens; the primary button (white text on the ink colour) and the figures' own colours would still need one.
+- A dark theme. The app is light only, on purpose (`color-scheme: only light` in `globals.css`). The toasts, the crew page, the automations page, the dropdowns and the settings screens take every colour from the design tokens, so they would follow a dark set of tokens (the settings and the dropdowns were checked with a trial set); the primary button (white text on the ink colour) and the figures' own colours would still need one.
 - The demo doesn't make an automation when one is asked for in chat, so a template can be followed as far as the chat and no further.
 - The chat's two error lines (a message that didn't send, an approval that didn't go through) are not toasts yet.
 - Voice notes from the composer (files and text only).

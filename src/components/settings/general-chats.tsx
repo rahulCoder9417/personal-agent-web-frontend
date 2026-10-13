@@ -2,12 +2,13 @@
 
 import { AppIcon } from "@/components/brand-icon";
 import { toastError } from "@/components/toast";
-import { ButtonLink, Card, ErrorState, Meta, Pill, SectionLabel, SkeletonRows } from "@/components/ui";
+import { ButtonLink, Card, ErrorState, Meta, Pill, SkeletonRows } from "@/components/ui";
 import type { ChannelLink } from "@/lib/api/client";
 import { useAvailableChannels, useChannels, useUnlinkChannel } from "@/lib/api/hooks";
 import { linkableChannels, type LinkableChannel } from "@/lib/channels";
 import { CHANNEL_LABEL, formatDate } from "@/lib/format";
 import { ConfirmButton } from "@/components/confirm-button";
+import { SettingsGroup } from "./settings-rows";
 
 /** `off`: the chat app has been switched off since this chat was linked. It can still be unlinked. */
 function LinkedRow({ link, off }: { link: ChannelLink; off: boolean }) {
@@ -72,11 +73,7 @@ export function LinkedChatsSection() {
   const unlinked = linkable.filter((channel) => !links.some((link) => link.channel === channel));
 
   return (
-    <section aria-label="Linked chats" className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <SectionLabel>Linked chats</SectionLabel>
-        <p className="text-[12.5px] text-muted">Any of these chats is Tex. Messages from all of them land in one thread.</p>
-      </div>
+    <SettingsGroup title="Linked chats" description="Any of these chats is Tex. Messages from all of them land in one thread.">
 
       {channels.isPending ? (
         <Card>
@@ -102,6 +99,6 @@ export function LinkedChatsSection() {
       <Meta className="text-[12px]">
         Linking uses a one-time code that expires in 10 minutes. A chat we don’t know only gets a “link your account” reply.
       </Meta>
-    </section>
+    </SettingsGroup>
   );
 }
