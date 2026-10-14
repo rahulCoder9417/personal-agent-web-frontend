@@ -4,7 +4,7 @@ import { useClerk, useSignUp } from "@clerk/nextjs";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { Button, Card, Field } from "@/components/ui";
+import { Button, Field } from "@/components/ui";
 import {
   afterAuthPath,
   describeAuthError,
@@ -17,6 +17,7 @@ import {
   type SocialStrategy,
 } from "@/lib/auth-flow";
 import {
+  AuthBody,
   AuthHeading,
   CaptchaSlot,
   CODE_LENGTH,
@@ -177,16 +178,16 @@ export function SignUpForm({ redirectUrl }: { redirectUrl: string | null }) {
   const alreadySignedIn = problem?.code === "session_exists" || problem?.code === "identifier_already_signed_in";
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {step === "start" ? (
-        <AuthHeading title="Create your Textcrew account">Got a lot of work? Just text your crew.</AuthHeading>
+        <AuthHeading title="Create your Textcrew account">One account for Tex and the whole crew.</AuthHeading>
       ) : (
         <AuthHeading title="Check your email">
           We sent a {CODE_LENGTH}-digit code to {signUp.emailAddress || email.trim() || "your email"}. Enter it to finish creating your account.
         </AuthHeading>
       )}
 
-      <Card className="flex flex-col gap-4 p-5 shadow-soft">
+      <AuthBody>
         {clerk.status === "error" && (
           <p role="alert" className="rounded-[10px] bg-danger-soft px-3 py-2.5 text-[13px] text-danger">
             The sign-in service didn’t load. Check your connection, turn off any ad blocker for this page and reload.
@@ -276,7 +277,7 @@ export function SignUpForm({ redirectUrl }: { redirectUrl: string | null }) {
             </div>
           </>
         )}
-      </Card>
+      </AuthBody>
 
       {step === "start" && <SwitchLine question="Already have an account?" href={withRedirect(SIGN_IN_PATH, redirectUrl)} action="Sign in" />}
     </div>

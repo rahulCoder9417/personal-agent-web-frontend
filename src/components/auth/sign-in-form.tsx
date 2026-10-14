@@ -4,7 +4,7 @@ import { useClerk, useSignIn } from "@clerk/nextjs";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { Button, Card, Field } from "@/components/ui";
+import { Button, Field } from "@/components/ui";
 import {
   afterAuthPath,
   describeAuthError,
@@ -19,6 +19,7 @@ import {
   type SocialStrategy,
 } from "@/lib/auth-flow";
 import {
+  AuthBody,
   AuthHeading,
   CODE_LENGTH,
   CodeInput,
@@ -47,7 +48,7 @@ type Step = "start" | "email-code" | "second-code" | "reset-code" | "new-passwor
 type Busy = "submit" | "social" | "code" | "reset" | "resend";
 
 const HEADING: Record<Step, { title: string; body: (email: string) => string }> = {
-  start: { title: "Sign in to Textcrew", body: () => "Got a lot of work? Just text your crew." },
+  start: { title: "Sign in to Textcrew", body: () => "Welcome back. Your crew is ready when you are." },
   "email-code": { title: "Check your email", body: (email) => `We sent a ${CODE_LENGTH}-digit code to ${email}. Enter it to sign in.` },
   "second-code": {
     title: "Check your email",
@@ -242,10 +243,10 @@ export function SignInForm({ redirectUrl, entry }: { redirectUrl: string | null;
   const alreadySignedIn = problem?.code === "session_exists" || problem?.code === "identifier_already_signed_in";
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <AuthHeading title={heading.title}>{heading.body(signIn.identifier || email.trim() || "your email")}</AuthHeading>
 
-      <Card className="flex flex-col gap-4 p-5 shadow-soft">
+      <AuthBody>
         {clerk.status === "error" && (
           <p role="alert" className="rounded-[10px] bg-danger-soft px-3 py-2.5 text-[13px] text-danger">
             The sign-in service didn’t load. Check your connection, turn off any ad blocker for this page and reload.
@@ -351,7 +352,7 @@ export function SignInForm({ redirectUrl, entry }: { redirectUrl: string | null;
             </LinkButton>
           </>
         )}
-      </Card>
+      </AuthBody>
 
       {step === "start" && <SwitchLine question="New to Textcrew?" href={withRedirect(SIGN_UP_PATH, redirectUrl)} action="Create an account" />}
     </div>

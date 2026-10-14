@@ -58,11 +58,16 @@ export function useFinish(redirectUrl: string | null) {
 
 export function AuthHeading({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="text-center">
-      <h1 className="text-[22px] font-semibold tracking-[-0.01em]">{title}</h1>
-      {children && <p className="mt-1 text-muted">{children}</p>}
+    <div className="flex flex-col gap-1.5">
+      <h1 className="text-[26px] leading-[1.15] font-semibold tracking-[-0.025em]">{title}</h1>
+      {children && <p className="text-[14.5px] text-muted">{children}</p>}
     </div>
   );
+}
+
+/** The form itself. It sits straight on the page's white sheet, so it needs no card of its own. */
+export function AuthBody({ children }: { children: ReactNode }) {
+  return <div className="flex flex-col gap-4">{children}</div>;
 }
 
 /** What went wrong when it isn't about one field, above the form. */
@@ -167,7 +172,7 @@ export function SocialButtons({ busy, disabled, onPick }: { busy: boolean; disab
 /** The line under a form that leads to the other one. */
 export function SwitchLine({ question, href, action }: { question: string; href: string; action: string }) {
   return (
-    <p className="text-center text-[13px] text-muted">
+    <p className="border-t border-line pt-5 text-[13.5px] text-muted">
       {question}{" "}
       <Link href={href} className={linkClass}>
         {action}
