@@ -313,3 +313,47 @@ export function describeAutomationCost(automation: Pick<Automation, "kind" | "pr
 /** What a run costs, said once for the whole list. The numbers are the ones in credit-costs.ts. */
 export const AUTOMATION_CREDITS =
   "A run costs what the same request in chat would: 1 credit per 10 minutes of running time, and 1 credit for each app action that changes something. Reading and searching are free.";
+
+// ---------------------------------------------------------------- the card and the overview
+
+/**
+ * The next run and the last one, as the values under "Next run" and "Last run" on an automation's
+ * card: "Tomorrow, 8:00 AM", "Each time it happens", "2h ago", "Not yet". `ran` says whether there
+ * is a result to look at in the Automations chat.
+ */
+export function describeAutomationTimes(automation: Automation, now = new Date()): { next: string; last: string; ran: boolean } {
+  const review = automation.preset === "pr_review";
+  let next: string;
+  if (!automation.enabled) next = "Not while it’s paused";
+  else if (review) next = "On each new or updated pull request";
+  else if (automation.kind === "event") next = "Each time it happens";
+  else if (automation.nextRunAt) next = formatDateTime(automation.nextRunAt, now);
+  else if (automation.kind === "once" && automation.lastRunAt) next = "None: it ran its one time";
+  else next = "Not scheduled yet";
+
+  const ago = automation.lastRunAt ? formatAgo(automation.lastRunAt, now) : null;
+  const last = ago ? ago.charAt(0).toUpperCase() + ago.slice(1) : "Not yet";
+  return { next, last, ran: Boolean(automation.lastRunAt) };
+}
+
+/** How the person's automations stand, for the overview above the list. */
+export function summarizeAutomations(automations: readonly Pick<Automation, "enabled" | "pausedReason">[]): {
+  on: number;
+  paused: number;
+  /** Paused by the system (out of credits, after failures): these wait for the person. */
+  needYou: number;
+} {
+  const on = automations.filter((automation) => automation.enabled).length;
+  const needYou = automations.filter(
+    (automation) => !automation.enabled && (automation.pausedReason === "failures" || automation.pausedReason === "out_of_credits"),
+  ).length;
+  return { on, paused: automations.length - on, needYou };
+}
+
+/**
+ * The request that opens the chat to change an automation. The API can only pause, resume and
+ * delete one, so a change is asked of Tex, who knows the automation by its title.
+ */
+export function changeRequest(automation: Pick<Automation, "title">): string {
+  return `Change my automation “${automation.title}”: `;
+}

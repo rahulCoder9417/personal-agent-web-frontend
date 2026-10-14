@@ -3,15 +3,18 @@ import type { Automation } from "./api/client";
 import {
   AUTOMATION_KINDS,
   AUTOMATION_TEMPLATES,
+  changeRequest,
   clock12,
   describeAutomationCost,
   describeAutomationRuns,
   describeAutomationStatus,
+  describeAutomationTimes,
   describeAutomationWhen,
   describeCronInWords,
   describeTrigger,
   describeZone,
   nextRunLine,
+  summarizeAutomations,
   templateHref,
   templatesToOffer,
 } from "./automations";
@@ -239,5 +242,52 @@ describe("the guide and the templates", () => {
     // The ones that need no app are always there.
     expect(templatesToOffer(AUTOMATION_TEMPLATES, new Set()).every((template) => !template.app)).toBe(true);
     expect(templatesToOffer(AUTOMATION_TEMPLATES, new Set()).length).toBeGreaterThan(0);
+  });
+});
+
+describe("describeAutomationTimes", () => {
+  it("gives the next run as a day and a time, and the last one as how long ago", () => {
+    const times = describeAutomationTimes(
+      { ...repeat("0 8 * * 1-5"), nextRunAt: "2026-10-02T08:00:00", lastRunAt: "2026-10-01T12:30:00" },
+      NOW,
+    );
+    expect(times).toEqual({ next: `Tomorrow, ${formatTime("2026-10-02T08:00:00")}`, last: "2h ago", ran: true });
+  });
+
+  it("says when there is nothing on a clock", () => {
+    expect(describeAutomationTimes(event("gmail", "GMAIL_NEW_GMAIL_MESSAGE"), NOW)).toEqual({ next: "Each time it happens", last: "Not yet", ran: false });
+    expect(describeAutomationTimes({ ...base, preset: "pr_review", kind: "event" }, NOW).next).toBe("On each new or updated pull request");
+    expect(describeAutomationTimes({ ...base, enabled: false, pausedReason: "user", nextRunAt: "2026-10-02T08:00:00" }, NOW).next).toBe("Not while it’s paused");
+    expect(describeAutomationTimes({ ...base, kind: "once", lastRunAt: "2026-09-30T10:00:00" }, NOW)).toEqual({
+      next: "None: it ran its one time",
+      last: "Yesterday",
+      ran: true,
+    });
+    expect(describeAutomationTimes({ ...base, kind: "once" }, NOW).next).toBe("Not scheduled yet");
+  });
+
+  it("starts the last run with a capital", () => {
+    expect(describeAutomationTimes({ ...base, lastRunAt: "2026-10-01T14:29:50" }, NOW).last).toBe("Just now");
+  });
+});
+
+describe("summarizeAutomations", () => {
+  it("counts the ones on, the paused ones and those paused by the system", () => {
+    expect(
+      summarizeAutomations([
+        { enabled: true, pausedReason: null },
+        { enabled: true },
+        { enabled: false, pausedReason: "user" },
+        { enabled: false, pausedReason: "failures" },
+        { enabled: false, pausedReason: "out_of_credits" },
+      ]),
+    ).toEqual({ on: 2, paused: 3, needYou: 2 });
+    expect(summarizeAutomations([])).toEqual({ on: 0, paused: 0, needYou: 0 });
+  });
+});
+
+describe("changeRequest", () => {
+  it("names the automation by its title, for the person to finish", () => {
+    expect(changeRequest({ title: "Today’s meetings" })).toBe("Change my automation “Today’s meetings”: ");
   });
 });
