@@ -242,8 +242,8 @@ export type AutomationsSeen = { id: string; at: string };
 /**
  * What is remembered once the Automations chat is known. Nothing remembered yet (the first time
  * this browser sees one): everything in it counts as seen, so the mark isn't lit for runs from
- * before. A different chat than the one remembered (the old one was deleted, and a run started
- * this one): nothing in it was seen yet. Null: keep what is remembered.
+ * before. A different chat than the one remembered (the old one went missing, or the account was
+ * made again, and a run started this one): nothing in it was seen yet. Null: keep what is remembered.
  */
 export function seenToRemember(chat: Conversation, seen: AutomationsSeen | null): AutomationsSeen | null {
   if (seen === null) return { id: chat.id, at: lastSpokenAt(chat) };

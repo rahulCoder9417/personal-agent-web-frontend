@@ -47,8 +47,6 @@ function RowMenu({
 }) {
   const [confirming, setConfirming] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
-  // The Automations chat keeps its name: it can only be deleted.
-  const pinned = isAutomationsChat(conversation);
 
   useEffect(() => {
     const first = menu.current?.querySelector<HTMLElement>("button");
@@ -94,12 +92,8 @@ function RowMenu({
     >
       {confirming ? (
         <div role="alertdialog" aria-label={`Delete ${titleOf(conversation)}?`} className="flex flex-col gap-2 p-2">
-          <p className="text-[13.5px] font-semibold">{pinned ? "Delete the Automations chat?" : "Delete this chat?"}</p>
-          <p className="text-[12.5px] text-muted">
-            {pinned
-              ? "Every run in it is deleted too. Your automations keep running, and the next run starts it again."
-              : "Its messages and files are deleted too. This can’t be undone."}
-          </p>
+          <p className="text-[13.5px] font-semibold">Delete this chat?</p>
+          <p className="text-[12.5px] text-muted">Its messages and files are deleted too. This can’t be undone.</p>
           <div className="flex justify-end gap-1.5 pt-0.5">
             <Button size="sm" variant="ghost" disabled={deleting} onClick={() => onClose(true)}>
               Cancel
@@ -111,12 +105,10 @@ function RowMenu({
         </div>
       ) : (
         <div role="menu" aria-label={`Options for ${titleOf(conversation)}`}>
-          {!pinned && (
-            <button type="button" role="menuitem" onClick={onRename} className={cn(item, "hover:bg-surface-2")}>
-              <PencilIcon size={15} className="text-muted" />
-              Rename
-            </button>
-          )}
+          <button type="button" role="menuitem" onClick={onRename} className={cn(item, "hover:bg-surface-2")}>
+            <PencilIcon size={15} className="text-muted" />
+            Rename
+          </button>
           <button type="button" role="menuitem" onClick={() => setConfirming(true)} className={cn(item, "text-danger hover:bg-danger-soft")}>
             <TrashIcon size={15} />
             Delete
@@ -285,44 +277,34 @@ function Row({
 
 /**
  * The Automations chat, pinned above the dated list with its own icon: every run of every
- * automation answers there. A dot says something new arrived in it since it was last open. Its menu
- * only deletes it (it keeps its name). With no `conversation`, it is the stand-in for one the backend
- * hasn't started yet: the same row, with nothing to delete.
+ * automation answers there. A dot says something new arrived in it since it was last open. It has
+ * no menu: it keeps its name and can't be deleted (the backend refuses both with 409). With no
+ * `conversation`, it is the stand-in for one the backend hasn't started yet: the same row.
  */
 function AutomationsRow({
   conversation,
   open,
   unread,
   now,
-  menu,
-  deleting,
   onOpen,
-  onMenu,
-  onDelete,
 }: {
   conversation: Conversation | null;
   open: boolean;
   unread: boolean;
   now: Date;
-  menu: MenuState | null;
-  deleting: boolean;
   onOpen: () => void;
-  onMenu: (state: MenuState | null) => void;
-  onDelete: () => void;
 }) {
-  const toggle = useRef<HTMLButtonElement>(null);
-  const menuOpen = conversation !== null && menu?.id === conversation.id;
   const ran = conversation !== null && conversation.lastMessageAt !== conversation.startedAt;
   const title = conversation ? titleOf(conversation) : AUTOMATIONS_TITLE;
   return (
-    <div className="group relative">
+    <div>
       <button
         type="button"
         aria-current={open ? "true" : undefined}
         aria-label={`${title}${unread ? ", new runs" : ""}`}
         onClick={onOpen}
         className={cn(
-          "flex w-full items-center gap-2.5 rounded-[9px] py-[7px] pr-9 pl-2 text-left transition-colors",
+          "flex w-full items-center gap-2.5 rounded-[9px] py-[7px] pr-2.5 pl-2 text-left transition-colors",
           open ? "bg-surface-2" : "hover:bg-surface-2/70",
         )}
       >
@@ -337,39 +319,6 @@ function AutomationsRow({
           </span>
         </span>
       </button>
-      {conversation && (
-        <>
-          <button
-            ref={toggle}
-            type="button"
-            data-menu-toggle
-            aria-label={`Options for ${title}`}
-            title="Delete"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => onMenu(menuOpen ? null : { id: conversation.id, up: false })}
-            className={cn(
-              "absolute top-1/2 right-1 grid size-7 -translate-y-1/2 place-items-center rounded-lg text-muted transition-[opacity,background-color,color] hover:bg-line hover:text-fg",
-              !(menuOpen || open) && "group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0",
-            )}
-          >
-            <MoreIcon size={16} />
-          </button>
-          {menuOpen && (
-            <RowMenu
-              conversation={conversation}
-              up={false}
-              deleting={deleting}
-              onRename={() => {}}
-              onDelete={onDelete}
-              onClose={(refocus) => {
-                onMenu(null);
-                if (refocus) toggle.current?.focus();
-              }}
-            />
-          )}
-        </>
-      )}
     </div>
   );
 }
@@ -389,7 +338,8 @@ function Loading() {
 
 /**
  * The chat history: every conversation, the one something was last said in first, with "New chat"
- * above them. Each row opens its conversation, and its menu renames or deletes it. Further pages
+ * above them. Each row opens its conversation, and its menu renames or deletes it (the Automations
+ * chat, pinned above, has no menu). Further pages
  * are asked for as the list is scrolled to its end. On a wide screen this is the column beside the
  * thread; on a phone it is the drawer.
  *
@@ -479,11 +429,7 @@ export function ConversationPanel({
             open={automationsOpen || (automations !== null && automations.id === openId)}
             unread={automationsUnread}
             now={now}
-            menu={menu}
-            deleting={automations !== null && remove.isPending && remove.variables === automations.id}
             onOpen={onOpenAutomations}
-            onMenu={setMenu}
-            onDelete={() => automations && deleteIt(automations)}
           />
         </div>
       )}

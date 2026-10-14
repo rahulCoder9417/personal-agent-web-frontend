@@ -76,6 +76,18 @@ describe("ConversationPanel with the Automations chat", () => {
     expect(datedPart(draw())).not.toContain(">Automations<");
   });
 
+  it("offers no menu on the Automations chat: it can't be renamed or deleted", () => {
+    const html = draw({ openId: "cnv_auto" });
+    const pinned = pinnedPart(html);
+    expect(pinned).toContain(">Automations<");
+    expect(pinned).not.toContain("Options for");
+    expect(pinned).not.toContain("data-menu-toggle");
+    expect(html).not.toContain("Options for Automations");
+    expect(html).not.toContain("Delete the Automations chat");
+    // The other chats keep theirs.
+    expect(datedPart(html)).toContain('aria-label="Options for Plan a trip to Goa"');
+  });
+
   it("shows the unread mark only when told, and says so to a screen reader", () => {
     expect(pinnedPart(draw())).not.toContain("data-unread");
     const unread = pinnedPart(draw({ unread: true }));
@@ -97,7 +109,7 @@ describe("ConversationPanel with the Automations chat", () => {
     expect(pinned).toContain(">Automations<");
     expect(pinned).toContain("No runs yet");
     expect(pinned).toContain('aria-label="Automations"');
-    // Nothing to delete yet: no menu.
+    // No menu, as on the real one.
     expect(pinned).not.toContain("Options for");
     expect(pinnedPart(draw({ automationsOpen: true }))).toContain('aria-current="true"');
   });

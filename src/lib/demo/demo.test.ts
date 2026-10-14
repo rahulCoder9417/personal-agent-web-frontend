@@ -522,23 +522,18 @@ describe("conversations", () => {
     }
   });
 
-  it("a run answers in the Automations chat, and starts it again after it was deleted", async () => {
+  it("refuses to delete the Automations chat (409), and the next run answers in it", async () => {
     const seen = events();
-    expect((await call("DELETE", "conversations/cnv_automations")).status).toBe(204);
-    expect((await list("?kind=automations")).items).toEqual([]);
+    const refused = await call<ErrorBody>("DELETE", "conversations/cnv_automations");
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toEqual({ code: "conflict", message: "The Automations chat can't be deleted" });
+    expect((await list("?kind=automations")).items.map((item) => item.id)).toEqual(["cnv_automations"]);
+    expect((await thread("cnv_automations")).map((message) => message.id)).toEqual(["msg_review", "msg_run_2", "msg_run_1"]);
+    expect(getStore().activity.filter((entry) => entry.action === "conversation_deleted")).toEqual([]);
     runDemoAutomation(getStore());
-    const [again] = (await list("?kind=automations")).items;
-    expect(again).toMatchObject({ kind: "automations", title: "Automations", active: false });
-    expect(again.id).not.toBe("cnv_automations");
-    expect((await thread(again.id)).map((message) => message.direction)).toEqual(["out"]);
+    expect((await thread("cnv_automations"))[0]).toMatchObject({ direction: "out", conversationId: "cnv_automations" });
     expect((await list("?channel=web")).items.filter((item) => item.active).map((item) => item.id)).toEqual(["cnv_web_1"]);
-    expect(seen.map((event) => event.type)).toEqual([
-      "conversation.deleted",
-      "conversation.updated",
-      "message.created",
-      "conversation.updated",
-      "automation.updated",
-    ]);
+    expect(seen.map((event) => event.type)).toEqual(["message.created", "conversation.updated", "automation.updated"]);
   });
 
   it("filters by chat app and pages with a cursor", async () => {
