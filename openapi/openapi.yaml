@@ -391,14 +391,18 @@ paths:
         `conversation_deleted` (the channel, never any text). Deleting the active web conversation
         makes the newest remaining web conversation the active one, or starts an empty one when
         none is left. After the active conversation of a Telegram chat is deleted, the next message
-        from that chat starts a new one. After the Automations chat is deleted, the next run of an
-        automation starts a new one, with a fresh context for the agent.
+        from that chat starts a new one.
+
+        The Automations chat cannot be deleted (409): every automation's runs answer there, so it
+        stays for as long as the account does. Deleting the account removes it with everything
+        else.
       parameters:
         - $ref: "#/components/parameters/ConversationId"
       responses:
         "204": { description: Deleted }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /v1/chats/new:
     post:
@@ -2208,8 +2212,9 @@ components:
             `automations` for the Automations chat: every run of every automation answers there
             (timers, app events, pull-request review verdicts, and the automations' notices), never
             in the conversation the user has open. It is titled "Automations", is a web
-            conversation that is never the active one, keeps its name, and the agent keeps a
-            context of its own for it. Older servers leave the field out: read that as `chat`.
+            conversation that is never the active one, keeps its name, cannot be deleted, and the
+            agent keeps a context of its own for it. Older servers leave the field out: read that
+            as `chat`.
         epoch:
           type: integer
           minimum: 0

@@ -165,6 +165,8 @@ export const updateConversation: Handler = async ({ state, request, params }) =>
 export const deleteConversation: Handler = ({ state, params }) => {
   const conversation = findConversation(state, params.conversationId);
   if (!conversation) throw notFound("That conversation doesn't exist");
+  // Every run answers there, so it stays for as long as the account does.
+  if (isAutomationsChat(conversation)) throw conflict("The Automations chat can't be deleted");
 
   // Its messages and their files go with it: they are the person's own data.
   const gone = state.messages.filter((message) => message.conversationId === conversation.id);

@@ -142,7 +142,7 @@ export function useConversations() {
 
 /**
  * The Automations chat, where every run of every automation answers, or null while there is none
- * (no automation has been made or run yet, or it was deleted and nothing has run since). An older
+ * (no automation has been made or run yet; it can't be deleted, so that is the only case). An older
  * backend ignores `kind` and has no Automations chat: each item's own kind is checked.
  */
 export function useAutomationsChat() {
