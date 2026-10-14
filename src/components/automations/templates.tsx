@@ -48,7 +48,7 @@ function TemplateCard({ template, needsApp }: { template: AutomationTemplate; ne
  * (pull-request review opens its own tab instead). `full` is set when the plan has no room for
  * another automation, so that is said before anyone tries.
  */
-export function AutomationTemplates({ full }: { full: PlanAutomations | null }) {
+export function AutomationTemplates({ full, first = false }: { full: PlanAutomations | null; first?: boolean }) {
   const apps = useApps();
   // Apps that are connected, or that can be: a template for any other app would lead nowhere.
   const usable = apps.data ? new Set(apps.data.filter((app) => app.connections.length > 0 || isConnectable(app)).map((app) => app.slug)) : undefined;
@@ -59,7 +59,7 @@ export function AutomationTemplates({ full }: { full: PlanAutomations | null }) 
     <section aria-labelledby="automation-templates" className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-col gap-1">
         <SectionLabel>
-          <span id="automation-templates">Start from a template</span>
+          <span id="automation-templates">{first ? "Start with one of these" : "Add another from a template"}</span>
         </SectionLabel>
         <p className="text-[12.5px] text-muted">Pick one and the chat opens with the request typed in. Change the words to fit, then send.</p>
       </div>
@@ -79,7 +79,7 @@ export function AutomationTemplates({ full }: { full: PlanAutomations | null }) 
         </p>
       )}
 
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-2.5">
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(250px,100%),1fr))] gap-2.5">
         {templates.map((template) => (
           <TemplateCard
             key={template.id}
