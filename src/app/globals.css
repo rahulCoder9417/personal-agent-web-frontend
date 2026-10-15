@@ -408,3 +408,17 @@ body {
   .sheet-up,
   .sheet-backdrop { animation: none; }
 }
+
+/* The sign-in pages (src/components/auth/auth-frame.tsx): the apps floating around the hero, as on
+   textcrew.in. */
+.auth-float-a { animation: auth-float 7s ease-in-out infinite; }
+.auth-float-b { animation: auth-float 8.5s ease-in-out -2s infinite; }
+.auth-float-c { animation: auth-float 6.5s ease-in-out -4s infinite; }
+
+@keyframes auth-float { 50% { transform: translateY(-10px) rotate(-2deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-float-a,
+  .auth-float-b,
+  .auth-float-c { animation: none; }
+}
