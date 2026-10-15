@@ -100,13 +100,13 @@ export function SsoCallback({ redirectUrl }: { redirectUrl: string | null }) {
         case "transfer-to-sign-up": {
           await ok(signUp.create({ transfer: true }));
           const next = signUpNextStep(signUp.status, signUp.unverifiedFields, signUp.missingFields);
-          if (next.kind === "done") blocked = await finish((params) => signUp.finalize(params));
+          if (next.kind === "done") blocked = await finish((params) => signUp.finalize(params), { newAccount: true });
           else if (next.kind === "stuck") blocked = next.message;
           else blocked = "Your email address still has to be checked, which this page can’t do yet. Create the account with your email and a password instead.";
           break;
         }
         case "finish-sign-up":
-          blocked = await finish((params) => signUp.finalize(params));
+          blocked = await finish((params) => signUp.finalize(params), { newAccount: true });
           break;
         case "continue-sign-in":
           blocked = await carryOn();

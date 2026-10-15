@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import { BrandIcon } from "@/components/brand-icon";
 import { Button, inputClass } from "@/components/ui";
-import { afterAuthPath, sessionTaskMessage, SOCIAL_PROVIDERS, type AuthProblem, type SocialStrategy } from "@/lib/auth-flow";
+import { afterAuthPath, afterSignUpPath, sessionTaskMessage, SOCIAL_PROVIDERS, type AuthProblem, type SocialStrategy } from "@/lib/auth-flow";
 import { cn } from "@/lib/format";
 
 // The pieces the sign-in and sign-up forms share. They sit on Clerk's hooks, so like the forms
@@ -28,14 +28,16 @@ type Finalize = (params: { navigate: SetActiveNavigate }) => Promise<{ error: un
 
 /**
  * The last step of every flow: makes the new session the active one and goes to the app, to the
- * page the person was sent to sign in from when there is one. Answers what is in the way when
- * Clerk holds the session back, and null once the browser is on its way.
+ * page the person was sent to sign in from when there is one. A new account (`newAccount`) goes
+ * to the welcome flow instead of the home screen (`afterSignUpPath`). Answers what is in the way
+ * when Clerk holds the session back, and null once the browser is on its way.
  */
 export function useFinish(redirectUrl: string | null) {
   const router = useRouter();
   return useCallback(
-    async (finalize: Finalize): Promise<string | null> => {
+    async (finalize: Finalize, { newAccount = false }: { newAccount?: boolean } = {}): Promise<string | null> => {
       let blocked: string | null = null;
+      const landing = newAccount ? afterSignUpPath : afterAuthPath;
       await ok(
         finalize({
           navigate: ({ session, decorateUrl }) => {
@@ -44,7 +46,7 @@ export function useFinish(redirectUrl: string | null) {
               return;
             }
             // Safari may need a stop at Clerk on the way, which makes the address a full one.
-            const url = decorateUrl(afterAuthPath(redirectUrl, window.location.origin));
+            const url = decorateUrl(landing(redirectUrl, window.location.origin));
             if (url.startsWith("http")) window.location.href = url;
             else router.replace(url);
           },
