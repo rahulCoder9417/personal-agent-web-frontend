@@ -14,6 +14,19 @@ const CREW: readonly { id: AgentId; name: string; role: string }[] = [
   { id: "scout", name: "Scout", role: "research" },
 ];
 
+/**
+ * The panel's colour: Tex's blue, lit from the top and deepening towards the bottom, where the
+ * crew stands (Tex is drawn in that blue, so the floor under the line-up is darker than he is).
+ */
+const PANEL: CSSProperties = {
+  backgroundColor: "var(--accent-dark)",
+  backgroundImage: [
+    "radial-gradient(55% 32% at 50% 86%, color-mix(in srgb, var(--accent) 55%, transparent) 0%, transparent 100%)",
+    "radial-gradient(60% 40% at 0% 0%, color-mix(in srgb, var(--accent) 80%, var(--surface)) 0%, transparent 100%)",
+    "linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 52%, color-mix(in srgb, var(--accent-dark) 42%, var(--screen)) 100%)",
+  ].join(", "),
+};
+
 /** A face in a round tile of its own colour. */
 function Face({ id, size = 22 }: { id: AgentId; size?: number }) {
   return (
@@ -23,68 +36,98 @@ function Face({ id, size = 22 }: { id: AgentId; size?: number }) {
   );
 }
 
+/** A job, the way the chat shows it: you ask, Tex works, and waits for your OK before acting. */
+function ExampleJob() {
+  return (
+    <div className="flex w-full flex-col gap-2.5 rounded-2xl bg-surface p-4 text-fg shadow-[0_24px_48px_-20px_rgb(21_21_21/0.55)] [@media(max-height:820px)]:gap-2 [@media(max-height:820px)]:p-3.5">
+      <p className="max-w-[85%] self-end rounded-[14px] rounded-br-[5px] bg-surface-2 px-3.5 py-2 text-[13.5px]">
+        Chase the Acme invoice and book a follow-up on Friday.
+      </p>
+      <div className="flex items-start gap-2.5">
+        <Face id="tex" size={26} />
+        <div className="flex min-w-0 flex-col items-start gap-2">
+          <p className="flex items-center gap-1.5 text-[12.5px] text-muted">
+            <span className="size-1.5 rounded-full bg-online" />
+            Tex · read 3 emails, checked your calendar
+          </p>
+          <p className="text-[13.5px]">Found it, unpaid since the 2nd. The reminder is ready and Friday at 10 is free. Send it?</p>
+          <span className="inline-flex h-[22px] items-center rounded-md bg-accent-soft px-2 text-[12px] font-medium text-accent-dark">
+            Waiting for your OK
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
- * What Textcrew is, beside the form on a wide screen: the line from textcrew.in, a job as it looks
- * in the chat (you ask, the crew works, Tex waits for your OK), and the crew itself.
+ * The crew standing in a row on one line, each with its name and what it does underneath. The
+ * figures are as tall as the row, which the panel sets from the window's height.
+ */
+function CrewLineup() {
+  return (
+    <ul className="flex h-full">
+      {CREW.map((member) => (
+        <li key={member.id} className="flex min-w-0 flex-1 flex-col">
+          {/* The line they stand on: each column draws its stretch of it. The figure is moved down by
+              the room under its feet in the drawing, so the feet touch the line. */}
+          <div className="flex min-h-0 flex-1 items-end justify-center border-b border-white/25">
+            <AgentFigure
+              who={member.id}
+              mood="ready"
+              label=""
+              className={member.id === "tex" ? "h-full w-auto shrink-0 translate-y-[7.3%]" : "h-[80%] w-auto shrink-0 translate-y-[7.3%]"}
+            />
+          </div>
+          <p className="mt-3 flex shrink-0 flex-col items-center text-center text-[12.5px] leading-tight">
+            <span className="font-semibold text-white">{member.name}</span>
+            <span className="text-white/65">{member.role}</span>
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * What Textcrew is, on the left half of a wide screen: the lockup, the line from textcrew.in, a job
+ * as the chat shows it, and the crew standing along the bottom. Decoration: the words say it all,
+ * so only the headline and the line under it are read out. Short windows lose the example job.
  */
 function BrandPanel() {
   return (
-    <aside className="relative m-2 mr-0 hidden w-[46%] max-w-[620px] shrink-0 flex-col overflow-hidden rounded-[18px] bg-accent-soft lg:flex">
-      <div className="flex h-14 shrink-0 items-center px-7">
-        <Brand />
-      </div>
+    <aside className="relative isolate hidden w-1/2 shrink-0 flex-col overflow-hidden text-white lg:flex" style={PANEL}>
+      {/* A fine dot grid, fading out downwards, as on textcrew.in. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 bg-[radial-gradient(rgb(255_255_255/0.16)_1px,transparent_1px)] [mask-image:linear-gradient(to_bottom,black,transparent_70%)] bg-[size:22px_22px]"
+      />
 
-      <div className="flex min-h-0 flex-1 flex-col justify-center gap-7 px-10 py-6 xl:px-14">
-        <div className="flex flex-col gap-3.5">
-          <p className="text-[12.5px] font-semibold text-accent-dark">Your crew</p>
-          <h2 className="text-[clamp(28px,2.6vw,36px)] leading-[1.06] font-semibold tracking-[-0.03em]">
-            Got a lot of work?
-            <br />
-            Just text your crew.
-          </h2>
-          <p className="max-w-[46ch] text-[15px] leading-relaxed text-fg-2">
-            Send one message from the web app or Telegram. Tex, your captain, splits the job, hands each part to the right specialist and checks
-            with you before anything risky.
-          </p>
+      <div className="mx-auto flex h-full w-full max-w-[640px] flex-col px-12 py-9 xl:px-14 [@media(max-height:820px)]:py-7">
+        <div className="shrink-0">
+          <Brand onColour />
         </div>
 
-        {/* A job, the way the chat shows it. Decoration: the sentence above says it in words. */}
-        <div aria-hidden className="flex max-w-[400px] flex-col gap-2.5 rounded-2xl bg-surface p-4 shadow-soft">
-          <p className="max-w-[85%] self-end rounded-[14px] rounded-br-[5px] bg-surface-2 px-3.5 py-2 text-[13.5px]">
-            Chase the Acme invoice and book a follow-up on Friday.
-          </p>
-          <div className="flex items-start gap-2.5">
-            <Face id="tex" size={26} />
-            <div className="flex min-w-0 flex-col items-start gap-2">
-              <p className="flex items-center gap-1.5 text-[12.5px] text-muted">
-                <span className="size-1.5 rounded-full bg-online" />
-                Tex · read 3 emails, checked your calendar
-              </p>
-              <p className="text-[13.5px]">Found it, unpaid since the 2nd. The reminder is ready and Friday at 10 is free. Send it?</p>
-              <span className="inline-flex h-[22px] items-center rounded-md bg-accent-soft px-2 text-[12px] font-medium text-accent-dark">
-                Waiting for your OK
-              </span>
-            </div>
+        {/* Centred in the room the lockup and the crew leave. */}
+        <div className="my-auto flex shrink-0 flex-col gap-[clamp(20px,4.5vh,44px)] py-[clamp(20px,4vh,40px)]">
+          <div className="flex flex-col gap-3.5">
+            <h2 className="text-[clamp(30px,min(3.2vw,5.4vh),48px)] leading-[1.06] font-semibold tracking-[-0.03em]">
+              Got a lot of work?
+              <br />
+              Just text your crew.
+            </h2>
+            <p className="max-w-[44ch] text-[15.5px] leading-relaxed text-white/80">
+              Send one message. Tex, your captain, hands each part to the right specialist and checks with you before anything risky.
+            </p>
+          </div>
+          <div aria-hidden className="[@media(max-height:620px)]:hidden [@media(max-width:1279px)_and_(max-height:660px)]:hidden">
+            <ExampleJob />
           </div>
         </div>
-      </div>
 
-      {/* The line-up, as on the crew page: the lead in front, the specialists beside it. */}
-      <div aria-hidden className="flex items-end gap-6 px-10 xl:px-14">
-        <ul className="mb-7 flex shrink-0 flex-col gap-1.5 text-[12.5px] whitespace-nowrap">
-          {CREW.map((member) => (
-            <li key={member.id} className="flex items-center gap-2">
-              <span className="size-2 rounded-[2px]" style={{ background: COLOUR[member.id] }} />
-              <span className="font-semibold">{member.name}</span>
-              <span className="text-muted">{member.role}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="ml-auto flex w-[min(100%,330px)] items-end justify-center">
-          <AgentFigure who="tex" mood="ready" size={150} label="" className="relative z-10 -mr-[9%] h-auto w-[44%]" />
-          {CREW.slice(1).map((member) => (
-            <AgentFigure key={member.id} who={member.id} mood="ready" size={110} label="" className="-mx-[5%] h-auto w-[30%]" />
-          ))}
+        {/* The figures grow with the window's height and, where the room runs out, give way first. */}
+        <div aria-hidden className="h-[calc(clamp(96px,19vh,196px)+44px)] min-h-[140px] [@media(max-height:480px)]:hidden">
+          <CrewLineup />
         </div>
       </div>
     </aside>
@@ -92,16 +135,17 @@ function BrandPanel() {
 }
 
 /**
- * The page around a sign-in form. On a wide screen, what Textcrew is on the left and the form on
- * the right; on a phone, the lockup and the form in one column. The column is centred when there
- * is room and starts from the top (and scrolls) when the keyboard takes it.
+ * The page around a sign-in form. On a wide screen it is split in half: what Textcrew is on the
+ * left, the form centred in the right half. On a phone, the lockup with the crew's faces and the
+ * form in one column. The form is centred when there is room and starts from the top (and
+ * scrolls) when the keyboard takes it.
  */
 export function AuthFrame({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-dvh bg-surface">
       <BrandPanel />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between px-4 md:px-5 lg:hidden">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-line px-5 md:px-8 lg:hidden">
           <Brand />
           <span aria-hidden className="flex -space-x-1.5">
             {CREW.map((member) => (
@@ -111,8 +155,8 @@ export function AuthFrame({ children }: { children: ReactNode }) {
             ))}
           </span>
         </header>
-        <main className="scroll-pane flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-6 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-8">
-          <div className="mx-auto my-auto w-full max-w-[380px]">{children}</div>
+        <main className="scroll-pane flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-8 lg:p-12">
+          <div className="m-auto w-full max-w-[400px]">{children}</div>
         </main>
       </div>
     </div>

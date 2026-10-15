@@ -59,7 +59,7 @@ export function useFinish(redirectUrl: string | null) {
 export function AuthHeading({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <h1 className="text-[26px] leading-[1.15] font-semibold tracking-[-0.025em]">{title}</h1>
+      <h1 className="text-[26px] leading-[1.15] font-semibold tracking-[-0.025em] lg:text-[28px]">{title}</h1>
       {children && <p className="text-[14.5px] text-muted">{children}</p>}
     </div>
   );

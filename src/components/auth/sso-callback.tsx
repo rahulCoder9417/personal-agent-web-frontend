@@ -19,7 +19,7 @@ import { CaptchaSlot, ok, useFinish } from "./parts";
 /** The spinner the page shows while Clerk finishes. */
 export function FinishingSignIn() {
   return (
-    <p role="status" className="flex items-center gap-2.5 py-14 text-[14px] text-muted">
+    <p role="status" className="flex items-center justify-center gap-2.5 py-14 text-[14px] text-muted">
       <Spinner />
       Finishing sign-in…
     </p>
