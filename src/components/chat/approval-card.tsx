@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Approval, type ApprovalStatus } from "@/lib/api/client";
 import { findCachedApproval, useDecideApproval } from "@/lib/api/hooks";
-import { approvalQuestion, approvalReason, splitDetails } from "@/lib/approvals";
+import { APPROVAL_RESULT, approvalQuestion, approvalReason, splitDetails, type SettledStatus } from "@/lib/approvals";
 import { noteAnswered } from "@/lib/chat-thread";
 import { cn, formatTimeLeft, titleCase } from "@/lib/format";
 import { AppIcon } from "../brand-icon";
@@ -11,7 +11,7 @@ import { CheckIcon, CloseIcon } from "../icons";
 import { Button, InlineError } from "../ui";
 import { AgentBubble } from "./agent-bubble";
 
-const STATUSES: ApprovalStatus[] = ["pending", "approved", "rejected", "expired"];
+const STATUSES: ApprovalStatus[] = ["pending", "approved", "rejected", "expired", "replaced"];
 
 /**
  * One approval, kept fresh by the live stream (`approval.created`, `approval.resolved`). There is no
@@ -35,11 +35,7 @@ export function useApproval(approvalId: string | null) {
   });
 }
 
-const RESULT: Record<Exclude<ApprovalStatus, "pending">, { text: string; className: string; done: boolean }> = {
-  approved: { text: "You approved this", className: "text-success", done: true },
-  rejected: { text: "You denied this", className: "text-danger", done: false },
-  expired: { text: "This expired before it was answered", className: "text-muted", done: false },
-};
+const TONE_CLASS = { success: "text-success", danger: "text-danger", muted: "text-muted" } as const;
 
 /** The Approve / Deny card that sits in the thread, under Tex's question, where Tex stopped to ask. */
 export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string; fallbackText?: string }) {
@@ -54,7 +50,7 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
   const reason = approvalReason(approval.action);
   const { preview, fields } = splitDetails(approval.details);
   const pending = approval.status === "pending";
-  const result = pending ? null : RESULT[approval.status as keyof typeof RESULT];
+  const result = pending ? null : APPROVAL_RESULT[approval.status as SettledStatus];
   const submit = (decision: "approve" | "reject") =>
     decide.mutate(
       { approvalId, decision },
@@ -117,8 +113,9 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
         </div>
       ) : (
         result && (
-          <p className={cn("flex items-center gap-1.5 border-t border-line px-4 py-2.5 text-[13px] font-medium", result.className)}>
-            {result.done ? <CheckIcon size={14} /> : <CloseIcon size={14} />}
+          <p className={cn("flex items-center gap-1.5 border-t border-line px-4 py-2.5 text-[13px] font-medium", TONE_CLASS[result.tone])}>
+            {result.icon === "check" && <CheckIcon size={14} />}
+            {result.icon === "close" && <CloseIcon size={14} />}
             {result.text}
           </p>
         )

@@ -7,7 +7,7 @@ import { READING } from "../page";
 import { toastError } from "../toast";
 import { Button, IconTile, Pill, type PillTone } from "../ui";
 import { ApprovalIcon } from "./approval-list";
-import { approvalReason, splitDetails, type ApprovalReason } from "@/lib/approvals";
+import { approvalOutcome, approvalReason, splitDetails, type ApprovalReason, type SettledStatus } from "@/lib/approvals";
 
 type Decision = "approve" | "reject";
 
@@ -22,23 +22,21 @@ const STATUS_LABEL: Record<Approval["status"], string> = {
   approved: "Approved",
   rejected: "Denied",
   expired: "Expired",
+  replaced: "Replaced",
 };
 
-const STATUS_PILL: Record<Exclude<Approval["status"], "pending">, PillTone> = {
+const STATUS_PILL: Record<SettledStatus, PillTone> = {
   approved: "done",
   rejected: "danger",
   expired: "muted",
+  replaced: "muted",
 };
-
-function outcome(approval: Approval): string {
-  if (approval.status === "approved") return "Tex went ahead with it.";
-  if (approval.status === "rejected") return "Tex didn’t do this.";
-  return "Nothing was done. Ask Tex again if you still want it.";
-}
 
 function settledLine(approval: Approval): string {
   if (approval.status === "pending") return `Expires ${formatDateTime(approval.expiresAt)}`;
   if (approval.status === "expired") return `Expired ${formatDateTime(approval.expiresAt)}`;
+  // Its decidedAt is the user's yes, if any, not when Tex asked again.
+  if (approval.status === "replaced") return STATUS_LABEL.replaced;
   const when = approval.decidedAt ? ` ${formatDateTime(approval.decidedAt)}` : "";
   return `${STATUS_LABEL[approval.status]}${when}`;
 }
@@ -122,10 +120,10 @@ export function ApprovalDetail({ approval, onDecided }: { approval: Approval; on
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-3">
-          <Pill tone={STATUS_PILL[approval.status as Exclude<Approval["status"], "pending">]} className="px-3 text-[12.5px]">
+          <Pill tone={STATUS_PILL[approval.status as SettledStatus]} className="px-3 text-[12.5px]">
             {STATUS_LABEL[approval.status]}
           </Pill>
-          <span className="text-[13px] text-muted">{outcome(approval)}</span>
+          <span className="text-[13px] text-muted">{approvalOutcome(approval.status as SettledStatus)}</span>
         </div>
       )}
 

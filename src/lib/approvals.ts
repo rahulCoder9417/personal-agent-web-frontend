@@ -1,4 +1,7 @@
-// Why Tex is asking, worked out from the action name (e.g. GMAIL_SEND_EMAIL).
+// Why Tex is asking, worked out from the action name (e.g. GMAIL_SEND_EMAIL), and what an
+// answered approval says.
+
+import type { ApprovalStatus } from "./api/client";
 
 export type ApprovalReason = {
   label: string;
@@ -76,4 +79,26 @@ export function approvalQuestion(text: string): string | null {
   const question = text.trim();
   if (!question || /^approval needed:/i.test(question)) return null;
   return question;
+}
+
+export type SettledStatus = Exclude<ApprovalStatus, "pending">;
+
+/**
+ * The line under an answered approval in the chat. `replaced` is not the user's no: Tex asked
+ * again with corrected details, and the newer request below is the one to answer.
+ */
+export const APPROVAL_RESULT: Record<SettledStatus, { text: string; tone: "success" | "danger" | "muted"; icon: "check" | "close" | null }> = {
+  approved: { text: "You approved this", tone: "success", icon: "check" },
+  rejected: { text: "You denied this", tone: "danger", icon: "close" },
+  expired: { text: "This expired before it was answered", tone: "muted", icon: "close" },
+  replaced: { text: "Replaced by a newer request", tone: "muted", icon: null },
+};
+
+/** What came of an answered approval, on the Approvals screen. */
+export function approvalOutcome(status: SettledStatus): string {
+  // A yes tells Tex to go ahead; whether the app then did it shows in the chat and the activity log.
+  if (status === "approved") return "Tex was told to go ahead.";
+  if (status === "rejected") return "Tex didn’t do this.";
+  if (status === "replaced") return "Tex asked again with corrected details, so this request was set aside. Nothing was done with it.";
+  return "Nothing was done. Ask Tex again if you still want it.";
 }
