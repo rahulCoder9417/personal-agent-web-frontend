@@ -2,8 +2,8 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { LockIcon, WarningIcon } from "@/components/icons";
-import { ConfirmButton } from "@/components/confirm-button";
-import { toastError } from "@/components/toast";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { toast, toastError } from "@/components/toast";
 import { Button, ButtonLink, Card, Field, IconTile, inputClass, Meta, Pill, Switch } from "@/components/ui";
 import type { McpServer } from "@/lib/api/client";
 import { useCreateMcpServer, useDeleteMcpServer, useUpdateMcpServer } from "@/lib/api/hooks";
@@ -48,6 +48,7 @@ export function McpServerRow({ server }: { server: McpServer }) {
   const update = useUpdateMcpServer();
   const remove = useDeleteMcpServer();
   const [renaming, setRenaming] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [name, setName] = useState(server.name);
   const renameId = useId();
 
@@ -135,17 +136,35 @@ export function McpServerRow({ server }: { server: McpServer }) {
         </Meta>
         <div className="flex items-center gap-2">
           {!renaming && (
-            <button type="button" onClick={() => setRenaming(true)} className="h-7 rounded px-1 text-[12.5px] text-muted hover:text-fg">
+            <Button size="sm" variant="ghost" onClick={() => setRenaming(true)} aria-label={`Rename ${server.name}`}>
               Rename
-            </button>
+            </Button>
           )}
-          <ConfirmButton
-            label="Remove"
-            confirmLabel="Remove server"
-            ariaLabel={`Remove ${server.name}`}
-            pending={remove.isPending}
-            onConfirm={() => remove.mutate(server.id, { onError: (error) => toastError(`Couldn’t remove ${server.name}`, error) })}
-          />
+          <Button size="sm" variant="danger-outline" pending={remove.isPending} onClick={() => setRemoving(true)} aria-label={`Remove ${server.name}`}>
+            Remove
+          </Button>
+          {removing && (
+            <ConfirmDialog
+              title={`Remove ${server.name}?`}
+              icon={
+                <IconTile size={44} className="text-nav">
+                  <ServerGlyph />
+                </IconTile>
+              }
+              confirmLabel="Remove server"
+              onClose={() => setRemoving(false)}
+              onConfirm={async () => {
+                try {
+                  await remove.mutateAsync(server.id);
+                  toast({ title: `${server.name} removed`, body: "Tex can no longer use its tools, and its domain is off your agent’s allowlist." });
+                } catch (error) {
+                  toastError(`Couldn’t remove ${server.name}`, error);
+                }
+              }}
+            >
+              <p>Tex can no longer use its tools, its saved secret is deleted, and its domain comes off your agent’s allowlist.</p>
+            </ConfirmDialog>
+          )}
         </div>
       </div>
     </Card>
