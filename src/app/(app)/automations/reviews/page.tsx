@@ -6,12 +6,13 @@ import { PageBody } from "@/components/page";
 import { AgentFigure } from "@/components/tex";
 import { Card, EmptyState, ErrorState, Meta, SectionLabel, SkeletonRows } from "@/components/ui";
 import { useCrew, usePrReviews } from "@/lib/api/hooks";
+import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
 
 const NEEDS: { title: string; body: string; link?: { href: string; label: string } }[] = [
   {
     title: "GitHub connected",
     body: "with an account that has admin access to the repo. Patch needs that to be told when a pull request changes.",
-    link: { href: "/apps", label: "Apps" },
+    link: { href: INTEGRATIONS_APPS_PATH, label: "Integrations" },
   },
   {
     title: "Credits",

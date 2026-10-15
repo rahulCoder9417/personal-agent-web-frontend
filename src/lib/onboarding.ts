@@ -7,6 +7,7 @@ import { PROVIDER_LABEL } from "@/components/settings/agent-summary";
 import type { AgentSettings, App, Automation, ChannelLink, ChannelType, Conversation, Me } from "./api/client";
 import { linkableChannels, type LinkableChannel } from "./channels";
 import { chatDraftHref } from "./chat-link";
+import { INTEGRATIONS_APPS_PATH, linkChatHref } from "./integrations";
 import { isAutomationsChat, NEW_CHAT_TITLE } from "./conversations";
 import { CHANNEL_LABEL, listNames } from "./format";
 
@@ -126,7 +127,11 @@ export type ChecklistItem = {
   action: string;
 };
 
-/** The path of one step of the welcome flow, which comes back to `returnTo` when that step is done. */
+/**
+ * The path of one step of the welcome flow, which comes back to `returnTo` when that step is done.
+ * Only the AI step is opened this way from the app; a chat app is linked in Integrations
+ * (`linkChatHref`) and apps are connected there too.
+ */
 export function stepHref(step: StepId, returnTo = "/"): string {
   return returnTo === "/" ? `/onboarding?step=${step}` : `/onboarding?step=${step}&return=${encodeURIComponent(returnTo)}`;
 }
@@ -166,7 +171,7 @@ export function checklistItems(data: SetupData): ChecklistItem[] {
       done: apps.connected.length > 0,
       optional: false,
       doneNote: names.length > 2 ? `${names.slice(0, 2).join(", ")} and ${names.length - 2} more` : `${listNames(names, "and")} connected`,
-      href: "/apps",
+      href: INTEGRATIONS_APPS_PATH,
       action: "Connect",
     });
   }
@@ -192,7 +197,9 @@ export function checklistItems(data: SetupData): ChecklistItem[] {
       done: linked !== undefined,
       optional: true,
       doneNote: linked ? `${CHANNEL_LABEL[linked.channel]} linked as ${linked.displayId}` : "",
-      href: stepHref("chat"),
+      // Integrations, where linking is done in place: never the welcome flow, whose step is for a
+      // new account's first visit (the flow's own row of steps still leads to it).
+      href: linkChatHref(chat.linkable.length === 1 ? chat.linkable[0] : null),
       action: "Link",
     });
   }

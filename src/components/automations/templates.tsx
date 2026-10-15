@@ -9,6 +9,7 @@ import { BrandIcon } from "../brand-icon";
 import { IconTile, SectionLabel } from "../ui";
 import { KindIcon } from "./kind-icon";
 import type { PlanAutomations } from "./plan-meter";
+import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
 
 /** One ready-made request. The whole card opens it; an app that still needs connecting gets its own link. */
 function TemplateCard({ template, needsApp }: { template: AutomationTemplate; needsApp: boolean }) {
@@ -32,7 +33,7 @@ function TemplateCard({ template, needsApp }: { template: AutomationTemplate; ne
           {template.href ? "Set it up →" : "Use this →"}
         </Link>
         {needsApp && app ? (
-          <Link href="/apps" className="relative z-10 text-[12px] text-nav underline underline-offset-2 hover:text-fg">
+          <Link href={INTEGRATIONS_APPS_PATH} className="relative z-10 text-[12px] text-nav underline underline-offset-2 hover:text-fg">
             Connect {app} first
           </Link>
         ) : (

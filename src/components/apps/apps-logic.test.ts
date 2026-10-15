@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ApiError, type App } from "@/lib/api/client";
+import { ApiError, type App, type Automation } from "@/lib/api/client";
 import {
   appsToOffer,
+  automationsWatching,
   categoriesOf,
   connectCopy,
   connectOutcome,
   describeConnectError,
+  disconnectCopy,
   filterApps,
   isConnectable,
   NOT_AVAILABLE_LABEL,
@@ -212,5 +214,62 @@ describe("the way back from a sign-in", () => {
     expect(read("checkout=demo")).toBeNull();
     expect(read("app=%3Cscript%3E")).toBeNull();
     expect(read("app=" + "a".repeat(41))).toBeNull();
+  });
+});
+
+describe("disconnecting an account", () => {
+  const automation = (id: string, title: string, extra: Partial<Automation> = {}): Automation => ({
+    id,
+    kind: "event",
+    title,
+    instruction: "",
+    enabled: true,
+    createdAt: "2026-10-01T00:00:00Z",
+    ...extra,
+  });
+  const AUTOMATIONS = [
+    automation("a1", "Tell me about invoices", { trigger: { app: "gmail", event: "GMAIL_NEW_GMAIL_MESSAGE" } }),
+    automation("a2", "Review pull requests in acme/web", { trigger: { app: "github", event: "GITHUB_PULL_REQUEST_EVENT" }, preset: "pr_review" }),
+    automation("a3", "Morning summary", { kind: "repeat", cron: "0 8 * * *" }),
+  ];
+  const gmail = (connections: App["connections"]): App => ({ ...app("gmail", "Gmail", "email"), connections });
+
+  it("finds the automations that watch an app, pull-request review for GitHub", () => {
+    expect(automationsWatching("gmail", AUTOMATIONS).map((a) => a.id)).toEqual(["a1"]);
+    expect(automationsWatching("github", AUTOMATIONS).map((a) => a.id)).toEqual(["a2"]);
+    expect(automationsWatching("notion", AUTOMATIONS)).toEqual([]);
+  });
+
+  it("names the app and the account, says what stops and lists what watches it, for the last account", () => {
+    const only = { id: "c1", accountLabel: "me@gmail.com", status: "active" as const };
+    const copy = disconnectCopy(gmail([only]), only, AUTOMATIONS);
+    expect(copy.title).toBe("Disconnect Gmail (me@gmail.com)?");
+    expect(copy.stops).toBe("Tex can no longer read or do anything in Gmail, and anything that watches it stops until you connect it again.");
+    expect(copy.watching.map((a) => a.title)).toEqual(["Tell me about invoices"]);
+    expect(copy.confirmLabel).toBe("Disconnect Gmail");
+    expect(copy.done).toEqual({ title: "Gmail disconnected", body: "me@gmail.com is no longer connected to Tex." });
+  });
+
+  it("with another working account left, says Tex goes on with it and lists nothing", () => {
+    const work = { id: "c1", accountLabel: "me@work.com", status: "active" as const };
+    const home = { id: "c2", accountLabel: "me@gmail.com", status: "active" as const };
+    const copy = disconnectCopy(gmail([work, home]), home, AUTOMATIONS);
+    expect(copy.stops).toBe("Tex stops using this account and goes on with your other Gmail account (me@work.com).");
+    expect(copy.watching).toEqual([]);
+  });
+
+  it("counts an expired account as none left, and says so for an account that isn't working", () => {
+    const expired = { id: "c1", accountLabel: "old@gmail.com", status: "expired" as const };
+    const live = { id: "c2", accountLabel: "me@gmail.com", status: "active" as const };
+    expect(disconnectCopy(gmail([expired, live]), live, AUTOMATIONS).watching.map((a) => a.id)).toEqual(["a1"]);
+    expect(disconnectCopy(gmail([expired]), expired, AUTOMATIONS).stops).toMatch(/^This account isn’t working right now/);
+  });
+
+  it("does without an account's name", () => {
+    const nameless = { id: "c1", accountLabel: null, status: "active" as const };
+    const copy = disconnectCopy(gmail([nameless]), nameless);
+    expect(copy.title).toBe("Disconnect Gmail?");
+    expect(copy.done.body).toBe("Tex no longer has access to Gmail.");
+    expect(copy.watching).toEqual([]);
   });
 });

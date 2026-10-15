@@ -8,6 +8,7 @@ import { ButtonLink } from "@/components/ui";
 import { useApps } from "@/lib/api/hooks";
 import { titleCase } from "@/lib/format";
 import { connectOutcome } from "./apps-logic";
+import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
 
 function Outcome({ mood, label, badge, title, children }: { mood: Mood; label: string; badge?: ReactNode; title: string; children: ReactNode }) {
   return (
@@ -57,8 +58,8 @@ export function ConnectedOutcome() {
       <p className="text-[15px] text-muted">
         The sign-in was stopped or didn’t go through, so nothing was changed. Close this tab and press Connect again in Textcrew to try once more.
       </p>
-      <ButtonLink href="/apps" variant="secondary" className="mt-1">
-        Open Apps
+      <ButtonLink href={INTEGRATIONS_APPS_PATH} variant="secondary" className="mt-1">
+        Open Integrations
       </ButtonLink>
     </Outcome>
   );

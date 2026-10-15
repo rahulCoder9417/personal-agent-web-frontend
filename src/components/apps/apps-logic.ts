@@ -1,4 +1,4 @@
-import { ApiError, type App } from "@/lib/api/client";
+import { ApiError, type App, type Automation } from "@/lib/api/client";
 
 // Pure rules behind the Apps screens, kept apart from React so they can be tested.
 
@@ -160,5 +160,59 @@ export function toMcpServerCreate(draft: McpServerDraft) {
     name: draft.name.trim(),
     url: draft.url.trim(),
     ...(secret ? { authHeaderName: draft.authHeaderName.trim() || "Authorization", authSecret: secret } : {}),
+  };
+}
+
+// ---------------------------------------------------------------- disconnecting
+
+type Connection = App["connections"][number];
+
+/**
+ * The automations that watch an app: an event automation on it (`trigger.app`), and pull-request
+ * review for GitHub. They don't say which account they use: the backend uses the newest working
+ * one.
+ */
+export function automationsWatching(slug: string, automations: readonly Automation[]): Automation[] {
+  return automations.filter((automation) => automation.trigger?.app === slug || (slug === "github" && automation.preset === "pr_review"));
+}
+
+export type DisconnectCopy = {
+  /** "Disconnect Gmail (name@gmail.com)?" */
+  title: string;
+  /** What stops working, in one line. */
+  stops: string;
+  /** The automations that stop with it: only when no other working account of the app is left. */
+  watching: Automation[];
+  confirmLabel: string;
+  /** The toast once it is done. */
+  done: { title: string; body: string };
+};
+
+/**
+ * What the dialog says before an app's account is disconnected. With another working account of
+ * the app left, Tex goes on with that one (the backend uses the newest working account); with
+ * none, Tex can't use the app and what watches it stops until it is connected again.
+ */
+export function disconnectCopy(app: App, connection: Connection, automations: readonly Automation[] = []): DisconnectCopy {
+  const account = connection.accountLabel?.trim() || null;
+  const others = app.connections.filter((other) => other.id !== connection.id && other.status === "active");
+  const other = others[0]?.accountLabel?.trim();
+  let stops: string;
+  if (connection.status !== "active" && others.length === 0) {
+    stops = `This account isn’t working right now, so Tex can’t use ${app.name} as it is. Disconnecting removes it; connect ${app.name} again any time.`;
+  } else if (others.length > 0) {
+    stops = `Tex stops using this account and goes on with your other ${app.name} account${other ? ` (${other})` : ""}.`;
+  } else {
+    stops = `Tex can no longer read or do anything in ${app.name}, and anything that watches it stops until you connect it again.`;
+  }
+  return {
+    title: account ? `Disconnect ${app.name} (${account})?` : `Disconnect ${app.name}?`,
+    stops,
+    watching: others.length > 0 ? [] : automationsWatching(app.slug, automations),
+    confirmLabel: `Disconnect ${app.name}`,
+    done: {
+      title: `${app.name} disconnected`,
+      body: account ? `${account} is no longer connected to Tex.` : `Tex no longer has access to ${app.name}.`,
+    },
   };
 }

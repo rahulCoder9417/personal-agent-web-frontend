@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ActivityIcon, ChevronRightIcon, CrewIcon, SettingsIcon } from "@/components/icons";
+import { ActivityIcon, AppsIcon, ChevronRightIcon, CrewIcon, SettingsIcon } from "@/components/icons";
 import { GettingStartedCard, useGettingStarted } from "@/components/onboarding/getting-started";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { AgentFigure } from "@/components/tex";
 import { useAgentSettings, useChannels, useCrew, useMe, useMemories, usePlans } from "@/lib/api/hooks";
 import { crewNavNote } from "@/lib/crew";
 import { CHANNEL_LABEL, formatNumber, initials } from "@/lib/format";
+import { INTEGRATIONS_PATH } from "@/lib/integrations";
 
 function Row({ href, icon, title, detail }: { href: string; icon: ReactNode; title: string; detail?: string }) {
   return (
@@ -39,7 +40,7 @@ export default function MorePage() {
   const crew = useCrew();
   const memories = useMemories();
   const plan = plans.data?.plans.find((p) => p.id === me.data?.plan);
-  const linked = (channels.data ?? []).filter((c) => c.channel !== "web").map((c) => CHANNEL_LABEL[c.channel]);
+  const linked = [...new Set((channels.data ?? []).filter((c) => c.channel !== "web").map((c) => CHANNEL_LABEL[c.channel]))];
   // On a phone the sidebar's checklist isn't there: it sits at the top of More instead.
   const setup = useGettingStarted();
 
@@ -61,6 +62,12 @@ export default function MorePage() {
 
         {/* A phone gets one list; opened on a wider screen, the rows sit in as many columns as fit. */}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] gap-x-8">
+          <Row
+            href={INTEGRATIONS_PATH}
+            icon={<AppsIcon size={17} />}
+            title="Integrations"
+            detail={channels.data ? (linked.length ? `${linked.join(", ")} linked` : "No chat linked") : undefined}
+          />
           <Row href="/activity" icon={<ActivityIcon size={17} />} title="Activity log" />
           <Row href="/settings/credits" icon={glyph("¢")} title="Credits" detail={me.data ? formatNumber(me.data.credits.balance) : undefined} />
           <Row href="/settings/plans" icon={glyph("$")} title="Plans and billing" detail={plan?.name} />
@@ -76,7 +83,7 @@ export default function MorePage() {
             title="Memory"
             detail={memories.data ? `${formatNumber(memories.data.items.length)} saved` : undefined}
           />
-          <Row href="/settings" icon={<SettingsIcon size={17} />} title="Settings" detail={linked.length ? linked.join(", ") : "No chat linked"} />
+          <Row href="/settings" icon={<SettingsIcon size={17} />} title="Settings" />
           <Row href="/crew" icon={<CrewIcon size={17} />} title="Crew" detail={crewNavNote(crew.data)} />
         </div>
       </PageBody>

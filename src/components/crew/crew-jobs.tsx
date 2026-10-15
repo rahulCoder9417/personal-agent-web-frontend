@@ -34,6 +34,7 @@ import { Combobox, Select } from "../select";
 import { AgentFigure } from "../tex";
 import { toast, toastError } from "../toast";
 import { Button, Card, Field, FilterPills, inputClass, Meta, Pill, SkeletonRows, Spinner } from "../ui";
+import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
 
 const COLOUR: Record<JobMember, string> = { patch: "var(--patch)", byte: "var(--byte)" };
 
@@ -103,8 +104,8 @@ function RepoField({ id, value, onChange, error }: { id: string; value: string; 
   const hint = notConnected ? (
     <>
       GitHub isn’t connected.{" "}
-      <Link href="/apps" className="font-medium text-accent hover:text-accent-dark">
-        Connect it in Apps
+      <Link href={INTEGRATIONS_APPS_PATH} className="font-medium text-accent hover:text-accent-dark">
+        Connect it in Integrations
       </Link>
       .
     </>

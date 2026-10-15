@@ -106,7 +106,7 @@ export function StepHi({
             <Row
               done={chat.linked.length > 0}
               title={chat.linkable.length > 1 ? "Chat apps" : CHANNEL_LABEL[chat.linked[0]?.channel ?? chat.linkable[0]]}
-              detail={chat.linked[0] ? `Linked as ${chat.linked[0].displayId}` : "Not linked. You can do it later in Settings."}
+              detail={chat.linked[0] ? `Linked as ${chat.linked[0].displayId}` : "Not linked. You can do it later in Integrations."}
               action={
                 chat.linked.length === 0 && (
                   <button type="button" className={linkClass} onClick={() => onStep("chat")}>
@@ -120,7 +120,7 @@ export function StepHi({
             <Row
               done={connected.connected.length > 0}
               title="Apps"
-              detail={connected.connected.length > 0 ? connected.connected.map((app) => app.name).join(", ") : "None yet. Add them any time from Apps."}
+              detail={connected.connected.length > 0 ? connected.connected.map((app) => app.name).join(", ") : "None yet. Add them any time from Integrations."}
               action={
                 <button type="button" className={linkClass} onClick={() => onStep("apps")}>
                   {connected.connected.length > 0 ? "Add more" : "Connect"}

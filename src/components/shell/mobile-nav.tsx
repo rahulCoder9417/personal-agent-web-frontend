@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useApprovals, useMe } from "@/lib/api/hooks";
 import { cn, formatNumber } from "@/lib/format";
+import { INTEGRATIONS_PATH } from "@/lib/integrations";
 import { ApprovalsIcon, AppsIcon, AutomationsIcon, ChatIcon, MoreIcon } from "../icons";
 import { Brand } from "./brand";
 
@@ -36,7 +37,7 @@ export function MobileTabBar() {
     { href: "/", label: "Chat", icon: <ChatIcon size={22} /> },
     { href: "/approvals", label: "Approvals", icon: <ApprovalsIcon size={22} />, badge: pending },
     { href: "/automations", label: "Automations", icon: <AutomationsIcon size={22} /> },
-    { href: "/apps", label: "Apps", icon: <AppsIcon size={22} /> },
+    { href: INTEGRATIONS_PATH, label: "Integrations", icon: <AppsIcon size={22} /> },
     { href: "/more", label: "More", icon: <MoreIcon size={22} />, also: ["/settings", "/activity", "/crew"] },
   ];
   const isActive = (tab: Tab) =>

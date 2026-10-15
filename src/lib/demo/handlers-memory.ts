@@ -54,7 +54,7 @@ export function rememberFact(state: DemoState, fact: string): string {
   const secret = SECRETS.find((kind) => kind.looksLike.test(fact));
   if (secret) {
     logActivity(state, { actor: "agent", action: "memory_refused", summary: `Refused to save a memory: it looked like ${secret.name}` });
-    return "I don’t save passwords, keys or card numbers, so I haven’t kept that. Connect the app under Apps instead and I’ll use it from there.";
+    return "I don’t save passwords, keys or card numbers, so I haven’t kept that. Connect the app in Integrations instead and I’ll use it from there.";
   }
 
   const content = upperFirst(truncate(fact, MEMORY_MAX_CHARS));

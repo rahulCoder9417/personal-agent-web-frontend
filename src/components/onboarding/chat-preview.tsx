@@ -21,7 +21,7 @@ export function ChatPreview({ channel, code, linked }: { channel: LinkableChanne
         </div>
 
         <div className="flex min-h-[236px] flex-col gap-2.5 bg-chrome px-4 py-4">
-          <div className={cn("ml-auto rounded-[18px_18px_6px_18px] bg-fg px-3.5 py-2.5 text-[13px] text-white", !code && !linked && "opacity-40")}>
+          <div className={cn("ml-auto rounded-[18px_18px_6px_18px] bg-fg px-3.5 py-2.5 text-[13px] text-white", !code && "opacity-40")}>
             {code ?? "LINK-····-··"}
           </div>
           <div className={cn("max-w-[86%] rounded-[18px_18px_18px_6px] border border-line bg-surface px-3.5 py-2.5 text-[13.5px] leading-snug", !linked && "opacity-55")}>

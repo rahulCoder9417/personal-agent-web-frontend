@@ -1,14 +1,27 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AvailableAppCard, ConnectedAppCard } from "@/components/apps/app-cards";
+import { TabIntro } from "@/components/integrations/intro";
 import { ALL_CATEGORIES, categoriesOf, filterApps, isConnectable, NOT_AVAILABLE_LABEL, splitApps } from "@/components/apps/apps-logic";
 import { LockIcon, SearchIcon } from "@/components/icons";
 import { PageBody } from "@/components/page";
-import { Card, EmptyState, ErrorState, FilterPills, SectionLabel, SkeletonRows } from "@/components/ui";
+import { Card, EmptyState, ErrorState, FilterPills, Meta, SectionLabel, SkeletonRows } from "@/components/ui";
 import { useApps } from "@/lib/api/hooks";
 import { titleCase } from "@/lib/format";
+import { INTEGRATIONS_MCP_PATH } from "@/lib/integrations";
 
+/** What the Apps tab is, for someone who opens it for the first time. */
+function AppsIntro({ connected }: { connected?: number }) {
+  return (
+    <TabIntro title="Apps Tex works in" aside={connected !== undefined && connected > 0 ? <Meta className="whitespace-nowrap">{connected} connected</Meta> : undefined}>
+      Connect an app and Tex can read and act in it for you. It asks before it sends, deletes or changes anything that’s already there.
+    </TabIntro>
+  );
+}
+
+/** Integrations → Apps: the catalog, what is connected, and the connect screens. */
 export default function AppsPage() {
   const apps = useApps();
   const [search, setSearch] = useState("");
@@ -34,6 +47,7 @@ export default function AppsPage() {
   if (apps.isPending) {
     return (
       <PageBody>
+        <AppsIntro />
         <Card>
           <SkeletonRows rows={6} />
         </Card>
@@ -43,6 +57,7 @@ export default function AppsPage() {
   if (apps.isError) {
     return (
       <PageBody>
+        <AppsIntro />
         <ErrorState error={apps.error} onRetry={() => void apps.refetch()} />
       </PageBody>
     );
@@ -50,6 +65,7 @@ export default function AppsPage() {
   if (apps.data.length === 0) {
     return (
       <PageBody>
+        <AppsIntro />
         <EmptyState mood="asleep" title="No apps to connect yet">
           The catalog is empty right now. Check back soon.
         </EmptyState>
@@ -63,6 +79,7 @@ export default function AppsPage() {
 
   return (
     <PageBody>
+      <AppsIntro connected={splitApps(apps.data).connected.length} />
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex h-[34px] w-60 items-center gap-2 rounded-full border border-line bg-surface px-3.5 focus-within:border-fg/50">
           <SearchIcon size={14} className="shrink-0 text-muted" />
@@ -106,7 +123,13 @@ export default function AppsPage() {
       )}
 
       {connected.length === 0 && available.length === 0 && (
-        <p className="text-[13.5px] text-muted">No app matches that. On Max, Tex can also use your own tools through an MCP server.</p>
+        <p className="text-[13.5px] text-muted">
+          No app matches that. On Max, Tex can also use your own tools through{" "}
+          <Link href={INTEGRATIONS_MCP_PATH} className="font-medium text-accent hover:text-accent-dark">
+            an MCP server
+          </Link>
+          .
+        </p>
       )}
 
       <p className="flex items-center gap-2.5 border-t border-line pt-4 text-[13px] text-muted">

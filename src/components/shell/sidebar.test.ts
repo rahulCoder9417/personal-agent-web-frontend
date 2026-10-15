@@ -74,6 +74,13 @@ describe("Sidebar, open", () => {
     expect(nav(html)).not.toContain("data-collapsed");
   });
 
+  it("leads to Integrations under Set up, where the apps, chat apps and MCP servers are; nothing leads to /apps", () => {
+    const html = draw();
+    expect(link(html, "/integrations")).not.toBe("");
+    expect(html).toMatch(/<a [^>]*href="\/integrations"[^>]*>.*?>Integrations<\/span>/);
+    expect(links(html, "/apps")).toEqual([]);
+  });
+
   it("shows the words, and the credits card rather than the rail's tile", () => {
     const html = draw();
     expect(html).toContain(">Approvals</span>");
@@ -160,6 +167,9 @@ describe("Sidebar, getting started", () => {
     // The whole list opens beside the sidebar, as a popover.
     expect(html).toMatch(/<div[^>]*popover="auto"[^>]*role="dialog"/);
     expect(html).toContain('href="/onboarding?step=ai"');
+    // Linking Telegram happens in Integrations, never in the welcome flow.
+    expect(html).toContain('href="/integrations?link=telegram"');
+    expect(html).not.toContain("step=chat");
   });
 
   it("puts a ring with the count on the rail", () => {
