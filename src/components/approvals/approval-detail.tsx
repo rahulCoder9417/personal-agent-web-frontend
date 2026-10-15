@@ -20,7 +20,7 @@ const REASON_CHIP: Record<ApprovalReason["tone"], string> = {
 const STATUS_LABEL: Record<Approval["status"], string> = {
   pending: "Needs your OK",
   approved: "Approved",
-  rejected: "Rejected",
+  rejected: "Denied",
   expired: "Expired",
 };
 
@@ -112,7 +112,7 @@ export function ApprovalDetail({ approval, onDecided }: { approval: Approval; on
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
           <div className="grid w-full max-w-[440px] grid-cols-2 gap-2.5">
             <Button size="lg" variant="secondary" pending={choosing === "reject"} disabled={decide.isPending} onClick={() => run("reject")}>
-              Reject
+              Deny
             </Button>
             <Button size="lg" variant="primary" pending={choosing === "approve"} disabled={decide.isPending} onClick={() => run("approve")}>
               Approve

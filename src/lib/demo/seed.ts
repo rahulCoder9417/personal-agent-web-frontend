@@ -694,7 +694,7 @@ function seedChats(now: Date, withAutomationsChat: boolean): { conversations: Co
     ["msg_3", earlierToday(now, 17), { direction: "in", status: "read", text: "Move my 3pm with Maya to tomorrow and let her know" }],
     ["msg_4", earlierToday(now, 16), { direction: "out", status: "delivered", text: "On it. Your 3pm is “Roadmap sync”. Moving it to tomorrow, same time." }],
     // As the backend does it: the ask is its own message carrying the approval, then Tex's words.
-    ["msg_5", earlierToday(now, 15), { direction: "out", status: "delivered", approvalId: "ap_email", text: "Approval needed: Send this email to Maya" }],
+    ["msg_5", earlierToday(now, 15), { direction: "out", status: "delivered", approvalId: "ap_email", text: "I'd like to send this email to Maya. Approve or Deny below." }],
     ["msg_6", earlierToday(now, 15), { direction: "out", status: "delivered", text: "The meeting is moved. I’ve drafted a note to Maya; it needs your OK before I send it." }],
   ]);
   chat("cnv_web_1", "web", 1, true, [

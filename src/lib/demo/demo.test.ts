@@ -361,12 +361,13 @@ describe("chat", () => {
     await call<Message>("POST", "messages", { text: "Email Maya the kickoff notes", clientMessageId: uuid(2) });
     vi.advanceTimersByTime(2000);
     const pending = (await call<Page<Approval>>("GET", "approvals")).body.items;
-    const [words, ask] = (await call<Page<Message>>("GET", "messages?channel=web")).body.items;
+    const [ask, request] = (await call<Page<Message>>("GET", "messages?channel=web")).body.items;
     expect(pending).toHaveLength(4);
-    // Like the backend: the ask is its own message carrying the approval, followed by Tex's words.
+    // Like the backend: Tex's question is one message carrying the approval, made from its summary,
+    // and nothing more is said until the person answers.
     expect(ask.approvalId).toBe(pending[0].id);
-    expect(ask.text).toBe(`Approval needed: ${pending[0].summary}`);
-    expect(words.approvalId).toBeNull();
+    expect(ask.text).toBe("I'd like to email Maya the kickoff notes. Approve or Deny below.");
+    expect(request.direction).toBe("in");
     expect((await call<Me>("GET", "me")).body.credits.balance).toBe(1884);
   });
 
