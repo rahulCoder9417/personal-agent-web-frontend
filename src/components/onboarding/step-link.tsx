@@ -67,7 +67,7 @@ function CopyButton({ text }: { text: string }) {
  * Step 1: send a one-time code from a chat app, and that chat becomes your agent.
  * Which chat apps are offered is the backend's call; `preferred` (from ?channel=) picks one of them.
  */
-export function StepLink({ preferred, onDone }: { preferred?: string | null; onDone: () => void }) {
+export function StepLink({ preferred, onDone, continueLabel = "Continue" }: { preferred?: string | null; onDone: () => void; continueLabel?: string }) {
   const available = useAvailableChannels();
 
   if (available.isPending) {
@@ -80,12 +80,12 @@ export function StepLink({ preferred, onDone }: { preferred?: string | null; onD
   if (available.isError) return <ErrorState error={available.error} onRetry={() => void available.refetch()} />;
 
   const options = linkableChannels(available.data);
-  if (options.length === 0) return <NothingToLink onDone={onDone} />;
-  return <LinkChat options={options} initial={options.find((option) => option === preferred) ?? options[0]} onDone={onDone} />;
+  if (options.length === 0) return <NothingToLink onDone={onDone} continueLabel={continueLabel} />;
+  return <LinkChat options={options} initial={options.find((option) => option === preferred) ?? options[0]} onDone={onDone} continueLabel={continueLabel} />;
 }
 
 /** Every chat app is switched off: say so, and let setup carry on with the web chat. */
-function NothingToLink({ onDone }: { onDone: () => void }) {
+function NothingToLink({ onDone, continueLabel }: { onDone: () => void; continueLabel: string }) {
   return (
     <div className="flex max-w-[620px] flex-col gap-6">
       <div className="flex flex-col gap-2">
@@ -95,13 +95,23 @@ function NothingToLink({ onDone }: { onDone: () => void }) {
         </p>
       </div>
       <Button variant="primary" size="lg" className="self-start" onClick={onDone}>
-        Continue
+        {continueLabel}
       </Button>
     </div>
   );
 }
 
-function LinkChat({ options, initial, onDone }: { options: LinkableChannel[]; initial: LinkableChannel; onDone: () => void }) {
+function LinkChat({
+  options,
+  initial,
+  onDone,
+  continueLabel,
+}: {
+  options: LinkableChannel[];
+  initial: LinkableChannel;
+  onDone: () => void;
+  continueLabel: string;
+}) {
   const [picked, setPicked] = useState<LinkableChannel>(initial);
   // The list can change under an open page; never ask for a code for a channel that has gone.
   const channel = options.includes(picked) ? picked : options[0];
@@ -160,10 +170,11 @@ function LinkChat({ options, initial, onDone }: { options: LinkableChannel[]; in
         <div className="flex min-w-0 flex-col gap-6">
           <div className="flex flex-col gap-2">
             <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">
-              {several ? "Link the chat you already use" : `Link your ${name}`}
+              {several ? "Text Tex from the chat app you already use" : `Text Tex from ${name}`}
             </h1>
-            <p className="max-w-[520px] text-[15px] text-muted">
-              Send a one-time code from {several ? "your chat app" : name}. From then on, that chat is your agent.
+            <p className="max-w-[540px] text-[15px] text-muted">
+              Link {several ? "your chat app" : `your ${name}`} and Tex is one message away on your phone. Send a one-time code from it; from then on,
+              that chat is your agent, and what you say there shows up here too.
             </p>
           </div>
 
@@ -248,7 +259,7 @@ function LinkChat({ options, initial, onDone }: { options: LinkableChannel[]; in
                   </Button>
                   {existing && (
                     <Button size="lg" onClick={onDone}>
-                      Continue
+                      {continueLabel}
                     </Button>
                   )}
                 </div>

@@ -24,15 +24,22 @@ const PROVIDER_OPTIONS = PROVIDERS.map((provider) => ({ value: provider, label: 
 
 const KEY_PLACEHOLDER: Record<ByokProvider, string> = { anthropic: "sk-ant-…", openai: "sk-…", openrouter: "sk-or-…" };
 
+/**
+ * The three ways, the Claude plan first: it is the one that has run end to end, and on a server
+ * with Textcrew AI off it is what most people will use. Settings lists them in its own order.
+ */
 const CHOICES: { id: AiChoice; title: string; body: string }[] = [
+  { id: "claude_plan", title: "Your Claude plan", body: "Use the Claude Pro or Max plan you already pay for. Your plan covers the AI, so it isn’t charged in credits." },
+  { id: "textcrew", title: "Textcrew AI", body: "Nothing to set up. The AI is paid from your credits." },
   {
     id: "own_key",
     title: "Your own API key",
     body: `From ${listNames(PROVIDERS.map((provider) => PROVIDER_LABEL[provider]))}. Your provider bills the AI, so it isn’t charged in credits.`,
   },
-  { id: "claude_plan", title: "Your Claude plan", body: "Runs Claude Code in your private workspace, on the plan you already pay for." },
-  { id: "textcrew", title: "Textcrew AI", body: "Nothing to set up. The AI is paid in credits." },
 ];
+
+/** Only "Beta" is said here: the step leads with what works, and Settings gives the full picture. */
+const ONBOARDING_TAG: Record<AiChoice, ReactNode> = { claude_plan: CHOICE_TAG.claude_plan, textcrew: null, own_key: null };
 
 function ChoiceOption({
   title,
@@ -145,13 +152,16 @@ function KeyForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function ClaudePanel({ connected, onDone }: { connected: boolean; onDone: () => void }) {
+function ClaudePanel({ connected, onDone, continueLabel }: { connected: boolean; onDone: () => void; continueLabel: string }) {
   if (connected) {
     return (
       <div className="flex flex-wrap items-center gap-3">
-        <p className="min-w-[200px] flex-1 text-[14px]">Your Claude plan is connected.</p>
+        <p role="status" className="flex min-w-[200px] flex-1 items-center gap-2 text-[14px]">
+          <CheckIcon size={16} className="shrink-0 text-success" />
+          Your Claude plan is connected. Tex runs Claude Code on it.
+        </p>
         <Button variant="primary" size="lg" onClick={onDone}>
-          Continue
+          {continueLabel}
         </Button>
       </div>
     );
@@ -164,7 +174,7 @@ function ClaudePanel({ connected, onDone }: { connected: boolean; onDone: () => 
   );
 }
 
-function TextcrewPanel({ settings, onDone }: { settings: AgentSettings; onDone: () => void }) {
+function TextcrewPanel({ settings, onDone, continueLabel }: { settings: AgentSettings; onDone: () => void; continueLabel: string }) {
   const update = useUpdateAgentSettings();
   const offer = textcrewAiOffer(settings);
 
@@ -203,14 +213,24 @@ function TextcrewPanel({ settings, onDone }: { settings: AgentSettings; onDone: 
     <div className="flex flex-col items-start gap-3.5">
       <p className="text-[14px]">Tex is ready. The AI it uses comes out of your credits, along with running time and app actions.</p>
       <Button variant="primary" size="lg" onClick={onDone}>
-        Continue with Textcrew AI
+        {continueLabel === "Continue" ? "Continue with Textcrew AI" : continueLabel}
       </Button>
     </div>
   );
 }
 
 /** What Tex already runs on, so someone with an AI in place can simply carry on. */
-function AlreadySet({ choices, ownKeys, onDone }: { choices: Record<AiChoice, AiChoiceState>; ownKeys: ByokProvider[]; onDone: () => void }) {
+function AlreadySet({
+  choices,
+  ownKeys,
+  onDone,
+  continueLabel,
+}: {
+  choices: Record<AiChoice, AiChoiceState>;
+  ownKeys: ByokProvider[];
+  onDone: () => void;
+  continueLabel: string;
+}) {
   const own = [
     ...(choices.claude_plan !== "not_set_up" ? ["your Claude plan"] : []),
     ...ownKeys.map((provider) => `your ${PROVIDER_LABEL[provider]} key`),
@@ -227,30 +247,35 @@ function AlreadySet({ choices, ownKeys, onDone }: { choices: Record<AiChoice, Ai
       <CheckIcon size={16} className="shrink-0" />
       <span className="flex-1">{message}</span>
       <Button size="sm" onClick={onDone}>
-        Continue
+        {continueLabel}
       </Button>
     </div>
   );
 }
 
+/** The choice to show open: the one Tex runs on, else the Claude plan. */
+function firstPick(choices: Record<AiChoice, AiChoiceState>): AiChoice {
+  return CHOICES.find((choice) => choices[choice.id] === "in_use")?.id ?? "claude_plan";
+}
+
 /**
- * Step 3: the three ways Tex can get its AI. Nothing here is required to finish setup:
- * where Textcrew AI is on offer, Tex already works without a key.
+ * The AI step: the three ways Tex can get its AI, reusing what Settings uses to connect each. The
+ * one step that matters most: without an AI Tex can't answer. Nothing here is required to go on.
  */
-export function StepKey({ onDone }: { onDone: () => void }) {
+export function StepKey({ onDone, continueLabel = "Continue" }: { onDone: () => void; continueLabel?: string }) {
   const settings = useAgentSettings();
-  const [picked, setPicked] = useState<AiChoice>("own_key");
+  const [picked, setPicked] = useState<AiChoice | null>(null);
 
   if (settings.isPending) {
     return (
-      <Card className="max-w-[620px]">
+      <Card className="max-w-[640px]">
         <SkeletonRows rows={3} />
       </Card>
     );
   }
   if (settings.isError) {
     return (
-      <div className="flex max-w-[620px] flex-col items-center gap-3">
+      <div className="flex max-w-[640px] flex-col items-center gap-3">
         <ErrorState error={settings.error} onRetry={() => void settings.refetch()} className="py-6" />
         <Button variant="ghost" onClick={onDone}>
           Skip for now
@@ -260,18 +285,25 @@ export function StepKey({ onDone }: { onDone: () => void }) {
   }
 
   const choices = describeAiChoices(settings.data);
+  const shown = picked ?? firstPick(choices);
   const noAi = settings.data.aiAccess === "none";
+  const platform = settings.data.platformAvailable;
 
   return (
-    <div className="flex max-w-[620px] flex-col gap-6">
+    <div className="flex max-w-[640px] flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Choose how Tex gets its AI</h1>
-        <p className="max-w-[540px] text-[15px] text-muted">
-          There are three ways. With your own key or plan, the AI isn’t charged in credits. You can change this later under Agent &amp; AI.
+        <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Give Tex an AI to think with</h1>
+        <p className="max-w-[560px] text-[15px] text-muted">
+          {platform
+            ? "Tex runs on an AI model. Use the Claude plan you already pay for, or let Textcrew provide the AI and pay for it in credits. You can change this any time under Settings → Agent & AI."
+            : "Tex runs on an AI model, and can’t answer without one. Connect the Claude plan you already pay for; it takes a minute. You can change this any time under Settings → Agent & AI."}
         </p>
       </div>
 
-      <AlreadySet choices={choices} ownKeys={settings.data.ownKeyProviders} onDone={onDone} />
+      {/* The open card says so itself, with its own button, when it is the AI already in place. */}
+      {!(shown === "claude_plan" && settings.data.claude.connected) && !(shown === "textcrew" && choices.textcrew === "in_use") && (
+        <AlreadySet choices={choices} ownKeys={settings.data.ownKeyProviders} onDone={onDone} continueLabel={continueLabel} />
+      )}
 
       <div role="radiogroup" aria-label="How Tex gets its AI" className="flex flex-col gap-2.5">
         {CHOICES.map((choice) => (
@@ -279,18 +311,18 @@ export function StepKey({ onDone }: { onDone: () => void }) {
             key={choice.id}
             title={choice.title}
             body={choice.body}
-            tag={CHOICE_TAG[choice.id]}
+            tag={ONBOARDING_TAG[choice.id]}
             state={choices[choice.id]}
-            checked={picked === choice.id}
+            checked={shown === choice.id}
             onPick={() => setPicked(choice.id)}
           />
         ))}
       </div>
 
       <Card className="p-5">
-        {picked === "own_key" && <KeyForm onDone={onDone} />}
-        {picked === "claude_plan" && <ClaudePanel connected={settings.data.claude.connected} onDone={onDone} />}
-        {picked === "textcrew" && <TextcrewPanel settings={settings.data} onDone={onDone} />}
+        {shown === "own_key" && <KeyForm onDone={onDone} />}
+        {shown === "claude_plan" && <ClaudePanel connected={settings.data.claude.connected} onDone={onDone} continueLabel={continueLabel} />}
+        {shown === "textcrew" && <TextcrewPanel settings={settings.data} onDone={onDone} continueLabel={continueLabel} />}
       </Card>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
@@ -298,7 +330,7 @@ export function StepKey({ onDone }: { onDone: () => void }) {
           <LockIcon size={16} className="mt-px shrink-0" />
           <span>
             {noAi
-              ? "Tex can’t start a job until you add a key or connect a plan. You can also do it later under Agent & AI."
+              ? "Tex can’t answer until you connect an AI. You can also do it later under Settings → Agent & AI."
               : "Your key is encrypted, and a Claude plan is signed in on Anthropic’s own page: we never see those credentials."}
           </span>
         </p>

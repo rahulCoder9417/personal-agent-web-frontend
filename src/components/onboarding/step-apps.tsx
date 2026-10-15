@@ -20,7 +20,7 @@ function isConnected(app: App): boolean {
  * Step 2: connect the first few apps. Connect shows Textcrew's own connect screen; its Continue
  * opens the app's sign-in in a new tab, which comes back to /connected, so this flow stays put.
  */
-export function StepApps({ onDone }: { onDone: () => void }) {
+export function StepApps({ onDone, continueLabel = "Continue" }: { onDone: () => void; continueLabel?: string }) {
   const apps = useApps();
   const [opened, setOpened] = useState<string | null>(null);
   const connect = useConnectDialog({
@@ -46,7 +46,10 @@ export function StepApps({ onDone }: { onDone: () => void }) {
     <div className="flex max-w-[760px] flex-col gap-6">
       <div className="flex flex-col gap-2">
         <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Connect the apps Tex should work in</h1>
-        <p className="max-w-[540px] text-[15px] text-muted">Start with one or two. You can add the rest any time from Apps.</p>
+        <p className="max-w-[560px] text-[15px] text-muted">
+          Tex reads, searches and drafts in the apps you connect, and asks you before it sends or changes anything. Start with one; you can add
+          the rest any time from Apps.
+        </p>
       </div>
 
       {apps.isPending ? (
@@ -97,8 +100,8 @@ export function StepApps({ onDone }: { onDone: () => void }) {
       </p>
 
       <div className="flex items-center gap-3">
-        <Button variant="primary" size="lg" onClick={onDone}>
-          {connectedCount > 0 ? "Continue" : "Skip for now"}
+        <Button variant={connectedCount > 0 ? "primary" : "secondary"} size="lg" onClick={onDone}>
+          {connectedCount > 0 ? continueLabel : "Skip for now"}
         </Button>
         {connectedCount > 0 && (
           <span className="text-[12px] text-muted">
