@@ -115,12 +115,13 @@ export function StepWelcome({ steps, chatLabel, aiNeeded, onDone }: { steps: rea
             ))}
             . Each one can be skipped.
           </p>
-          {/* On a phone the button stays in reach at the foot of the screen while the rest is read. */}
-          <div className="max-sm:sticky max-sm:bottom-0 max-sm:-mx-4 max-sm:border-t max-sm:border-line max-sm:bg-bg max-sm:px-4 max-sm:py-3">
-            <Button variant="primary" size="lg" className="max-sm:w-full" onClick={onDone}>
-              Let’s set you up
-            </Button>
-          </div>
+        </div>
+
+        {/* On a phone the button stays in reach at the foot of the screen while the rest is read. */}
+        <div className="-mt-2.5 max-sm:sticky max-sm:bottom-0 max-sm:-mx-4 max-sm:-mb-7 max-sm:border-t max-sm:border-line max-sm:bg-bg max-sm:px-4 max-sm:py-3">
+          <Button variant="primary" size="lg" className="max-sm:w-full" onClick={onDone}>
+            Let’s set you up
+          </Button>
         </div>
       </div>
     </div>
