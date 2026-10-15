@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useMemo, useRef, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { useAgentSettings, useApps, useAutomations, useChannelList, useConversations, useMe, useUpdateOnboarding } from "@/lib/api/hooks";
 import { allConversations } from "@/lib/conversations";
 import { cn } from "@/lib/format";
@@ -152,6 +152,18 @@ function Header({ items, onHide, compact = false, titleId }: { items: readonly C
   );
 }
 
+/** The way to the Help page, at the foot of the checklist. `onGo` closes the sidebar's popover. */
+function HelpFoot({ onGo, className, children }: { onGo?: () => void; className?: string; children?: ReactNode }) {
+  return (
+    <p className={cn("flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line text-[12px] text-muted", className)}>
+      {children}
+      <Link href="/help" onClick={onGo} className="font-medium text-accent hover:text-accent-dark">
+        How Textcrew works
+      </Link>
+    </p>
+  );
+}
+
 // How many full checklists are on screen: while one is (an empty chat), the sidebar's card steps
 // aside, so the checklist is never shown twice.
 let cardsOnScreen = 0;
@@ -186,9 +198,9 @@ export function GettingStartedCard({ setup, className }: { setup: GettingStarted
     <section aria-labelledby={titleId} className={cn("overflow-hidden rounded-xl border border-line bg-surface text-left shadow-[var(--shadow-soft)]", className)}>
       <Header items={setup.items} onHide={setup.hide} titleId={titleId} />
       <Steps items={setup.items} />
-      <p className="border-t border-line bg-surface-2/60 px-5 py-2.5 text-[12px] text-muted">
-        It goes away once the main steps are done. Hidden, it can be brought back in Settings.
-      </p>
+      <HelpFoot className="bg-surface-2/60 px-5 py-2.5">
+        <span>It goes away once the main steps are done. Hidden, it can be brought back in Settings.</span>
+      </HelpFoot>
     </section>
   );
 }
@@ -312,6 +324,7 @@ export function GettingStartedNav({ shown, fade, railOnly }: { shown: boolean; f
       >
         <Header items={items} onHide={setup.hide} compact titleId={titleId} />
         <Steps items={items} compact onGo={close} />
+        <HelpFoot onGo={close} className="px-4 py-2.5" />
       </div>
     </>
   );

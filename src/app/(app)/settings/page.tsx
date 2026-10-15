@@ -4,6 +4,7 @@ import { PageBody } from "@/components/page";
 import { LinkedChatsSection } from "@/components/settings/general-chats";
 import { AccountSection, YourDataSection } from "@/components/settings/general-data";
 import { GettingStartedSection } from "@/components/settings/general-getting-started";
+import { HelpSection } from "@/components/settings/general-help";
 import { ProfileSection } from "@/components/settings/general-profile";
 import { SETTINGS_COLUMN, SettingsGroup } from "@/components/settings/settings-rows";
 import { Card, ErrorState, SkeletonRows } from "@/components/ui";
@@ -30,6 +31,7 @@ export default function GeneralSettingsPage() {
       )}
       <LinkedChatsSection />
       {me.data && <GettingStartedSection me={me.data} />}
+      <HelpSection />
       <YourDataSection />
       <AccountSection email={me.data?.email} />
     </PageBody>

@@ -172,6 +172,21 @@ export function StepHi({
           ))}
         </ul>
       </section>
+
+      <p className="text-[13px] text-muted">
+        New to Textcrew?{" "}
+        <Link
+          href="/help"
+          onClick={(event) => {
+            event.preventDefault();
+            onLeave("/help");
+          }}
+          className="font-medium text-accent hover:text-accent-dark"
+        >
+          See how it works
+        </Link>
+        : the Telegram commands, approvals, automations and credits, in short answers.
+      </p>
     </div>
   );
 }

@@ -53,10 +53,11 @@ beforeEach(() => {
 });
 
 describe("Settings → General", () => {
-  it("has every setting, in groups: profile, linked chats, your data, the account", async () => {
+  it("has every setting, in groups: profile, linked chats, help, your data, the account", async () => {
     const html = draw(await seededClient(), createElement(GeneralSettingsPage));
     const words = text(html);
-    for (const heading of ["Profile", "Linked chats", "Your data", "Account"]) expect(html).toContain(`>${heading}</h2>`);
+    for (const heading of ["Profile", "Linked chats", "Help", "Your data", "Account"]) expect(html).toContain(`>${heading}</h2>`);
+    expect(html).toMatch(/<a [^>]*href="\/help"[^>]*>Open Help<\/a>/);
     expect(words).toContain("Tex uses this when it writes on your behalf.");
     expect(words).toContain("Automations and reminders run in this time zone.");
     expect(words).toContain("Telegram");
