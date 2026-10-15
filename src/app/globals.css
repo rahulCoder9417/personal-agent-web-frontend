@@ -409,28 +409,8 @@ body {
   .sheet-backdrop { animation: none; }
 }
 
-/* The sign-in pages' backgrounds (src/components/auth/looks/). A fine grain, drawn by an SVG noise
-   filter, and the slow drift of the lights. */
-.auth-grain {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 200px 200px;
-}
-
-.aurora-drift-a { animation: aurora-drift-a 26s ease-in-out infinite alternate; }
-.aurora-drift-b { animation: aurora-drift-b 31s ease-in-out infinite alternate; }
-.aurora-drift-c { animation: aurora-drift-c 23s ease-in-out infinite alternate; }
-
-@keyframes aurora-drift-a { to { transform: translate(8%, 6%) scale(1.08); } }
-@keyframes aurora-drift-b { to { transform: translate(-7%, 5%) scale(0.94); } }
-@keyframes aurora-drift-c { to { transform: translate(6%, -6%) scale(1.06); } }
-
-/* The wall of chats drifts up by one copy of its column (it holds --wall-copies), then starts over. */
-.chat-wall-drift { animation: chat-wall-drift 40s linear infinite; }
-.chat-wall-drift-slow { animation: chat-wall-drift 55s linear infinite; }
-
-@keyframes chat-wall-drift { to { transform: translateY(calc(-100% / var(--wall-copies))); } }
-
-/* The apps floating around the landing look's hero, as on textcrew.in. */
+/* The sign-in pages (src/components/auth/auth-frame.tsx): the apps floating around the hero, as on
+   textcrew.in. */
 .auth-float-a { animation: auth-float 7s ease-in-out infinite; }
 .auth-float-b { animation: auth-float 8.5s ease-in-out -2s infinite; }
 .auth-float-c { animation: auth-float 6.5s ease-in-out -4s infinite; }
@@ -440,10 +420,5 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .auth-float-a,
   .auth-float-b,
-  .auth-float-c,
-  .aurora-drift-a,
-  .aurora-drift-b,
-  .aurora-drift-c,
-  .chat-wall-drift,
-  .chat-wall-drift-slow { animation: none; }
+  .auth-float-c { animation: none; }
 }
