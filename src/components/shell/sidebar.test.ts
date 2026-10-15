@@ -3,18 +3,46 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // What the browser remembers, and whether the page has been drawn once, as each test needs.
-const state = vi.hoisted(() => ({ collapsed: false, motion: true, balance: 1884 }));
+const state = vi.hoisted(() => ({
+  collapsed: false,
+  motion: true,
+  balance: 1884,
+  /** Whether the sidebar is on screen (it is drawn, but asks for nothing, on a phone). */
+  wide: false,
+  /** The account's `gettingStartedDismissedAt`; undefined is a backend that doesn't send it. */
+  dismissedAt: undefined as string | null | undefined,
+}));
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/approvals" }));
 vi.mock("./providers", () => ({ useAppConfig: () => ({ mode: "clerk" }) }));
 vi.mock("@/lib/stored-flag", async (original) => ({ ...(await original<typeof import("@/lib/stored-flag")>()), useStoredFlag: () => state.collapsed }));
 vi.mock("@/lib/motion", async (original) => ({ ...(await original<typeof import("@/lib/motion")>()), useMotionReady: () => state.motion }));
+vi.mock("@/lib/media-query", async (original) => ({ ...(await original<typeof import("@/lib/media-query")>()), useMediaQuery: () => state.wide }));
+// A new account on a server with Textcrew AI off: no AI, nothing linked, nothing said. The
+// checklist's data is there only for a hook that is allowed to ask.
+const asked = <T>(enabled: boolean | { enabled?: boolean } | undefined, data: T) =>
+  ({ data: (typeof enabled === "object" ? enabled.enabled : enabled) === false ? undefined : data });
 vi.mock("@/lib/api/hooks", () => ({
   useAgentStatus: () => ({ data: { state: "awake", lastActiveAt: null } }),
   useApprovals: () => ({ data: [{ id: "a1" }, { id: "a2" }, { id: "a3" }] }),
   useCrew: () => ({ data: undefined }),
-  useMe: () => ({ data: { name: "Aarav Shah", email: "aarav@northwind.studio", plan: "pro", credits: { balance: state.balance, nextExpiry: null } } }),
+  useMe: () => ({
+    data: {
+      id: "user_1",
+      name: "Aarav Shah",
+      email: "aarav@northwind.studio",
+      plan: "pro",
+      credits: { balance: state.balance, nextExpiry: null },
+      ...(state.dismissedAt === undefined ? {} : { gettingStartedDismissedAt: state.dismissedAt }),
+    },
+  }),
   usePlans: () => ({ data: undefined }),
+  useAgentSettings: (enabled?: boolean) => asked(enabled, { aiAccess: "none", platformAvailable: false, ownKeyProviders: [], claude: { connected: false } }),
+  useChannelList: (enabled?: boolean) => asked(enabled, { items: [], available: ["telegram", "web"] }),
+  useApps: (enabled?: boolean) => asked(enabled, []),
+  useConversations: (enabled?: boolean) => asked(enabled, { pages: [{ items: [], nextCursor: null }], pageParams: [undefined] }),
+  useAutomations: (options?: { enabled?: boolean }) => asked(options, []),
+  useUpdateOnboarding: () => ({ mutate: () => {} }),
 }));
 
 import { Sidebar } from "./sidebar";
@@ -33,6 +61,8 @@ beforeEach(() => {
   state.collapsed = false;
   state.motion = true;
   state.balance = 1884;
+  state.wide = false;
+  state.dismissedAt = undefined;
 });
 
 describe("Sidebar, open", () => {
@@ -111,5 +141,39 @@ describe("Sidebar, moving", () => {
     expect(nav(html)).not.toContain('data-motion="');
     // Everything inside is held still too, until then.
     expect(classes(nav(html))).toContain("[&:not([data-motion])_*]:transition-none");
+  });
+});
+
+describe("Sidebar, getting started", () => {
+  beforeEach(() => {
+    state.wide = true;
+    state.dismissedAt = null;
+  });
+
+  it("shows the checklist above the credits while what matters is left, with the next step", () => {
+    const html = draw();
+    expect(html).toContain("Getting started");
+    // The AI, a first message, Telegram and an automation: no app can be connected here.
+    expect(html).toContain("0 of 4");
+    expect(html).toContain("Next: Connect your AI");
+    expect(html.indexOf("Getting started")).toBeLessThan(html.indexOf('href="/settings/credits"'));
+    // The whole list opens beside the sidebar, as a popover.
+    expect(html).toMatch(/<div[^>]*popover="auto"[^>]*role="dialog"/);
+    expect(html).toContain('href="/onboarding?step=ai"');
+  });
+
+  it("puts a ring with the count on the rail", () => {
+    state.collapsed = true;
+    expect(draw()).toContain('aria-label="Getting started, 0 of 4 done"');
+  });
+
+  it("has none once the account says it was hidden, on a backend that doesn't say, or on a phone", () => {
+    state.dismissedAt = "2026-10-15T09:00:00.000Z";
+    expect(draw()).not.toContain("Getting started");
+    state.dismissedAt = undefined;
+    expect(draw()).not.toContain("Getting started");
+    state.dismissedAt = null;
+    state.wide = false;
+    expect(draw()).not.toContain("Getting started");
   });
 });

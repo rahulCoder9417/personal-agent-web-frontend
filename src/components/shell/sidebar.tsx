@@ -12,6 +12,7 @@ import { PANEL_MOTION, useMotionReady } from "@/lib/motion";
 import { PANELS } from "@/lib/panels";
 import { useStoredFlag } from "@/lib/stored-flag";
 import { ActivityIcon, ApprovalsIcon, AppsIcon, AutomationsIcon, ChatIcon, ChevronsLeftIcon, CrewIcon, SettingsIcon } from "../icons";
+import { GettingStartedNav } from "../onboarding/getting-started";
 import { IconButton } from "../ui";
 import { Brand } from "./brand";
 import { useAppConfig } from "./providers";
@@ -130,7 +131,7 @@ function CreditsTile() {
       aria-label={balance === undefined ? "Credits" : `${formatNumber(balance)} credits`}
       title={balance === undefined ? "Credits" : `${formatNumber(balance)} credits`}
       className={cn(
-        "invisible grid h-10 w-10 place-items-center rounded-xl bg-surface text-[12px] font-semibold tracking-[-0.02em] tabular-nums shadow-[var(--shadow-raised)] transition-shadow hover:shadow-[var(--shadow-soft)] group-data-[collapsed]/nav:visible",
+        "pointer-events-auto invisible grid h-10 w-10 place-items-center rounded-xl bg-surface text-[12px] font-semibold tracking-[-0.02em] tabular-nums shadow-[var(--shadow-raised)] transition-shadow hover:shadow-[var(--shadow-soft)] group-data-[collapsed]/nav:visible",
         FADE,
         RAIL_ONLY,
         balance !== undefined && balance <= 20 && "text-danger",
@@ -237,13 +238,16 @@ export function Sidebar() {
       </Group>
 
       <div className="mt-auto flex flex-col gap-2.5">
+        {/* Until what matters is done or it is hidden: the "Getting started" checklist. */}
+        <GettingStartedNav shown={shown} fade={cn(FADE, RAIL_FADES)} railOnly={cn(FADE, RAIL_ONLY)} />
         {/* The card and the rail's tile share a place; one fades as the other comes. The card
             keeps its width, so its words don't wrap as the sidebar folds. */}
         <div className="grid items-end">
           <div className={cn("min-w-[216px] [grid-area:1/1] group-data-[collapsed]/nav:invisible", FADE, RAIL_FADES)}>
             <CreditsCard shown={shown} />
           </div>
-          <div className="[grid-area:1/1]">
+          {/* Over the card's lower half: only the tile itself takes a click, so all of the card leads to the credits. */}
+          <div className="pointer-events-none [grid-area:1/1]">
             <CreditsTile />
           </div>
         </div>

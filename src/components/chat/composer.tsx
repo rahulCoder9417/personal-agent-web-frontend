@@ -51,17 +51,26 @@ export function Composer({ ref, conversationId, placeholder = "Message Tex…" }
   const send = useSendMessage();
   const upload = useUploadAttachment();
 
-  const [text, setText] = useState(() => params.get("draft") ?? "");
+  const draft = params.get("draft");
+  const [text, setText] = useState(() => draft ?? "");
   const [files, setFiles] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(0);
   const [fileError, setFileError] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
 
-  // A draft handed over in the URL (onboarding's example asks) is used once.
+  // A draft handed over in the URL (a template, the welcome flow's first message) is used once. One
+  // that arrives while the chat is open (the checklist's "Write") takes the place of what is typed.
+  const [takenDraft, setTakenDraft] = useState(draft);
+  if (draft !== takenDraft) {
+    setTakenDraft(draft);
+    if (draft) setText(draft);
+  }
   useEffect(() => {
-    if (params.get("draft")) router.replace("/");
-  }, [params, router]);
+    if (!draft) return;
+    router.replace("/");
+    input.current?.focus();
+  }, [draft, router]);
 
   // Grow with the text, up to a few lines.
   useEffect(() => {

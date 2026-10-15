@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ActivityIcon, ChevronRightIcon, CrewIcon, SettingsIcon } from "@/components/icons";
+import { GettingStartedCard, useGettingStarted } from "@/components/onboarding/getting-started";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { AgentFigure } from "@/components/tex";
 import { useAgentSettings, useChannels, useCrew, useMe, useMemories, usePlans } from "@/lib/api/hooks";
@@ -39,11 +40,14 @@ export default function MorePage() {
   const memories = useMemories();
   const plan = plans.data?.plans.find((p) => p.id === me.data?.plan);
   const linked = (channels.data ?? []).filter((c) => c.channel !== "web").map((c) => CHANNEL_LABEL[c.channel]);
+  // On a phone the sidebar's checklist isn't there: it sits at the top of More instead.
+  const setup = useGettingStarted();
 
   return (
     <Page>
       <PageHeader title="More" />
       <PageBody className="gap-5">
+        <GettingStartedCard setup={setup} />
         <Link href="/settings" className="flex items-center gap-3.5 rounded-2xl bg-surface-2 px-4 py-3.5">
           <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-full bg-fg text-[14px] font-semibold text-white">
             {me.data ? initials(me.data.name || me.data.email) : ""}

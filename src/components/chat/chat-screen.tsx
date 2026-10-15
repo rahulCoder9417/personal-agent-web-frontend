@@ -3,12 +3,13 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ChannelType } from "@/lib/api/client";
-import { useAvailableChannels, useConversations, useNewChat, usePinnedAutomations } from "@/lib/api/hooks";
+import { useAvailableChannels, useConversations, useMe, useNewChat, usePinnedAutomations } from "@/lib/api/hooks";
 import { useAutomationsUnread } from "@/lib/automations-seen";
 import { linkableChannels } from "@/lib/channels";
 import { allConversations, AUTOMATIONS_TITLE, canWriteIn, conversationToOpen, isAutomationsChat, newChatError, readOnlyNote, titleOf } from "@/lib/conversations";
 import { CHANNEL_LABEL, cn, listNames } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
+import { shouldOpenWelcome, welcomeLeft } from "@/lib/onboarding";
 import { PANEL_MOTION, useMotionReady, useStaysDrawn } from "@/lib/motion";
 import { focusAfterToggle, PANELS } from "@/lib/panels";
 import { useStoredFlag } from "@/lib/stored-flag";
@@ -61,6 +62,23 @@ function OpenFromLink({ onAutomations }: { onAutomations: () => void }) {
     onAutomations();
     router.replace("/");
   }, [wanted, onAutomations, router]);
+  return null;
+}
+
+/**
+ * Until the welcome flow has been finished or skipped (the account says so: `onboardingCompletedAt`
+ * is null), opening the chat leads to it first; that is everyone just after signing up, and anyone
+ * who asked to see it again. A link that asked for something (a request typed in, the Automations
+ * chat) goes where it asked. Reading the address needs a Suspense boundary.
+ */
+function WelcomeFirst() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const me = useMe();
+  const open = shouldOpenWelcome({ me: me.data, asked: params.has("draft") || params.has("chat"), leftThisVisit: welcomeLeft.get() });
+  useEffect(() => {
+    if (open) router.replace("/onboarding");
+  }, [open, router]);
   return null;
 }
 
@@ -325,6 +343,7 @@ export function ChatScreen() {
 
       <Suspense fallback={null}>
         <OpenFromLink onAutomations={openAutomations} />
+        <WelcomeFirst />
       </Suspense>
 
       <Drawer open={drawer && !wide} onClose={() => setDrawer(false)}>

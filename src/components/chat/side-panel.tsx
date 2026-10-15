@@ -8,14 +8,12 @@ import {
   useAgentStatus,
   useApprovals,
   useAutomations,
-  useAvailableChannels,
-  useChannels,
 } from "@/lib/api/hooks";
 import { describeAgent } from "@/lib/agent-state";
 import { approvalReason } from "@/lib/approvals";
-import { linkableChannels } from "@/lib/channels";
-import { CHANNEL_LABEL, cn, describeAutomationNext, describeAutomationSchedule, formatCredits, formatTime, listNames } from "@/lib/format";
+import { cn, describeAutomationNext, describeAutomationSchedule, formatCredits, formatTime } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
+import { stepHref } from "@/lib/onboarding";
 import { PANEL_MOTION, useStaysDrawn } from "@/lib/motion";
 import { focusAfterToggle } from "@/lib/panels";
 import { AppIcon } from "../brand-icon";
@@ -218,8 +216,6 @@ function SidePanelContents() {
   const approvals = useApprovals("pending");
   const activity = useActivity();
   const automations = useAutomations();
-  const channels = useChannels();
-  const available = useAvailableChannels();
   const settings = useAgentSettings();
 
   const pending = approvals.data ?? [];
@@ -234,9 +230,6 @@ function SidePanelContents() {
     .sort((a, b) => (a.nextRunAt ?? "9999").localeCompare(b.nextRunAt ?? "9999"))
     .slice(0, 3);
 
-  // Only nag about linking a chat when there is a chat app that can be linked.
-  const linkable = linkableChannels(available.data ?? []);
-  const needsChat = channels.data !== undefined && linkable.length > 0 && !channels.data.some((c) => c.channel !== "web");
   const needsAi = settings.data?.aiAccess === "none";
 
   return (
@@ -248,16 +241,15 @@ function SidePanelContents() {
         <p className="text-[12.5px] text-nav">{MOOD_LINE[agent.mood] ?? MOOD_LINE.ready}</p>
       </div>
 
-      {(needsChat || needsAi) && (
+      {/* Linking a chat app and the rest are on the "Getting started" checklist; without an AI Tex can't answer at all. */}
+      {needsAi && (
         <div className="flex flex-col gap-2 rounded-xl px-3.5 py-3 shadow-[0_0_0_1px_var(--line-strong)]">
-          <p className="text-[13.5px] font-semibold">Finish setting up</p>
+          <p className="text-[13.5px] font-semibold">Tex needs an AI</p>
           <p className="text-[13px] text-muted">
-            {needsAi
-              ? "Textcrew AI isn’t available on this account, so Tex needs your own API key or your Claude plan before it can start a job."
-              : `Link ${listNames(linkable.map((channel) => CHANNEL_LABEL[channel]))} to text Tex from your phone.`}
+            Textcrew AI isn’t available on this account, so Tex needs your Claude plan or your own API key before it can answer.
           </p>
-          <ButtonLink href={needsAi ? "/settings/agent" : "/onboarding"} variant="primary" size="sm" className="self-start">
-            {needsAi ? "Add your AI" : "Link a chat app"}
+          <ButtonLink href={stepHref("ai")} variant="primary" size="sm" className="self-start">
+            Connect your AI
           </ButtonLink>
         </div>
       )}

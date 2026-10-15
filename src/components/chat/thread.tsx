@@ -14,6 +14,7 @@ import { CHANNEL_LABEL, cn, formatDate, formatDay, formatTime } from "@/lib/form
 import { useInView } from "@/lib/in-view";
 import { BrandIcon } from "../brand-icon";
 import { FileIcon } from "../icons";
+import { GettingStartedCard, useGettingStarted } from "../onboarding/getting-started";
 import { AgentFigure } from "../tex";
 import { Button, ButtonLink, EmptyState, ErrorState, Spinner } from "../ui";
 import { AgentBubble } from "./agent-bubble";
@@ -350,6 +351,32 @@ function emptyWords(conversation: Conversation | null, hasHistory: boolean): { t
 }
 
 /**
+ * An empty web conversation: Tex, a word on what to ask, and, until it is done or hidden, the
+ * "Getting started" checklist under it.
+ */
+function EmptyWebChat({ title, body }: { title: string; body: string }) {
+  const setup = useGettingStarted();
+  if (!setup.visible) {
+    return (
+      <EmptyState mood="ready" title={title} className="m-auto w-full border-0">
+        {body}
+      </EmptyState>
+    );
+  }
+  // With the checklist under it, Tex and the words take less room, so the list is in view.
+  return (
+    <div className="m-auto flex w-full max-w-[540px] flex-col items-center gap-5 py-4 md:py-6">
+      <div className="flex flex-col items-center gap-1.5 px-4 text-center">
+        <AgentFigure who="tex" mood="ready" size={84} label="" />
+        <p className="text-[16px] font-semibold tracking-[-0.01em]">{title}</p>
+        <p className="max-w-sm text-[13.5px] text-muted">{body}</p>
+      </div>
+      <GettingStartedCard setup={setup} className="w-full" />
+    </div>
+  );
+}
+
+/**
  * One conversation's messages, oldest at the top. It follows new messages while you're at the
  * bottom, and asks for earlier ones as you scroll up to them.
  *
@@ -407,14 +434,17 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    if (heightBeforeOlder.current !== null) {
+    if (empty) {
+      // Nothing said yet: what is shown (Tex, the checklist) is read from its top, not followed to its foot.
+      el.scrollTop = 0;
+    } else if (heightBeforeOlder.current !== null) {
       // Older messages were added above: keep what was on screen where it was.
       el.scrollTop += el.scrollHeight - heightBeforeOlder.current;
       heightBeforeOlder.current = null;
     } else if (stick.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [count, newestId, showWorking, writing, stepCount]);
+  }, [count, newestId, showWorking, writing, stepCount, empty]);
 
   // Content can grow after it first renders (an approval card loading, a font swapping in).
   // While following, stay pinned to the newest message through that too.
@@ -424,11 +454,11 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
     const inner = content.current;
     if (!el || !inner) return;
     const observer = new ResizeObserver(() => {
-      if (stick.current) el.scrollTop = el.scrollHeight;
+      if (stick.current && !empty) el.scrollTop = el.scrollHeight;
     });
     observer.observe(inner);
     return () => observer.disconnect();
-  }, []);
+  }, [empty]);
 
   const loadOlder = () => {
     heightBeforeOlder.current = scroller.current?.scrollHeight ?? null;
@@ -439,6 +469,8 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
   useInView(older, loadOlder, query.hasNextPage && !query.isFetchingNextPage && !query.isFetchNextPageError);
 
   const words = emptyWords(conversation, hasHistory);
+  // Where the person writes: before the first message, or an empty web conversation of their own.
+  const webChat = conversation === null || (conversation.channel === "web" && !isAutomationsChat(conversation));
 
   return (
     <div
@@ -457,11 +489,14 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
         )}
         {failed && <ErrorState error={query.error} onRetry={() => query.refetch()} className="m-auto w-full" />}
 
-        {empty && (
-          <EmptyState mood="ready" title={words.title} className="m-auto w-full border-0">
-            {words.body}
-          </EmptyState>
-        )}
+        {empty &&
+          (webChat ? (
+            <EmptyWebChat title={words.title} body={words.body} />
+          ) : (
+            <EmptyState mood="ready" title={words.title} className="m-auto w-full border-0">
+              {words.body}
+            </EmptyState>
+          ))}
 
         {query.hasNextPage && (
           <div ref={older} className="flex justify-center">
