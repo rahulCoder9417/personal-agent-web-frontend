@@ -2,13 +2,15 @@ import type { ReactNode } from "react";
 import { ButtonLink, EmptyState } from "@/components/ui";
 import { AuroraFrame } from "./looks/aurora";
 import { ChatWallFrame } from "./looks/chat-wall";
+import { LandingFrame } from "./looks/landing";
 
 /**
  * The sign-in pages' looks, kept side by side while one is chosen:
  * - aurora: the whole page a night sky in the crew's colours, the form on a white card.
  * - chat-wall: a wall of what people text the crew on the left, the form on warm paper on the right.
+ * - landing: textcrew.in's hero, its light page, dot grid and floating apps, the form on its white card.
  */
-export type AuthLook = "aurora" | "chat-wall";
+export type AuthLook = "aurora" | "chat-wall" | "landing";
 
 /** The look the sign-in pages wear. */
 export const AUTH_LOOK: AuthLook = "aurora";
@@ -24,6 +26,8 @@ export function AuthFrame({ children, look = AUTH_LOOK }: { children: ReactNode;
       return <AuroraFrame>{children}</AuroraFrame>;
     case "chat-wall":
       return <ChatWallFrame>{children}</ChatWallFrame>;
+    case "landing":
+      return <LandingFrame>{children}</LandingFrame>;
   }
 }
 

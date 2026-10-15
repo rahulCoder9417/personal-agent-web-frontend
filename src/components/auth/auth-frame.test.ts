@@ -119,6 +119,47 @@ describe("the chat-wall look", () => {
   });
 });
 
+describe("the landing look", () => {
+  const html = draw("landing");
+
+  it("draws the form once, centred at a comfortable width, in a page that scrolls rather than cutting anything off", () => {
+    expect(html.match(/<form id="the-form">/g)).toHaveLength(1);
+    expect(formColumn(html)).toEqual(expect.arrayContaining(["mx-auto", "w-full", "max-w-[400px]"]));
+    expect(classes(tag(html, "div"))).toEqual(expect.arrayContaining(["h-dvh", "overflow-y-auto"]));
+  });
+
+  it("is on textcrew.in's page colour, from the design tokens", () => {
+    const paint = styles(html);
+    expect(paint).toContain("background:color-mix(in srgb, var(--bg) 40%, var(--surface))");
+    expect(paint).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  });
+
+  it("puts the form on a white card on a wide screen and a white sheet on a phone, the crew standing on its edge", () => {
+    const card = /<div class="([^"]*)"><div aria-hidden="true" class="pointer-events-none absolute inset-x-0 bottom-full/.exec(html)?.[1].split(" ") ?? [];
+    expect(card).toEqual(expect.arrayContaining(["bg-surface", "rounded-t-[28px]", "lg:rounded-[28px]", "lg:border", "lg:w-[440px]"]));
+    const crews = [...html.matchAll(/<div aria-hidden="true" class="pointer-events-none absolute inset-x-0 bottom-full flex items-end justify-center ([^"]*)"/g)].map((match) => match[1]);
+    expect(crews).toEqual(["lg:hidden", "hidden lg:flex [@media(max-height:600px)]:lg:hidden"]);
+  });
+
+  it("reads out textcrew.in's headline; the floating apps, the cursor and the crew are decoration", () => {
+    expect(html).toMatch(/<h2[^>]*>Got a lot of work\?<br\/><span class="whitespace-nowrap">Just text your crew<span aria-hidden="true" class="brand-caret/);
+    expect(html).toContain("Tex, your AI captain, splits the job");
+    const tiles = /<div aria-hidden="true" class="pointer-events-none absolute inset-0 hidden lg:block[^"]*">((?:(?!<\/div>)[\s\S])*)<\/div>/.exec(html)?.[1] ?? "";
+    expect(tiles.match(/rounded-\[28%\]/g)).toHaveLength(6);
+  });
+
+  it("leaves out the floating apps, the row under the line and the crew as the window gets shorter", () => {
+    expect(html).toContain('class="pointer-events-none absolute inset-0 hidden lg:block [@media(max-height:620px)]:lg:hidden"');
+    expect(html).toMatch(/<div aria-hidden="true" class="mt-2 flex items-center gap-6 \[@media\(max-height:700px\)\]:hidden">/);
+  });
+
+  it("has the hero as a band on a phone, with the lockup and the headline, hidden once the wide layout shows", () => {
+    const band = /<div class="(relative px-5 pt-5[^"]*)">/.exec(html)?.[1].split(" ") ?? [];
+    expect(band).toEqual(expect.arrayContaining(["lg:hidden"]));
+    expect(html.match(/<h2/g)).toHaveLength(2);
+  });
+});
+
 describe("Brand", () => {
   it("draws the lockup in ink with the blue cursor by default", () => {
     const html = renderToStaticMarkup(createElement(Brand));
