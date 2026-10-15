@@ -394,7 +394,7 @@ export interface paths {
          * Start connecting an app (returns the provider login URL)
          * @description `redirectUrl` is the provider's own sign-in page when the app is set up with our own sign-in
          *     app at the provider, and Composio's connect page otherwise. After signing in, the browser
-         *     comes back to `returnUrl` (default: the web app's `/apps?connected=<appSlug>`) with
+         *     comes back to `returnUrl` (default: the web app's `/integrations/apps?connected=<appSlug>`) with
          *     `status=success` or `status=failed` added by Composio. Only the app list says for sure that
          *     the connection is active.
          *
@@ -1069,6 +1069,7 @@ export interface paths {
          *     a secret), `memory_deleted` and `memories_cleared` (the user deleted in the web app).
          *     These carry `memoryId` where there is one. They never carry the memory's text: show it
          *     from `GET /v1/memories`.
+         *     The log is kept for as long as the account exists. Deleting the account removes it.
          */
         get: operations["listActivity"];
         put?: never;
@@ -2031,14 +2032,15 @@ export interface paths {
          * @description The same deletion a user's own goes through. The user is deleted in Clerk first (through
          *     Clerk's Backend API); then the account is marked deleted at once and the deletion job runs:
          *     the container and the user's folder (the vm-manager's `DeleteSandbox`), the LiteLLM key,
-         *     app connections, automations, linked chats, conversations, messages, files and memories,
-         *     and a renewing subscription is set to not renew. Clerk's `user.deleted` webhook that
-         *     follows finds the account already deleted and adds nothing.
+         *     app connections (removed at Composio too), automations, linked chats, conversations,
+         *     messages, files, memories, approvals and the user's activity log, and a renewing
+         *     subscription is set to not renew. Clerk's `user.deleted` webhook that follows finds the
+         *     account already deleted and adds nothing. The credits ledger and grants stay.
          *
          *     `confirmEmail` must be the user's email (letter case and spaces around it don't matter),
          *     else 400 and nothing happens. Refused for your own account and for an admin (409). The log
          *     row keeps the admin's id, the deleted user's id and the reason; never the email or name.
-         *     An account already deleted answers 404.
+         *     It is the one activity-log row the deletion leaves. An account already deleted answers 404.
          */
         delete: operations["adminDeleteUser"];
         options?: never;
@@ -2280,6 +2282,11 @@ export interface components {
              */
             gettingStartedDismissed?: boolean;
         };
+        /**
+         * @description One of the user's linked chats. `maskedChatId`, `lastInboundAt` and `blocked` are the same
+         *     as an admin sees (`AdminUserChannel`). The server always sends them; a server from before
+         *     15 October 2026 did not, so a client treats them as optional.
+         */
         ChannelLink: {
             id: string;
             channel: components["schemas"]["ChannelType"];
@@ -2290,6 +2297,23 @@ export interface components {
             displayId: string;
             /** Format: date-time */
             linkedAt: string;
+            /**
+             * @description The chat id or phone number, masked: a Telegram chat keeps its last 4 digits, a phone
+             *     number its country code and last 4 digits. The full id is never returned.
+             * @example •••• 6789
+             * @example +91 •••• ••42 10
+             */
+            maskedChatId?: string;
+            /**
+             * Format: date-time
+             * @description When this chat last wrote to the bot (linking counts). Null if never known.
+             */
+            lastInboundAt?: string | null;
+            /**
+             * @description The user blocked the bot in this chat, so nothing is sent there. Cleared when the chat
+             *     writes again.
+             */
+            blocked?: boolean;
             /** @description WhatsApp only; whether free-form replies are currently allowed. */
             within24hWindow?: boolean;
         };
@@ -3093,7 +3117,7 @@ export interface components {
             id: string;
             channel: components["schemas"]["ChannelType"];
             /**
-             * @description What the user sees in Settings → Channels (a Telegram name or a masked number).
+             * @description What the user sees in Integrations → Chat apps (a Telegram name or a masked number).
              * @example @rahul
              * @example +91 •••• ••42 10
              */
@@ -3406,6 +3430,19 @@ export interface components {
             channels: ("whatsapp" | "telegram" | "imessage")[];
             /** @description App connections that are active */
             connectedApps: number;
+            /**
+             * Format: date-time
+             * @description When the user finished or skipped the web app's welcome steps; null means not yet, so
+             *     the web app shows them on the next visit. The same mark as on `Me`. The reset
+             *     (`POST /v1/admin/users/{userId}/onboarding/reset`) clears it.
+             */
+            onboardingCompletedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the user closed the "Getting started" checklist; null means it may still show.
+             *     The same mark as on `Me`. The reset clears it too.
+             */
+            gettingStartedDismissedAt: string | null;
         };
         AdminUserDetailApp: {
             /** @example gmail */
