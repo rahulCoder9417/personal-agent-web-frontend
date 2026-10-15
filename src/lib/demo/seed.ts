@@ -419,6 +419,33 @@ export const CLAUDE_CHOICES: AgentSettings["claudeChoices"] = {
 };
 
 /**
+ * `TEXTCREW_DEMO_TELEGRAM=blocked`: the account's Telegram chat has blocked the bot, as the backend
+ * marks a chat when Telegram refuses a message to it. Integrations shows "Blocked the bot".
+ */
+export function demoTelegramBlocked(): boolean {
+  return process.env.TEXTCREW_DEMO_TELEGRAM === "blocked";
+}
+
+/**
+ * The account's Telegram chat, as GET /v1/channels lists it: the chat id masked, and the last time
+ * it wrote to Tex, which is the last thing said in it in the seeded Telegram chats.
+ */
+function seedTelegramLink(linkedAt: string, messages: readonly Message[]): ChannelLink {
+  const lastInboundAt = messages
+    .filter((message) => message.channel === "telegram" && message.direction === "in")
+    .reduce<string | null>((latest, message) => (!latest || message.createdAt > latest ? message.createdAt : latest), null);
+  return {
+    id: "ch_telegram",
+    channel: "telegram",
+    displayId: "@aarav_s",
+    linkedAt,
+    maskedChatId: "•••• 4821",
+    lastInboundAt: lastInboundAt ?? linkedAt,
+    blocked: demoTelegramBlocked(),
+  };
+}
+
+/**
  * `TEXTCREW_DEMO_AUTOMATIONS_CHAT=none`: the account's automations were all made before the
  * Automations chat existed and none has run since, so the backend hasn't started it yet. The demo's
  * run, about 20 seconds after the app first connects, starts it.
@@ -874,7 +901,7 @@ export function createSeed(now: Date, plan: PlanId = demoPlan(), account: DemoAc
       onboardingCompletedAt: iso(Date.parse(signedUp) + 4 * MINUTE), gettingStartedDismissedAt: null,
     },
     availableChannels: ["telegram", "web"],
-    channels: [{ id: "ch_telegram", channel: "telegram", displayId: "@aarav_s", linkedAt: iso(Date.parse(signedUp) + 5 * MINUTE) }],
+    channels: [seedTelegramLink(iso(Date.parse(signedUp) + 5 * MINUTE), chats.messages)],
     conversations: chats.conversations,
     messages: chats.messages,
     sentIds: {},

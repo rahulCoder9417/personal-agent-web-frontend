@@ -69,20 +69,29 @@ export const updateMe: Handler = async ({ state, request }) => {
 
 type Linkable = Exclude<ChannelType, "web">;
 
-const LINK_TARGETS: Record<Linkable, { label: string; where: string; displayId: string; deepLink: (code: string) => string | null }> = {
+/** `maskedChatId`: the chat id masked as the backend masks it (a Telegram chat keeps its last 4 digits, a number its country code and last 4). */
+const LINK_TARGETS: Record<Linkable, { label: string; where: string; displayId: string; maskedChatId: string; deepLink: (code: string) => string | null }> = {
   whatsapp: {
     label: "WhatsApp",
     where: "+1 555 010 0000 on WhatsApp",
     displayId: "+91 •••• ••42 10",
+    maskedChatId: "+91 •••• ••42 10",
     deepLink: (code) => `https://wa.me/15550100000?text=${encodeURIComponent(code)}`,
   },
   telegram: {
     label: "Telegram",
     where: "@textcrew_bot on Telegram",
     displayId: "@aarav_s",
+    maskedChatId: "•••• 4821",
     deepLink: (code) => `https://t.me/textcrew_bot?start=${encodeURIComponent(code)}`,
   },
-  imessage: { label: "iMessage", where: "+1 555 010 0000 in Messages", displayId: "+91 •••• ••42 10", deepLink: () => null },
+  imessage: {
+    label: "iMessage",
+    where: "+1 555 010 0000 in Messages",
+    displayId: "+91 •••• ••42 10",
+    maskedChatId: "+91 •••• ••42 10",
+    deepLink: () => null,
+  },
 };
 
 const LINK_CODE_MINUTES = 10;
@@ -107,11 +116,16 @@ function handleOf(state: DemoState, channel: Linkable): string {
 
 function linkChannel(state: DemoState, channel: Linkable): void {
   if (state.channels.some((link) => link.channel === channel)) return;
+  const linkedAt = nowIso();
   const link: ChannelLink = {
     id: nextId(state, "ch"),
     channel,
     displayId: handleOf(state, channel),
-    linkedAt: nowIso(),
+    linkedAt,
+    maskedChatId: LINK_TARGETS[channel].maskedChatId,
+    // Sending the code is the chat's first message, as the backend counts it.
+    lastInboundAt: linkedAt,
+    blocked: false,
     ...(channel === "whatsapp" ? { within24hWindow: true } : {}),
   };
   state.channels.push(link);

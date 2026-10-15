@@ -7,7 +7,7 @@ import { toast, toastError } from "@/components/toast";
 import { Button, Meta, Pill } from "@/components/ui";
 import type { ChannelLink } from "@/lib/api/client";
 import { useUnlinkChannel } from "@/lib/api/hooks";
-import type { LinkableChannel } from "@/lib/channels";
+import { blockedTheBot, lastMessageLine, maskedChatIdToShow, type LinkableChannel } from "@/lib/channels";
 import { CHANNEL_LABEL, formatDate } from "@/lib/format";
 
 // The rows of a list of chat apps: a chat that is linked (with Unlink, which asks first in a
@@ -46,26 +46,37 @@ function UnlinkDialog({ link, unlink, onClose }: { link: ChannelLink; unlink: Re
 }
 
 /**
- * A linked chat: the chat app, the name it is shown as, when it was linked, and Unlink, which asks
- * first. `off`: the chat app has been switched off since this chat was linked. It can still be
- * unlinked.
+ * A linked chat: the chat app, the name it is shown as and its masked chat id, when it was linked,
+ * when it last wrote, and Unlink, which asks first. `off`: the chat app has been switched off since
+ * this chat was linked. It can still be unlinked. "Blocked the bot": the person blocked the bot
+ * there, so Tex can't send anything to it until they unblock it and write again. A backend that
+ * doesn't send the masked id, the last message or `blocked` gets the row without them.
  */
-export function LinkedChatRow({ link, off }: { link: ChannelLink; off: boolean }) {
+export function LinkedChatRow({ link, off, now }: { link: ChannelLink; off: boolean; now?: Date }) {
   const [asking, setAsking] = useState(false);
   // Here rather than in the dialog, so the row's button shows the work too.
   const unlink = useUnlinkChannel();
   const label = CHANNEL_LABEL[link.channel];
+  const chatId = maskedChatIdToShow(link);
+  const lastMessage = lastMessageLine(link, now);
+  const blocked = blockedTheBot(link);
   return (
     <li className={ROW}>
       <AppIcon name={link.channel} size={36} className={off ? "opacity-70" : undefined} />
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-[14px] font-semibold">{label}</span>
-          {off ? (
+          {off && (
             <span title={`${label} is switched off for now, so messages from it don’t reach Tex`}>
               <Pill>Switched off</Pill>
             </span>
-          ) : link.within24hWindow ? (
+          )}
+          {blocked && (
+            <span title={`The bot is blocked in ${label}, so Tex can’t send anything to this chat`}>
+              <Pill tone="danger">Blocked the bot</Pill>
+            </span>
+          )}
+          {off || blocked ? null : link.within24hWindow ? (
             <span title="Inside WhatsApp's 24-hour window, so Tex can reply freely">
               <Pill tone="done">Replies open</Pill>
             </span>
@@ -73,8 +84,24 @@ export function LinkedChatRow({ link, off }: { link: ChannelLink; off: boolean }
             <Pill tone="done">Linked</Pill>
           )}
         </div>
-        <span className="truncate text-[13px] text-fg-2">{link.displayId}</span>
-        <Meta className="truncate text-[12px]">Linked {formatDate(link.linkedAt)}</Meta>
+        <span className="truncate text-[13px] text-fg-2">
+          {link.displayId}
+          {chatId && (
+            <span className="text-muted" title="The chat’s id, masked">
+              {" · "}
+              {chatId}
+            </span>
+          )}
+        </span>
+        <Meta className="truncate text-[12px]">
+          Linked {formatDate(link.linkedAt, now)}
+          {lastMessage && ` · ${lastMessage}`}
+        </Meta>
+        {blocked && (
+          <Meta className="text-[12px]">
+            Tex can’t send anything here. Unblock the bot in {label} and send it a message to start again.
+          </Meta>
+        )}
       </div>
       <Button size="sm" variant="danger-outline" pending={unlink.isPending} onClick={() => setAsking(true)} aria-label={`Unlink ${label} ${link.displayId}`}>
         Unlink
