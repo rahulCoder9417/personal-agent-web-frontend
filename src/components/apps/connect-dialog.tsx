@@ -65,7 +65,7 @@ export function ConnectDialog({
 }: {
   app: App;
   purpose: ConnectPurpose;
-  /** A path of this app, such as `/apps?connected=gmail`. */
+  /** A path of this app, such as `/integrations/apps?connected=gmail`. */
   returnPath: string;
   newTab?: boolean;
   onClose: () => void;

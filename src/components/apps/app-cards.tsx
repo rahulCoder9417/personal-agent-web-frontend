@@ -9,6 +9,7 @@ import { Button, Card, Meta, Pill } from "@/components/ui";
 import type { App } from "@/lib/api/client";
 import { useDisconnectApp } from "@/lib/api/hooks";
 import { cn, titleCase } from "@/lib/format";
+import { connectedReturnPath } from "@/lib/integrations";
 import { isConnectable, NOT_AVAILABLE_LABEL } from "./apps-logic";
 import { useConnectDialog } from "./connect-dialog";
 
@@ -16,11 +17,11 @@ type Connection = App["connections"][number];
 
 /**
  * Connect, Add account and Reconnect open Textcrew's own connect screen first. Its Continue asks
- * the API for the sign-in link; the sign-in takes over this tab and comes back to /apps, where
- * `ConnectedNotice` says how it went.
+ * the API for the sign-in link; the sign-in takes over this tab and comes back to Integrations →
+ * Apps, where `ConnectedNotice` says how it went.
  */
 function useConnectFlow() {
-  return useConnectDialog({ returnPath: (app) => `/apps?connected=${encodeURIComponent(app.slug)}` });
+  return useConnectDialog({ returnPath: (app) => connectedReturnPath(app.slug) });
 }
 
 type ConnectFlow = ReturnType<typeof useConnectFlow>;
