@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   afterAuthPath,
   describeAuthError,
+  dropsLeftoverSignIn,
   firstParam,
   requestOrigin,
   sessionTaskMessage,
@@ -300,6 +301,29 @@ describe("signInNextStep", () => {
     for (const status of ["needs_identifier", "needs_first_factor", "needs_protect_check", "something_new"]) {
       expect(signInNextStep(status, ["email_code"])).toEqual({ kind: "stuck", message: "That didn’t finish signing you in. Start again." });
     }
+  });
+});
+
+describe("dropsLeftoverSignIn", () => {
+  const idle = { firstStep: true, working: false };
+
+  it("drops an attempt Clerk still holds when the first step is showing, so Google starts a new one", () => {
+    // What a refused password or a Google round trip back to this page leaves behind.
+    expect(dropsLeftoverSignIn("sia_left_behind", idle)).toBe(true);
+  });
+
+  it("leaves things alone when Clerk holds no attempt (a fresh page, or one already dropped)", () => {
+    expect(dropsLeftoverSignIn(undefined, idle)).toBe(false);
+    expect(dropsLeftoverSignIn(null, idle)).toBe(false);
+    expect(dropsLeftoverSignIn("", idle)).toBe(false);
+  });
+
+  it("keeps the attempt a request in flight is making, such as the one taking the browser to Google", () => {
+    expect(dropsLeftoverSignIn("sia_in_flight", { firstStep: true, working: true })).toBe(false);
+  });
+
+  it("keeps the attempt the later steps carry on: a code, a second code, a new password", () => {
+    expect(dropsLeftoverSignIn("sia_carried_on", { firstStep: false, working: false })).toBe(false);
   });
 });
 

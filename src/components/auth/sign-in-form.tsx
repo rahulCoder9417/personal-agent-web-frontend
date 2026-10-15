@@ -8,6 +8,7 @@ import { Button, Field } from "@/components/ui";
 import {
   afterAuthPath,
   describeAuthError,
+  dropsLeftoverSignIn,
   SIGN_UP_PATH,
   signInEntryStep,
   signInNextStep,
@@ -132,6 +133,12 @@ export function SignInForm({ redirectUrl, entry }: { redirectUrl: string | null;
         return false;
     }
   };
+
+  // On the first step, an attempt Clerk still holds from before would stop Google from starting.
+  const leftover = dropsLeftoverSignIn(signIn.id, { firstStep: step === "start", working: busy !== null });
+  useEffect(() => {
+    if (leftover) void signIn.reset();
+  }, [leftover, signIn]);
 
   useEffect(() => {
     // Back from Google with the browser's back button, the page returns as it was left: mid-spin.

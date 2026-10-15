@@ -264,6 +264,20 @@ export function signInNextStep(status: string, secondFactors: readonly string[])
   }
 }
 
+/**
+ * Whether the sign-in form's first step drops the sign-in attempt Clerk holds for this browser.
+ * Clerk's `signIn.sso()` carries on an attempt it already holds instead of starting a new one, and
+ * when no Google address is waiting on that attempt it sends nothing and goes nowhere: "Continue
+ * with Google" then only ever answered "That didn't finish signing you in". A refused password
+ * leaves such an attempt behind (even for an email with no account), and so does a Google round
+ * trip that ended back on this page; Clerk keeps it across a reload. The first step's other ways in
+ * (a password, a code by email, "Forgot password?") each start an attempt of their own, so dropping
+ * it loses nothing. Not while a request is in flight: that request may be the one making it.
+ */
+export function dropsLeftoverSignIn(attemptId: string | null | undefined, form: { firstStep: boolean; working: boolean }): boolean {
+  return form.firstStep && !form.working && Boolean(attemptId);
+}
+
 const SIGN_UP_FIELD_NAME: Record<string, string> = {
   email_address: "an email address",
   password: "a password",

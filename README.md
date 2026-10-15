@@ -88,7 +88,7 @@ Clerk is the sign-in service: it holds the accounts, checks passwords and codes,
 
 | Page | What it does |
 |---|---|
-| `/sign-in` | Continue with Google; or email and password, with "Forgot password?" (a code by email, then a new password, which signs out the other devices) and "Email me a code instead". When Clerk wants a code from the inbox after a right password (a new device), it asks for it. |
+| `/sign-in` | Continue with Google; or email and password, with "Forgot password?" (a code by email, then a new password, which signs out the other devices) and "Email me a code instead". When Clerk wants a code from the inbox after a right password (a new device), it asks for it. An attempt Clerk still holds from earlier (a refused password, a Google trip that came back here) is dropped while the first step shows, because Clerk's Google sign-in would carry it on and go nowhere (`dropsLeftoverSignIn`). |
 | `/sign-up` | Continue with Google; or first and last name (optional), email and password, then the code Clerk emails to check the address. |
 | `/sso-callback` | Where Google sends the browser back to when Clerk still needs this app: turns "sign in with Google" by someone new into an account and "sign up with Google" by someone known into a sign-in, or says what went wrong. |
 
