@@ -424,8 +424,16 @@ body {
 @keyframes aurora-drift-b { to { transform: translate(-7%, 5%) scale(0.94); } }
 @keyframes aurora-drift-c { to { transform: translate(6%, -6%) scale(1.06); } }
 
+/* The wall of chats drifts up by one copy of its column (it holds --wall-copies), then starts over. */
+.chat-wall-drift { animation: chat-wall-drift 40s linear infinite; }
+.chat-wall-drift-slow { animation: chat-wall-drift 55s linear infinite; }
+
+@keyframes chat-wall-drift { to { transform: translateY(calc(-100% / var(--wall-copies))); } }
+
 @media (prefers-reduced-motion: reduce) {
   .aurora-drift-a,
   .aurora-drift-b,
-  .aurora-drift-c { animation: none; }
+  .aurora-drift-c,
+  .chat-wall-drift,
+  .chat-wall-drift-slow { animation: none; }
 }

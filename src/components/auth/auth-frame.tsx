@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
 import { ButtonLink, EmptyState } from "@/components/ui";
 import { AuroraFrame } from "./looks/aurora";
+import { ChatWallFrame } from "./looks/chat-wall";
 
 /**
  * The sign-in pages' looks, kept side by side while one is chosen:
  * - aurora: the whole page a night sky in the crew's colours, the form on a white card.
+ * - chat-wall: a wall of what people text the crew on the left, the form on warm paper on the right.
  */
-export type AuthLook = "aurora";
+export type AuthLook = "aurora" | "chat-wall";
 
 /** The look the sign-in pages wear. */
 export const AUTH_LOOK: AuthLook = "aurora";
@@ -20,6 +22,8 @@ export function AuthFrame({ children, look = AUTH_LOOK }: { children: ReactNode;
   switch (look) {
     case "aurora":
       return <AuroraFrame>{children}</AuroraFrame>;
+    case "chat-wall":
+      return <ChatWallFrame>{children}</ChatWallFrame>;
   }
 }
 
