@@ -1,10 +1,11 @@
-import { createElement } from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Brand } from "@/components/shell/brand";
 import { AUTH_LOOK, AuthFrame, type AuthLook } from "./auth-frame";
 
-const draw = (look?: AuthLook) => renderToStaticMarkup(createElement(AuthFrame, { look, children: createElement("form", { id: "the-form" }) }));
+// The form goes in as createElement's third argument; the props' type wants it among the props.
+const draw = (look?: AuthLook) => renderToStaticMarkup(createElement(AuthFrame, { look } as ComponentProps<typeof AuthFrame>, createElement("form", { id: "the-form" })));
 const tag = (html: string, name: string) => new RegExp(`<${name}[^>]*>`).exec(html)?.[0] ?? "";
 const classes = (element: string) => (/class="([^"]*)"/.exec(element)?.[1] ?? "").replaceAll("&amp;", "&").split(" ");
 const styles = (html: string) => [...html.matchAll(/style="([^"]*)"/g)].map((match) => match[1].replaceAll("&quot;", '"')).join(" ");
