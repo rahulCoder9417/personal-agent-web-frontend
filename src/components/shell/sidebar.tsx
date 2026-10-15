@@ -18,6 +18,7 @@ import { IconButton } from "../ui";
 import { Brand } from "./brand";
 import { useAppConfig } from "./providers";
 import { AgentFigure } from "../tex";
+import { HelpIcon } from "../icons";
 
 type Item = { href: string; label: string; icon: ReactNode; badge?: number; note?: string };
 
@@ -194,6 +195,7 @@ export function Sidebar() {
     { href: INTEGRATIONS_PATH, label: "Integrations", icon: <AppsIcon size={18} /> },
     { href: "/crew", label: "Crew", icon: <CrewIcon size={18} />, note: crewNavNote(crew.data) },
     { href: "/settings", label: "Settings", icon: <SettingsIcon size={18} /> },
+    { href: "/help", label: "Help", icon: <HelpIcon size={18} /> },
   ];
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
 
