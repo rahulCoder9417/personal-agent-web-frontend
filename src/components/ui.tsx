@@ -6,7 +6,12 @@ import { AgentFigure, type Mood } from "./tex";
 
 // ---------------------------------------------------------------- buttons
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+/**
+ * `danger` is a quiet red text button; `danger-outline` the button in a row that starts a removal
+ * (Disconnect, Unlink), which then asks in a `ConfirmDialog`; `destructive` the solid red one there
+ * that does it.
+ */
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "danger-outline" | "destructive";
 type ButtonSize = "sm" | "md" | "lg";
 
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {
@@ -14,6 +19,9 @@ const BUTTON_VARIANT: Record<ButtonVariant, string> = {
   secondary: "bg-surface text-fg shadow-[var(--shadow-raised)] hover:bg-surface-2",
   ghost: "text-nav hover:bg-surface-2 hover:text-fg",
   danger: "text-danger hover:bg-danger-soft",
+  "danger-outline":
+    "bg-surface text-danger shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--danger)_32%,transparent)] hover:bg-danger-soft hover:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--danger)_45%,transparent)]",
+  destructive: "bg-danger text-white shadow-[0_1px_2px_rgb(21_21_21/0.2)] hover:bg-danger/90",
 };
 
 const BUTTON_SIZE: Record<ButtonSize, string> = {
