@@ -1350,3 +1350,71 @@ describe("crew jobs", () => {
     expect(full.body.error.message).toMatch(/5 crew jobs are already waiting/);
   });
 });
+
+describe("getting started", () => {
+  it("keeps the welcome flow and the checklist on the account, and takes true and false for them", async () => {
+    const before = (await call<Me>("GET", "me")).body;
+    // The usual demo account went through the welcome flow when it signed up.
+    expect(before.onboardingCompletedAt).not.toBeNull();
+    expect(before.gettingStartedDismissedAt).toBeNull();
+
+    const again = await call<Me>("PATCH", "me", { onboardingCompleted: false });
+    expect(again.body.onboardingCompletedAt).toBeNull();
+    const done = await call<Me>("PATCH", "me", { onboardingCompleted: true, gettingStartedDismissed: true });
+    expect(done.body.onboardingCompletedAt).toBe(NOW.toISOString());
+    expect(done.body.gettingStartedDismissedAt).toBe(NOW.toISOString());
+
+    // Saying it again keeps the first date.
+    vi.advanceTimersByTime(60_000);
+    expect((await call<Me>("PATCH", "me", { gettingStartedDismissed: true })).body.gettingStartedDismissedAt).toBe(NOW.toISOString());
+    expect((await call<Me>("PATCH", "me", { gettingStartedDismissed: false })).body.gettingStartedDismissedAt).toBeNull();
+    expect((await call("PATCH", "me", { onboardingCompleted: "yes" })).status).toBe(400);
+  });
+
+  it("starts a brand-new account with nothing set up and nothing put away", async () => {
+    resetDemoStore(NOW, "new");
+    const me = (await call<Me>("GET", "me")).body;
+    expect(me).toMatchObject({ plan: "free", timezone: "UTC", timezoneSet: false, onboardingCompletedAt: null, gettingStartedDismissedAt: null });
+    expect(me.id).toMatch(/^user_new_/);
+    expect(me.credits.balance).toBe(100);
+
+    const channels = (await call<{ items: ChannelLink[]; available: string[] }>("GET", "channels")).body;
+    expect(channels).toEqual({ items: [], available: ["telegram", "web"] });
+    const apps = (await call<{ items: App[] }>("GET", "apps")).body.items;
+    expect(apps.length).toBeGreaterThan(5);
+    expect(apps.every((app) => app.connections.length === 0)).toBe(true);
+    expect((await call<Page<Conversation>>("GET", "conversations?kind=chat")).body.items).toEqual([]);
+    expect((await call<{ items: Automation[] }>("GET", "automations")).body.items).toEqual([]);
+    expect((await call<Page<Approval>>("GET", "approvals?status=pending")).body.items).toEqual([]);
+    // Textcrew AI is on offer by default, so Tex already works, on credits.
+    expect((await call<AgentSettings>("GET", "agent/settings")).body).toMatchObject({ aiAccess: "platform", ownKeyProviders: [], claude: { connected: false } });
+  });
+
+  it("has no AI on a new account where your own AI is required, and answers as the backend does until one is connected", async () => {
+    vi.stubEnv("TEXTCREW_DEMO_AI_ACCESS_MODE", "own_only");
+    try {
+      resetDemoStore(NOW, "new");
+      expect((await call<AgentSettings>("GET", "agent/settings")).body).toMatchObject({ aiAccess: "none", effectiveRuntime: null, platformAvailable: false });
+
+      const sent = await call<Message>("POST", "messages", { text: "Hi Tex!", clientMessageId: uuid(1) });
+      expect(sent.status).toBe(202);
+      vi.advanceTimersByTime(5000);
+      const thread = (await call<Page<Message>>("GET", `messages?conversationId=${sent.body.conversationId}`)).body.items;
+      expect(thread[0]).toMatchObject({ direction: "out" });
+      expect(thread[0].text).toContain("Connect your own AI first");
+      expect(thread[0].text).toContain("/settings/ai");
+      // Nothing ran, so nothing was charged.
+      expect((await call<Me>("GET", "me")).body.credits.balance).toBe(100);
+
+      // Connected, Tex answers.
+      const login = await call<{ loginId: string }>("POST", "agent/claude/login");
+      await call("POST", `agent/claude/login/${login.body.loginId}/complete`, { code: "abcd-1234" });
+      const next = await call<Message>("POST", "messages", { text: "Hi again", clientMessageId: uuid(2) });
+      vi.advanceTimersByTime(8000);
+      const after = (await call<Page<Message>>("GET", `messages?conversationId=${next.body.conversationId}`)).body.items;
+      expect(after[0].text).not.toContain("Connect your own AI first");
+} finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

@@ -39,6 +39,10 @@ export interface paths {
          * Update profile settings
          * @description A `timezone` (an IANA name such as `Asia/Kolkata`, 400 for an unknown one) also makes
          *     `timezoneSet` true.
+         *
+         *     `onboardingCompleted` and `gettingStartedDismissed` are the web app's first-run marks (see
+         *     `Me`). `true` stamps the time now, or keeps the time already there; `false` clears it. Only
+         *     the signed-in user's own marks change.
          */
         patch: operations["updateMe"];
         trace?: never;
@@ -1149,6 +1153,483 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The platform's numbers at a glance (admin)
+         * @description Counts only: no name, email, id or text. "Today" starts at midnight UTC; "7 days" is the
+         *     last 7 × 24 hours. Turn counts come from the turn timings, which are kept 30 days.
+         *     `containers.awake` is null when the vm-manager can't be asked, and `jobs.failed` when the
+         *     job queues can't be read; the other numbers still come.
+         */
+        get: operations["adminOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Users, newest first, with search (admin)
+         * @description Deleted accounts are listed too, marked `deleted`. The balance is worked out from the
+         *     user's grants, as everywhere else. Never a message, a memory, a key or a token.
+         */
+        get: operations["adminListUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One user's app connections (admin)
+         * @description Every connection the user has, in any state, newest first, from our own table. Composio is
+         *     not asked: use the recheck for that.
+         */
+        get: operations["adminListUserApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/apps/{connectionId}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disconnect one of a user's apps (admin)
+         * @description The same as the user's own disconnect: the account is removed at Composio and the
+         *     connection is deleted. App-event automations on that app are left as the user's own
+         *     disconnect leaves them. Audited with the admin's id and the reason.
+         */
+        post: operations["adminDisconnectUserApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/apps/{connectionId}/recheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Composio about one of a user's connections again (admin)
+         * @description Runs the connection check now, whatever the connection's state: Composio is asked about
+         *     this account and its answer is copied (`ACTIVE` → active, `EXPIRED` → expired, `FAILED`
+         *     → error). An account Composio no longer has becomes `error`. One still being set up stays
+         *     `pending` and gets a fresh series of checks. Audited with the admin's id and the reason.
+         */
+        post: operations["adminRecheckUserApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One user's linked chats (admin)
+         * @description The chat id itself is never returned, only a masked form.
+         */
+        get: operations["adminListUserChannels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/channels/{channelLinkId}/unlink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unlink one of a user's chats (admin)
+         * @description The same as the user's own unlink (`DELETE /v1/channels/{channelLinkId}`), with the same
+         *     `channel_unlinked` entry in the user's activity log, marked as done by an admin. The chat
+         *     then gets the "not linked yet" reply. Audited with the admin's id and the reason.
+         */
+        post: operations["adminUnlinkUserChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/automations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every automation of one user, finished one-time reminders too (admin)
+         * @description Newest first. The instruction text and the trigger's settings are left out.
+         */
+        get: operations["adminListUserAutomations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/automations/{automationId}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause any user's automation (admin)
+         * @description The same as the user's own pause (its timer is removed; app events for it are ignored), with
+         *     `pausedReason: admin`, so the user sees it was paused by Textcrew. Adding credits does not
+         *     resume it. 409 for a one-time reminder that already ran. Audited with the admin's id and
+         *     the reason.
+         */
+        post: operations["adminPauseAutomation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/automations/{automationId}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume any user's automation (admin)
+         * @description The same as the user's own resume: its timer is set again and its failure count goes back
+         *     to 0. 409 for a one-time reminder that already ran. Audited with the admin's id and the
+         *     reason.
+         */
+        post: operations["adminResumeAutomation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/automations/{automationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete any user's automation (admin)
+         * @description The same as the user's own delete: its timer goes, and its Composio trigger with it (for
+         *     pull-request review, the watch on the repo, and with it the standing approval). Audited
+         *     with the admin's id and the reason.
+         */
+        delete: operations["adminDeleteAutomation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/apps/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per app, how many users connected it and whether it can be connected here (admin)
+         * @description Numbers only, one row per app in the catalog.
+         */
+        get: operations["adminAppsSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Jobs in the queues, by queue and state (admin)
+         * @description Newest first within a queue. Without `queue`, the four queues are paged one after the
+         *     other (inbound, outbound, scheduled, system). `waiting` includes the jobs waiting with a
+         *     priority (paid users' inbound turns). `data` holds ids only: every other field of the job's
+         *     data is left out and only its name is listed in `omittedKeys`, so no message text, token
+         *     or key is ever shown. `failedReason` is the error's first line, with anything that looks
+         *     like a secret removed.
+         */
+        get: operations["adminListJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/jobs/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many jobs each queue holds, by state (admin)
+         * @description `waiting` includes the jobs waiting with a priority.
+         */
+        get: operations["adminJobCounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/jobs/{queue}/{jobId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a failed job once more (admin)
+         * @description Only a failed job. It goes back in line and runs once more, as the "retry" button of the
+         *     queue board does: its own "already done?" checks decide what is left to do, so nothing is
+         *     done twice. Written to the audit log with the admin's id and the reason.
+         */
+        post: operations["adminRetryJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/jobs/{queue}/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a failed or finished job (admin)
+         * @description Only a failed or a completed job; never one that is waiting, delayed or running (409).
+         *     Written to the audit log with the admin's id and the reason. The job's event, if it has
+         *     one, keeps its status in the database.
+         */
+        delete: operations["adminRemoveJob"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The audit log of every user, newest first (admin)
+         * @description Every entry of the activity log: what users, agents, admins and the system did. Filters
+         *     combine. `from` and `to` bound the entry's time (`to` excluded). `details` comes with
+         *     every field that looks like a secret replaced by "[redacted]".
+         */
+        get: operations["adminListAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/timings/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where turns spent their time over the last days (admin)
+         * @description From the turn timings only (kept 30 days). Per stage, as long as it kept the user waiting:
+         *     how many turns had it, the median and the 90th percentile in milliseconds. The wake is
+         *     split by kind (warm, cold, capacity, recreated). `total` is the time from the message
+         *     being queued to the answer. Then the turns per route, engine and outcome, and the 20
+         *     slowest turns with their biggest stage. Never any text.
+         */
+        get: operations["adminTimingsSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/timings/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How long the api's own requests took, per route (admin)
+         * @description Response times of the api's HTTP requests (not turns: see `/v1/admin/timings/summary`).
+         *     Each request's time is counted in Redis, in a time bucket, per route and status class:
+         *     per 5 minutes (kept 2 hours) and per hour (kept 8 days). Nothing is written to the
+         *     database per request.
+         *
+         *     `window` is the last hour (read from 5-minute slots), the last 24 hours or the last 7
+         *     days (hourly slots). The current slot is included, so the window reaches back up to one
+         *     slot further; `since` is the start of the oldest slot read.
+         *
+         *     A route is the method and the route pattern, never the address with ids, e.g.
+         *     `GET /v1/conversations/:conversationId`; `GET (no route)` holds unknown addresses and
+         *     requests refused before routing. The health check and `/metrics` are not counted.
+         *     Percentiles are estimated from the buckets and are accurate to one bucket (at most about
+         *     a third of the value, usually much closer); `maxMs` is exact. The time is until the
+         *     answer starts: for the live stream, until the stream opens. `overall` is every request
+         *     together. Routes are sorted by p95, slowest first. Never a user, an address or a query.
+         */
+        get: operations["adminRequestTimes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The settings that shape behaviour, read-only (admin)
+         * @description Built from a fixed list, never by reading the whole environment. `settings` are the
+         *     settings that are not secret: switches, limits, lists and addresses (without any user
+         *     name or password in them). For each secret, `secrets` says only whether it is set. `apps`
+         *     is the app catalog with whether each app can be connected on this server, and how.
+         *     `AWAKE_CAP` is the vm-manager's own setting: the backend can't read it, so its value is
+         *     null.
+         */
+        get: operations["adminGetConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Can the backend reach what it depends on (admin)
+         * @description Asks Postgres, Redis, the vm-manager, LiteLLM and Composio, each with a 3-second limit, and
+         *     says for each `ok`, `error` or `off` (not set up on this server), with a short message.
+         *     `ok` is true when none is `error`. `version` is the backend's version and the deployed
+         *     commit, when the deploy passed it on (`GIT_COMMIT`).
+         */
+        get: operations["adminGetHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/waitlist": {
         parameters: {
             query?: never;
@@ -1220,6 +1701,357 @@ export interface paths {
         head?: never;
         /** Invite, reject or (un)flag an entry (admin) */
         patch: operations["adminUpdateWaitlistEntry"];
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One user's agent and container, as support sees it (admin)
+         * @description The container as the vm-manager reports it, the engine, whether a Claude plan is connected
+         *     (never its sign-in), Claude Code's model and effort, Scout's browser, what pays for the AI,
+         *     and the usage charged since midnight UTC. When the vm-manager can't be asked, the rest is
+         *     still answered and `container.reachable` is false.
+         */
+        get: operations["adminGetUserAgent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/container/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop one user's container now (admin)
+         * @description A polite stop by default, the way the idle stop does it: Hermes saves to the user's folder
+         *     first. The vm-manager refuses it (409) while a turn runs, a message is being delivered or a
+         *     Claude sign-in waits for its code.
+         *
+         *     **`force: true` is dangerous.** It ends the container at once, in the middle of a turn if
+         *     there is one, without letting Hermes save. That turn fails as our fault: the user is told
+         *     "something went wrong on our side" and its credits are given back. Use it only for a turn
+         *     that is stuck.
+         */
+        post: operations["adminStopContainer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/container/wake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wake one user's container now (admin)
+         * @description The same wake a turn makes: the container is made first if the user has none, then started
+         *     and checked for ready; afterwards the engine and the browser switch are set again if they
+         *     differ. It needs the user to have credits, because awake time is charged to them (1 credit
+         *     per 10 minutes; the idle stop puts it back to sleep after 3 quiet minutes).
+         */
+        post: operations["adminWakeContainer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/agent/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Put chosen agent settings back to their defaults (admin)
+         * @description `engine`: the chosen engine goes back to Hermes (a Claude plan stays connected; the user
+         *     can choose Claude Code again). `model` and `effort`: Claude Code's model and thinking effort
+         *     go back to Default, Claude Code's own choice. `browser`: Scout's browser switch is set again
+         *     from the user's plan and the deployment, as a plan change does. The same functions the user's
+         *     own settings use make each change, so the vm-manager is told the same way.
+         */
+        post: operations["adminResetAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One user's approvals, newest first (admin)
+         * @description Every state unless `status` is given. Only the action's name, its app and the short summary
+         *     the user was shown: never the action's inputs.
+         */
+        get: operations["adminListUserApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/approvals/{approvalId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a waiting approval (admin)
+         * @description Ends it the way the 24-hour expiry does: it becomes `expired`, the agent is not woken, and
+         *     nothing can run with it. A late tap on its button gets "That approval was already answered
+         *     or has expired". Only a waiting approval can be cancelled (409 otherwise).
+         */
+        post: operations["adminCancelApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/crew-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One user's crew jobs, newest first (admin)
+         * @description Without the brief's text and without the report. `withReport=1` adds each job's report.
+         */
+        get: operations["adminListUserCrewJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/crew-jobs/{crewJobId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a crew job that has not started (admin)
+         * @description Only a `queued` job: it is marked `failed` with the error "Cancelled by Textcrew support",
+         *     it never runs, and the user is told in the job's chat. A running job can't be stopped
+         *     midway (409): the crew job has no stop signal yet. A finished one is 409 too.
+         */
+        post: operations["adminCancelCrewJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Make a user an admin, or take the admin role away (admin)
+         * @description The role lives in Clerk, in the user's public metadata (`role`). It is set there through
+         *     Clerk's Backend API first, then on our own row at once, so it applies from the user's next
+         *     request. Clerk's `user.updated` webhook that follows carries the same role. Setting the role
+         *     a user already has changes nothing and writes nothing. An admin can't remove their own admin
+         *     role (409). If Clerk can't be reached or isn't set up, nothing changes (503).
+         */
+        put: operations["adminSetUserRole"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suspend an account (admin)
+         * @description Puts the account on hold until it is unsuspended:
+         *     - every signed-in call of the user answers 403 `account_suspended`, the live stream too;
+         *     - the user's container may no longer call the platform's tools or the git gateway;
+         *     - messages from the user's linked chats are saved but not answered; each chat gets at most
+         *       one short notice a day saying the account is suspended;
+         *     - the user's automations that are on, or paused for lack of credits, are paused with the
+         *       reason `admin`;
+         *     - the container is stopped politely through the vm-manager and is not woken again. A
+         *       container in the middle of a turn is not stopped: the vm-manager refuses, the turn
+         *       finishes, and the idle stop puts it to sleep 3 minutes later (`containerStopped: false`).
+         *     Suspending a suspended account again changes nothing and writes no second log row, but it
+         *     does try the pause and the stop again. Refused for your own account and for an admin (409).
+         */
+        post: operations["adminSuspendUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/unsuspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lift a suspension (admin)
+         * @description The account works again at once. The automations paused by the suspension come back: on,
+         *     if the user has credits; otherwise paused for lack of credits, so they come back with the
+         *     next credits like any other. The container wakes with the user's next message. Unsuspending
+         *     an active account changes nothing and writes no log row.
+         */
+        post: operations["adminUnsuspendUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/sessions/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign a user out everywhere (admin)
+         * @description Ends every active Clerk session of the user, through Clerk's Backend API. A session token
+         *     the browser already holds is checked without asking Clerk, so it keeps working until it
+         *     expires (Clerk's tokens last about a minute); after that the user must sign in again.
+         *     Signing out does not suspend the account.
+         */
+        post: operations["adminRevokeUserSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}/onboarding/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show a user the welcome steps and the "Getting started" checklist again (admin)
+         * @description Clears the user's two first-run marks, `onboardingCompletedAt` and
+         *     `gettingStartedDismissedAt` (see `Me`). The web app then shows the welcome steps on the
+         *     user's next visit, and the "Getting started" checklist while any of its steps is left.
+         *     Nothing else changes. Allowed on any account that is not deleted, an admin's own too. When
+         *     both marks are already empty, nothing changes and no log row is written (`changed: false`).
+         */
+        post: operations["adminResetUserOnboarding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One user's details (admin)
+         * @description Counts and metadata only. Never the user's messages, memories, keys, tokens, app account
+         *     names or the arguments of what the agent did: the activity entries are the one-line
+         *     summaries the user sees in their own activity log.
+         */
+        get: operations["adminGetUser"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an account (admin)
+         * @description The same deletion a user's own goes through. The user is deleted in Clerk first (through
+         *     Clerk's Backend API); then the account is marked deleted at once and the deletion job runs:
+         *     the container and the user's folder (the vm-manager's `DeleteSandbox`), the LiteLLM key,
+         *     app connections, automations, linked chats, conversations, messages, files and memories,
+         *     and a renewing subscription is set to not renew. Clerk's `user.deleted` webhook that
+         *     follows finds the account already deleted and adds nothing.
+         *
+         *     `confirmEmail` must be the user's email (letter case and spaces around it don't matter),
+         *     else 400 and nothing happens. Refused for your own account and for an admin (409). The log
+         *     row keeps the admin's id, the deleted user's id and the reason; never the email or name.
+         *     An account already deleted answers 404.
+         */
+        delete: operations["adminDeleteUser"];
+        options?: never;
+        head?: never;
+        /**
+         * Set a user's plan by hand (admin)
+         * @description The steps a paid change of plan takes, with no payment and no credits: the plan, the
+         *     LiteLLM key's models and budget, Scout's browser switch (from the agent's next start) and
+         *     the queue priority. The same plan again changes nothing. Written to the activity log with
+         *     the admin's id. A Polar subscription that is still running can set its own plan again at
+         *     its next event; `subscription` says whether there is one.
+         */
+        patch: operations["adminUpdateUser"];
         trace?: never;
     };
     "/webhooks/clerk": {
@@ -1351,6 +2183,7 @@ export interface components {
                  * @example invalid_request
                  * @example unauthorized
                  * @example forbidden
+                 * @example account_suspended
                  * @example not_found
                  * @example rate_limited
                  * @example out_of_credits
@@ -1413,10 +2246,39 @@ export interface components {
             };
             /** Format: date-time */
             createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the user finished or skipped the web app's welcome steps. Null means not yet, so
+             *     the web app shows them. Every account starts with null, and so did the accounts made
+             *     before this field existed: they see the welcome steps once too. Set with
+             *     `PATCH /v1/me` `onboardingCompleted: true`; cleared with `false` (to see them again,
+             *     from Settings) or by an admin.
+             */
+            onboardingCompletedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the user closed the "Getting started" checklist. Null means it may still show.
+             *     The web app also hides it by itself once every step is done, worked out from the
+             *     account's real data; the backend does not track the steps. Set with `PATCH /v1/me`
+             *     `gettingStartedDismissed: true`; cleared with `false` or by an admin.
+             */
+            gettingStartedDismissedAt: string | null;
         };
         MeUpdate: {
             name?: string;
             timezone?: string;
+            /**
+             * @description `true`: the welcome steps are done (finished or skipped). Sets `onboardingCompletedAt`
+             *     to now; if it is already set, the first time is kept. `false`: clears it, so the web
+             *     app shows the welcome steps again.
+             */
+            onboardingCompleted?: boolean;
+            /**
+             * @description `true`: the user closed the "Getting started" checklist. Sets
+             *     `gettingStartedDismissedAt` to now; if it is already set, the first time is kept.
+             *     `false`: clears it, so the checklist may show again.
+             */
+            gettingStartedDismissed?: boolean;
         };
         ChannelLink: {
             id: string;
@@ -1677,8 +2539,11 @@ export interface components {
              */
             preset?: "pr_review" | null;
             enabled: boolean;
-            /** @enum {string|null} */
-            pausedReason?: "out_of_credits" | "failures" | "user" | null;
+            /**
+             * @description `admin`: paused by Textcrew support. Adding credits does not resume it; the user can. `suspended`: paused while an admin suspended the account; it comes back when the account is unsuspended.
+             * @enum {string|null}
+             */
+            pausedReason?: "out_of_credits" | "failures" | "user" | "admin" | "suspended" | null;
             /** Format: date-time */
             nextRunAt?: string | null;
             /** Format: date-time */
@@ -1724,8 +2589,11 @@ export interface components {
             repo: string;
             /** @description False while paused. A paused repo gets no reviews and gives no standing approval. */
             enabled: boolean;
-            /** @enum {string|null} */
-            pausedReason: "out_of_credits" | "failures" | "user" | null;
+            /**
+             * @description `admin`: paused by Textcrew support. Adding credits does not resume it; the user can. `suspended`: paused while an admin suspended the account; it comes back when the account is unsuspended.
+             * @enum {string|null}
+             */
+            pausedReason: "out_of_credits" | "failures" | "user" | "admin" | "suspended" | null;
             /**
              * @description `telegram`: a copy of each verdict is also sent to the user's Telegram chat. The
              *     verdict itself is always in the Automations chat.
@@ -2176,6 +3044,529 @@ export interface components {
                 lastAt: string;
             }[];
         };
+        /**
+         * @description Where this server's Composio setup for the app comes from. `settings`: named in
+         *     `COMPOSIO_AUTH_CONFIGS` (our own sign-in app, usually). `server_made`: made by the server
+         *     itself and kept in its table. `none`: no setup yet; with `connectable` true the server
+         *     makes one on the first connect (`COMPOSIO_MANAGED_APPS`).
+         * @enum {string}
+         */
+        AdminAppSetupSource: "settings" | "server_made" | "none";
+        AdminUserApp: {
+            /** @description The connection's id */
+            id: string;
+            /** @example gmail */
+            app: string;
+            /** @example Gmail */
+            appName: string;
+            /** @enum {string} */
+            status: "pending" | "active" | "expired" | "error";
+            /** @example work@acme.com */
+            accountLabel: string | null;
+            setupSource: components["schemas"]["AdminAppSetupSource"];
+            /** @description The app can be connected on this server today */
+            connectable: boolean;
+            /**
+             * Format: date-time
+             * @description When the user started connecting it (the connect link was made)
+             */
+            connectedAt: string;
+            /**
+             * Format: date-time
+             * @description When the platform last heard from Composio about this connection (a check, the app
+             *     list, Composio's webhook or an admin's recheck). Null if never.
+             */
+            lastCheckedAt: string | null;
+        };
+        AdminRecheckResult: {
+            connection: components["schemas"]["AdminUserApp"];
+            /**
+             * @description What Composio said, e.g. ACTIVE, INITIATED, EXPIRED, FAILED. Null when it has no such account.
+             * @example ACTIVE
+             */
+            composioStatus: string | null;
+            /** @description The connection is still being set up, and a fresh series of checks was queued. */
+            checksQueued: boolean;
+        };
+        AdminUserChannel: {
+            /** @description The link's id */
+            id: string;
+            channel: components["schemas"]["ChannelType"];
+            /**
+             * @description What the user sees in Settings → Channels (a Telegram name or a masked number).
+             * @example @rahul
+             * @example +91 •••• ••42 10
+             */
+            label: string;
+            /**
+             * @description The chat id or phone number, masked. The full id is never returned.
+             * @example •••• 6789
+             * @example +91 •••• ••42 10
+             */
+            maskedChatId: string;
+            /** Format: date-time */
+            linkedAt: string;
+            /** @description The channel is switched on on this server (`ENABLED_CHANNELS`). */
+            enabled: boolean;
+            /** @description The user blocked the bot; nothing is sent there. */
+            blocked: boolean;
+            /** Format: date-time */
+            lastInboundAt: string | null;
+        };
+        AdminUserAutomation: {
+            id: string;
+            userId: string;
+            title: string;
+            /** @enum {string} */
+            kind: "once" | "repeat" | "event";
+            /**
+             * Format: date-time
+             * @description kind=once
+             */
+            runAt: string | null;
+            /** @description kind=repeat */
+            cron: string | null;
+            /** @description kind=event. The trigger's settings are left out. */
+            trigger: {
+                app: string;
+                event: string;
+            } | null;
+            /**
+             * @description Pull-request review only, the repo it watches.
+             * @example acme/website
+             */
+            repo: string | null;
+            timezone: string | null;
+            enabled: boolean;
+            /** @enum {string|null} */
+            pausedReason: "out_of_credits" | "failures" | "user" | "admin" | "suspended" | null;
+            /** @description Failed runs in a row. Three pause it. */
+            failCount: number;
+            /** Format: date-time */
+            lastRunAt: string | null;
+            /** Format: date-time */
+            nextRunAt: string | null;
+            /** @enum {string|null} */
+            preset: "pr_review" | null;
+            /**
+             * Format: date-time
+             * @description A one-time reminder that already ran. Not in the user's own list.
+             */
+            completedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AdminAppSummary: {
+            /** @example gmail */
+            app: string;
+            /** @example Gmail */
+            name: string;
+            setupSource: components["schemas"]["AdminAppSetupSource"];
+            /** @description The app can be connected on this server today */
+            connectable: boolean;
+            /** @description Users with at least one connection of this app, in any state */
+            users: number;
+            /** @description Connections that work */
+            active: number;
+            /** @description Connections started and not finished */
+            pending: number;
+            /** @description Connections whose sign-in expired */
+            expired: number;
+            /** @description Connections that failed (status `error`) */
+            failed: number;
+        };
+        /**
+         * @description The user's container as the vm-manager reports it. Never its token or its Bridge secret.
+         *     The vm-manager does not report when the container woke, so there is no "awake since".
+         */
+        AdminContainer: {
+            /** @description False when the vm-manager could not be asked. The other fields are then null, and `state` is `unknown`. */
+            reachable: boolean;
+            /** @enum {string} */
+            state: "none" | "stopped" | "waking" | "awake" | "busy" | "broken" | "unknown";
+            /** @description In the middle of a turn. */
+            busy: boolean | null;
+            /**
+             * Format: date-time
+             * @description The last delivered message, tool call or git call.
+             */
+            lastActiveAt: string | null;
+            /** @description The agent image the container was made from. */
+            imageVersion: string | null;
+            /** @description Memory in use, while it runs. */
+            memoryBytes: number | null;
+            /**
+             * @description The engine the vm-manager has on record for the container.
+             * @enum {string|null}
+             */
+            engine: "hermes" | "claude_code" | null;
+            /** @description Claude Code has its sign-in in the user's folder, as the vm-manager last saw it. Never the sign-in itself. */
+            claudeSignedIn: boolean | null;
+            /** @description Scout's browser as the vm-manager has it on record (a running container gets a change at its next wake). */
+            browserOn: boolean | null;
+        };
+        AdminAgent: {
+            userId: string;
+            plan: components["schemas"]["PlanId"];
+            container: components["schemas"]["AdminContainer"];
+            engine: {
+                chosen: components["schemas"]["AgentRuntime"];
+                /**
+                 * @description What runs (null when the user has no AI source).
+                 * @enum {string|null}
+                 */
+                effective: "hermes" | "claude_code" | null;
+            };
+            claude: {
+                connected: boolean;
+                /** Format: date-time */
+                connectedAt: string | null;
+            };
+            /** @description Null: Default (Claude Code's own choice). */
+            claudeModel: string | null;
+            /**
+             * @description Null: Default (Claude Code's own choice).
+             * @enum {string|null}
+             */
+            claudeEffort: "low" | "medium" | "high" | "xhigh" | "max" | null;
+            browser: {
+                /** @description This deployment has the browser (`BROWSER_AVAILABLE`). */
+                available: boolean;
+                /** @description The deployment has it and the user's plan includes it. */
+                wanted: boolean;
+                /** @description What the vm-manager has on record (null without a container or when it can't be asked). */
+                onRecord: boolean | null;
+            };
+            ai: {
+                /**
+                 * @description What pays for the AI now (`platform` is Textcrew AI, paid in credits).
+                 * @enum {string}
+                 */
+                access: "claude_plan" | "own_key" | "platform" | "none";
+                preference: components["schemas"]["AiPreference"];
+                /**
+                 * @description The server's `AI_ACCESS_MODE`.
+                 * @enum {string}
+                 */
+                serverMode: "platform" | "own_only";
+                /** @description The providers the user saved a key for. Never the key. */
+                ownKeyProviders: components["schemas"]["ByokProvider"][];
+            };
+            /**
+             * @description Usage charged since midnight UTC, from the 5-minute usage syncs (the last few minutes
+             *     may not be in it yet).
+             */
+            today: {
+                /** Format: date-time */
+                since: string;
+                awakeSeconds: number;
+                browserSeconds: number;
+                /** @description AI, awake time and browser time charged by those syncs. */
+                creditsCharged: number;
+            };
+        };
+        /** @description An approval without the action's inputs. */
+        AdminApproval: {
+            id: string;
+            userId: string;
+            status: components["schemas"]["ApprovalStatus"];
+            /** @description The short summary the user was shown. */
+            summary: string;
+            /** @example gmail */
+            app: string | null;
+            /** @example GMAIL_SEND_EMAIL */
+            action: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            decidedAt: string | null;
+            /** @description How it was answered (`web`, `telegram:button`, ...), or `admin` when support cancelled it. */
+            decidedVia: string | null;
+            /** @description An approved action already ran with it. */
+            used: boolean;
+        };
+        /** @description A crew job without the brief's text. `report` only with `withReport=1`. */
+        AdminCrewJob: {
+            id: string;
+            userId: string;
+            /** @enum {string} */
+            member: "patch" | "byte";
+            /** @enum {string} */
+            status: "queued" | "running" | "done" | "failed";
+            /** @enum {string} */
+            source: "app" | "chat";
+            owner: string;
+            repo: string;
+            pullNumber: number | null;
+            branch: string | null;
+            reportTo: {
+                channel: components["schemas"]["ChannelType"];
+                pullRequest: boolean;
+                issue: boolean;
+            };
+            /** @description The one review the brief allowed was posted. */
+            postedOnPullRequest: boolean;
+            hasReport: boolean;
+            /** @description Only with `withReport=1`. */
+            report?: string | null;
+            error: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            finishedAt: string | null;
+        };
+        AdminOverview: {
+            /** Format: date-time */
+            generatedAt: string;
+            users: {
+                /** @description Accounts that are not deleted */
+                total: number;
+                newToday: number;
+                new7d: number;
+                /** @description Accounts that sent a message in the last 7 days, on any channel */
+                active7d: number;
+                deleted: number;
+            };
+            /** @description Accounts that are not deleted, by plan. */
+            plans: {
+                free: number;
+                pro: number;
+                max: number;
+            };
+            turns: {
+                today: number;
+                last7d: number;
+                /** @description Turns that ended in an error or failed */
+                failedToday: number;
+                failed7d: number;
+            };
+            containers: {
+                /** @description Containers waking, awake or busy right now. Null when the vm-manager can't be asked. */
+                awake: number | null;
+            };
+            credits: {
+                /** @example 2026-10 */
+                month: string;
+                /** @description Credits granted this month (UTC), every source */
+                granted: number;
+                /** @description Credits charged this month, less charges given back */
+                spent: number;
+            };
+            approvals: {
+                /** @description Approvals waiting for an answer, not expired */
+                open: number;
+            };
+            jobs: {
+                /** @description Failed jobs in the four queues (kept 30 days). Null when the queues can't be read. */
+                failed: number | null;
+            };
+            waitlist: {
+                total: number;
+                pending: number;
+            };
+        };
+        AdminUser: {
+            id: string;
+            email: string;
+            emailVerified: boolean;
+            name: string;
+            timezone: string;
+            plan: components["schemas"]["PlanId"];
+            /** @enum {string} */
+            role: "user" | "admin";
+            /**
+             * @description `deleted` when the account was deleted, else the account's own status.
+             * @enum {string}
+             */
+            status: "active" | "suspended" | "deleted";
+            /**
+             * Format: date-time
+             * @description When the current suspension started
+             */
+            suspendedAt: string | null;
+            /** @description Marked after a chargeback */
+            flagged: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            deletedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the user last sent a message, on any channel (messages are kept 365 days).
+             */
+            lastActiveAt: string | null;
+            /** @description The balance, worked out from the grants */
+            credits: number;
+            engine: components["schemas"]["AgentRuntime"];
+            /** @description The chat apps linked (the kinds only, never a chat id or number). */
+            channels: ("whatsapp" | "telegram" | "imessage")[];
+            /** @description App connections that are active */
+            connectedApps: number;
+        };
+        AdminUserDetailApp: {
+            /** @example gmail */
+            app: string;
+            /** @example Gmail */
+            name: string;
+            /** @enum {string} */
+            status: "pending" | "active" | "expired" | "error";
+            /** Format: date-time */
+            connectedAt: string;
+        };
+        AdminUserDetailAutomation: {
+            id: string;
+            title: string;
+            /** @enum {string} */
+            kind: "once" | "repeat" | "event";
+            /** @enum {string|null} */
+            preset: "pr_review" | null;
+            enabled: boolean;
+            /** @enum {string|null} */
+            pausedReason: "out_of_credits" | "failures" | "user" | "admin" | "suspended" | null;
+            /** Format: date-time */
+            nextRunAt: string | null;
+            /** Format: date-time */
+            lastRunAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AdminUserDetailCrewJob: {
+            id: string;
+            /** @enum {string} */
+            member: "patch" | "byte";
+            /** @enum {string} */
+            status: "queued" | "running" | "done" | "failed";
+            /** @enum {string} */
+            source: "app" | "chat";
+            /** @example acme/website */
+            repo: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            finishedAt: string | null;
+        };
+        /** @description Where one turn's time went. Stage names and milliseconds only, never any text. */
+        AdminTurnTiming: {
+            /** @description The turn's delivery id */
+            id: string;
+            /** Format: date-time */
+            startedAt: string;
+            kind: string;
+            channel: string;
+            /**
+             * @example task
+             * @example simple
+             */
+            route: string | null;
+            /** @enum {string|null} */
+            engine: "hermes" | "claude_code" | null;
+            /**
+             * @example warm
+             * @example cold
+             * @example capacity
+             * @example recreated
+             */
+            wake: string | null;
+            /**
+             * @example done
+             * @example simple
+             * @example error
+             * @example failed
+             * @example retry
+             */
+            outcome: string;
+            attempt: number;
+            /** @description How long after the message was queued the user had the answer. */
+            answeredMs: number | null;
+            stages: {
+                /**
+                 * @example queue
+                 * @example route
+                 * @example wake
+                 * @example work
+                 */
+                name: string;
+                ms: number;
+            }[];
+        };
+        /**
+         * @description Response times of one route (or of every request, in `overall`) over the window, in
+         *     milliseconds. All zero when no request was counted.
+         */
+        AdminRouteTimes: {
+            /**
+             * @description Method and route pattern; `all` in `overall`
+             * @example GET /v1/conversations
+             * @example POST /mcp
+             * @example GET (no route)
+             * @example all
+             */
+            route: string;
+            /** @description Requests counted */
+            count: number;
+            /** @description Answers with a 4xx status */
+            clientErrors: number;
+            /** @description Answers with a 5xx status */
+            serverErrors: number;
+            /** @description Half the requests took at most this */
+            p50Ms: number;
+            p95Ms: number;
+            p99Ms: number;
+            /** @description The slowest request (exact) */
+            maxMs: number;
+        };
+        AdminActivityEntry: {
+            id: string;
+            /** @enum {string} */
+            actor: "user" | "agent" | "admin" | "system";
+            action: string;
+            summary: string;
+            creditsCharged: number | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AdminUserDetail: {
+            user: components["schemas"]["AdminUser"];
+            /**
+             * @description The Polar subscription, with its own plan when there is one (a plan set by hand can
+             *     differ from it); `status: none` and the user's plan when there is none.
+             */
+            subscription: components["schemas"]["Subscription"];
+            credits: components["schemas"]["CreditBalance"];
+            /** @description The last 20 changes to the user's credits, newest first. */
+            ledger: components["schemas"]["LedgerEntry"][];
+            apps: components["schemas"]["AdminUserDetailApp"][];
+            /** @description Automations that are not finished, newest first. */
+            automations: components["schemas"]["AdminUserDetailAutomation"][];
+            /** @description The last 20 crew jobs, newest first. */
+            crewJobs: components["schemas"]["AdminUserDetailCrewJob"][];
+            /** @description The last 20 turns' timings, newest first. */
+            turns: components["schemas"]["AdminTurnTiming"][];
+            /** @description The last 20 activity-log entries, newest first. */
+            activity: components["schemas"]["AdminActivityEntry"][];
+            agent: {
+                runtime: components["schemas"]["AgentRuntime"];
+                /** @enum {string|null} */
+                effectiveRuntime: "hermes" | "claude_code" | null;
+                /** @enum {string} */
+                aiAccess: "claude_plan" | "own_key" | "platform" | "none";
+                claudeConnected: boolean;
+            };
+            /** @description The container's state from the vm-manager; null when it can't be asked. */
+            container: components["schemas"]["AgentStatus"] | null;
+        };
+        AdminPlanChange: {
+            userId: string;
+            plan: components["schemas"]["PlanId"];
+            previousPlan: components["schemas"]["PlanId"];
+            changed: boolean;
+            /** @description A running Polar subscription can set its own plan again at its next event. */
+            subscription: components["schemas"]["Subscription"];
+        };
         /** @enum {string} */
         AgentRuntime: "hermes" | "claude_code";
         /**
@@ -2343,7 +3734,10 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Not allowed (e.g. not an admin) */
+        /**
+         * @description Not allowed: `forbidden` (e.g. not an admin), or `account_suspended` (an admin suspended
+         *     the account; every signed-in call answers this until it is unsuspended)
+         */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -4304,6 +5698,782 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    adminOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminListUsers: {
+        parameters: {
+            query?: {
+                /** @description Part of an email or a name (any letter case), or a whole user id. */
+                query?: string;
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AdminUser"][];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminListUserApps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AdminUserApp"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminDisconnectUserApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Disconnected */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminRecheckUserApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Checked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRecheckResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Composio can't be asked right now. Nothing changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    adminListUserChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AdminUserChannel"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminUnlinkUserChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+                channelLinkId: components["parameters"]["ChannelLinkId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Unlinked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminListUserAutomations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AdminUserAutomation"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminPauseAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                automationId: components["parameters"]["AutomationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Paused */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserAutomation"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminResumeAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                automationId: components["parameters"]["AutomationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Resumed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserAutomation"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminDeleteAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                automationId: components["parameters"]["AutomationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminAppsSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AdminAppSummary"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminListJobs: {
+        parameters: {
+            query?: {
+                queue?: "inbound" | "outbound" | "scheduled" | "system";
+                state?: "failed" | "waiting" | "active" | "delayed" | "completed";
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            /** @enum {string} */
+                            queue: "inbound" | "outbound" | "scheduled" | "system";
+                            /** @example process-message */
+                            name: string;
+                            /** @enum {string} */
+                            state: "failed" | "waiting" | "active" | "delayed" | "completed";
+                            /** @description Tries made so far */
+                            attempts: number;
+                            maxAttempts: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            processedAt: string | null;
+                            /** Format: date-time */
+                            finishedAt: string | null;
+                            /**
+                             * Format: date-time
+                             * @description When a delayed job becomes due. Null for any other job.
+                             */
+                            dueAt: string | null;
+                            /** @description First line of the last error, at most 300 characters, secrets removed. */
+                            failedReason: string | null;
+                            userId: string | null;
+                            /** @description The ids in the job's data (fields named `id` or ending in `Id`/`Ids`). Nothing else. */
+                            data: {
+                                [key: string]: string | number | string[];
+                            };
+                            /** @description Names of the data fields left out. Their values are never shown. */
+                            omittedKeys: string[];
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminJobCounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        queues: {
+                            /** @enum {string} */
+                            queue: "inbound" | "outbound" | "scheduled" | "system";
+                            failed: number;
+                            waiting: number;
+                            active: number;
+                            delayed: number;
+                            completed: number;
+                        }[];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminRetryJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                queue: "inbound" | "outbound" | "scheduled" | "system";
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Back in line */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminRemoveJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                queue: "inbound" | "outbound" | "scheduled" | "system";
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminListAudit: {
+        parameters: {
+            query?: {
+                userId?: string;
+                actor?: "user" | "agent" | "admin" | "system";
+                action?: string;
+                from?: string;
+                to?: string;
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            userId: string | null;
+                            /** @enum {string} */
+                            actor: "user" | "agent" | "admin" | "system";
+                            /**
+                             * @example job_retried
+                             * @example credits_adjusted
+                             */
+                            action: string;
+                            summary: string;
+                            /** @description The entry's details, secrets replaced by "[redacted]". */
+                            details: {
+                                [key: string]: unknown;
+                            } | null;
+                            creditsCharged: number | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminTimingsSummary: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        days: number;
+                        /** Format: date-time */
+                        since: string;
+                        /** @description Turns in the window */
+                        turns: number;
+                        stages: {
+                            /**
+                             * @example queue
+                             * @example route
+                             * @example wake cold
+                             * @example wake warm
+                             * @example engine start
+                             * @example first output
+                             * @example work
+                             * @example send answer
+                             * @example total
+                             */
+                            stage: string;
+                            count: number;
+                            p50Ms: number;
+                            p90Ms: number;
+                        }[];
+                        routes: {
+                            /** @description The route, or `none` for a turn that ended before routing */
+                            name: string;
+                            count: number;
+                        }[];
+                        engines: {
+                            /** @description hermes, claude_code, or `none` */
+                            name: string;
+                            count: number;
+                        }[];
+                        outcomes: {
+                            name: string;
+                            count: number;
+                        }[];
+                        slowest: {
+                            deliveryId: string;
+                            userId: string;
+                            /** Format: date-time */
+                            startedAt: string;
+                            totalMs: number;
+                            biggestStage: string | null;
+                            biggestStageMs: number | null;
+                            route: string | null;
+                            engine: string | null;
+                            wake: string | null;
+                            outcome: string;
+                        }[];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminRequestTimes: {
+        parameters: {
+            query?: {
+                window?: "1h" | "24h" | "7d";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        window: "1h" | "24h" | "7d";
+                        /**
+                         * Format: date-time
+                         * @description Start of the oldest slot read
+                         */
+                        since: string;
+                        /**
+                         * Format: date-time
+                         * @description When the answer was made
+                         */
+                        until: string;
+                        overall: components["schemas"]["AdminRouteTimes"];
+                        routes: components["schemas"]["AdminRouteTimes"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminGetConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        environment: "development" | "test" | "production";
+                        settings: {
+                            /** @example CREW_AVAILABLE */
+                            name: string;
+                            /** @example crew */
+                            group: string;
+                            value: string | number | boolean | string[] | null;
+                            note?: string;
+                        }[];
+                        secrets: {
+                            /** @example COMPOSIO_API_KEY */
+                            name: string;
+                            set: boolean;
+                        }[];
+                        apps: {
+                            slug: string;
+                            name: string;
+                            connectable: boolean;
+                            /**
+                             * @description `settings`: named in COMPOSIO_AUTH_CONFIGS. `made_by_server`: the server
+                             *     made it earlier. `server_may_make`: COMPOSIO_MANAGED_APPS lets the server
+                             *     make it on the first connect. `none`: can't be connected here.
+                             * @enum {string}
+                             */
+                            setup: "settings" | "made_by_server" | "server_may_make" | "none";
+                        }[];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminGetHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        /** Format: date-time */
+                        checkedAt: string;
+                        version: {
+                            /** @example 0.1.0 */
+                            version: string;
+                            /** @example accd3c4 */
+                            commit: string | null;
+                            /** @example v22.11.0 */
+                            node: string;
+                        };
+                        services: {
+                            /** @enum {string} */
+                            name: "postgres" | "redis" | "vm-manager" | "litellm" | "composio";
+                            /** @enum {string} */
+                            status: "ok" | "error" | "off";
+                            message: string;
+                            /** @description How long the check took */
+                            ms: number;
+                        }[];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     joinWaitlist: {
         parameters: {
             query?: never;
@@ -4415,6 +6585,674 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    adminGetUserAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAgent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminStopContainer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why. Kept in the audit log, not shown to the user. */
+                    reason: string;
+                    /**
+                     * @description **Dangerous**: stops it even in the middle of a turn (see above).
+                     * @default false
+                     */
+                    force?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Stopped */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        container: components["schemas"]["AdminContainer"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such user, or the user has no container */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A polite stop was refused (a turn runs, a delivery is in flight, or a Claude sign-in waits) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The vm-manager could not be asked */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    adminWakeContainer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why. Kept in the audit log, not shown to the user. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Awake */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        container: components["schemas"]["AdminContainer"];
+                        /** @description It was asleep and was started now. */
+                        wasStopped: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The user is out of credits */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The server is at its awake limit with nothing to stop, or the vm-manager could not be asked. Try again shortly. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    adminResetAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why. Kept in the audit log, not shown to the user. */
+                    reason: string;
+                    what: ("engine" | "model" | "effort" | "browser")[];
+                };
+            };
+        };
+        responses: {
+            /** @description Reset; the agent as it is now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAgent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The browser switch could not be sent to the vm-manager (the other settings were reset) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    adminListUserApprovals: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ApprovalStatus"];
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AdminApproval"][];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminCancelApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approvalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why. Kept in the audit log, not shown to the user. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminApproval"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminListUserCrewJobs: {
+        parameters: {
+            query?: {
+                /** @description `1` or `true` adds the report to each job. */
+                withReport?: "0" | "1" | "false" | "true";
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AdminCrewJob"][];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminCancelCrewJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                crewJobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why. Kept in the audit log, not shown to the user. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCrewJob"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminSetUserRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    role: "user" | "admin";
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The account as it is now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        account: {
+                            userId: string;
+                            /** @enum {string} */
+                            role: "user" | "admin";
+                            /** @enum {string} */
+                            status: "active" | "suspended";
+                            /** Format: date-time */
+                            suspendedAt: string | null;
+                        };
+                        /** @description False when the user already had this role. */
+                        changed: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Clerk could not be reached or is not set up (`CLERK_SECRET_KEY`). Nothing changed. Retry */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    adminSuspendUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Suspended */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        account: {
+                            userId: string;
+                            /** @enum {string} */
+                            role: "user" | "admin";
+                            /** @enum {string} */
+                            status: "active" | "suspended";
+                            /** Format: date-time */
+                            suspendedAt: string | null;
+                        };
+                        /** @description False when the account was suspended already. */
+                        changed: boolean;
+                        /** @description Automations paused by this call. */
+                        automationsPaused: number;
+                        /**
+                         * @description True when the vm-manager stopped the container now (or there was none to stop).
+                         *     False when it refused (a turn is running): the idle stop does it later.
+                         */
+                        containerStopped: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminUnsuspendUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Active again */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        account: {
+                            userId: string;
+                            /** @enum {string} */
+                            role: "user" | "admin";
+                            /** @enum {string} */
+                            status: "active" | "suspended";
+                            /** Format: date-time */
+                            suspendedAt: string | null;
+                        };
+                        /** @description False when the account was active already. */
+                        changed: boolean;
+                        automationsResumed: number;
+                        /** @description Paused for lack of credits instead, because the balance is zero. */
+                        automationsWaitingForCredits: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminRevokeUserSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Signed out */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Sessions ended by this call. */
+                        revoked: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Clerk could not be reached or is not set up (`CLERK_SECRET_KEY`). Retry */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    adminResetUserOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Both marks are empty now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        userId: string;
+                        onboardingCompletedAt: null;
+                        gettingStartedDismissedAt: null;
+                        /** @description False when both marks were already empty. */
+                        changed: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminGetUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminDeleteUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    confirmEmail: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Deleted in Clerk and on our side; the deletion job removes the rest */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        userId: string;
+                        /** @constant */
+                        status: "deleting";
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Clerk could not be reached or is not set up (`CLERK_SECRET_KEY`). Nothing changed. Retry */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    adminUpdateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    plan: components["schemas"]["PlanId"];
+                    /** @description Why, for the activity log. */
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Done (or nothing to change) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPlanChange"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     webhookClerk: {

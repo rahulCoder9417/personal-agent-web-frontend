@@ -786,7 +786,81 @@ function seedMcpServers(plan: PlanId, now: Date): McpServer[] {
   ];
 }
 
-export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
+export type DemoAccount = "seeded" | "new";
+
+/**
+ * `TEXTCREW_DEMO_ACCOUNT=new` starts the demo as someone who has just signed up (see
+ * `createNewAccount`); the default is the account in use for three weeks.
+ */
+export function demoAccount(): DemoAccount {
+  return process.env.TEXTCREW_DEMO_ACCOUNT === "new" ? "new" : "seeded";
+}
+
+/**
+ * Someone who has just signed up, as the backend leaves a new account: the 100 sign-up credits, the
+ * web chat and nothing else. No chat linked, no app connected, no AI of their own, nothing said
+ * yet, the time zone still UTC, and neither the welcome flow nor the checklist put away. With
+ * Textcrew AI on offer Tex already works on credits; with `TEXTCREW_DEMO_AI_ACCESS_MODE=own_only`
+ * (as the beta runs) it has no AI until one is connected. On the Free plan, unless
+ * `TEXTCREW_DEMO_PLAN` says otherwise. Its id is new each time, like a new account's.
+ */
+export function createNewAccount(now: Date, plan: PlanId = process.env.TEXTCREW_DEMO_PLAN ? demoPlan() : "free"): DemoData {
+  const signedUp = iso(now.getTime() - 2 * MINUTE);
+  const aiMode = demoAiMode();
+  const noKey = (provider: ByokKey["provider"], effectiveModel: string): ByokKey => ({
+    provider, set: false, last4: null, model: null, effectiveModel, inUse: false, updatedAt: null,
+  });
+  return {
+    user: {
+      id: `user_new_${now.getTime().toString(36)}`, email: "meera@lumen.studio", emailVerified: true, name: "Meera Iyer",
+      timezone: "UTC", timezoneSet: false, plan, role: "user", createdAt: signedUp,
+      onboardingCompletedAt: null, gettingStartedDismissedAt: null,
+    },
+    availableChannels: ["telegram", "web"],
+    channels: [],
+    conversations: [],
+    messages: [],
+    sentIds: {},
+    newChatCalls: [],
+    attachments: {},
+    approvals: [],
+    approvalReplies: {},
+    apps: seedApps().map((app) => ({ ...app, connections: [] })),
+    mcpServers: [],
+    byok: [noKey("anthropic", "claude-sonnet-5-5"), noKey("openai", "gpt-6.1-sol"), noKey("openrouter", "anthropic/claude-sonnet-5.5")],
+    automations: [],
+    prReviews: [],
+    prReviewCalls: [],
+    crewJobs: [],
+    crewJobCalls: [],
+    githubRepos: seedGithubRepos(now),
+    // Made at sign-up, not started yet.
+    agentStatus: { state: "stopped", lastActiveAt: null },
+    agentSettings: {
+      runtime: "hermes", effectiveRuntime: aiMode === "platform" ? "hermes" : null, aiAccess: aiMode === "platform" ? "platform" : "none",
+      aiPreference: "auto", platformAvailable: aiMode === "platform",
+      claude: { connected: false, connectedAt: null }, ownKeyProviders: [],
+      claudeModel: null, claudeEffort: null, claudeChoices: structuredClone(CLAUDE_CHOICES),
+    },
+    aiMode,
+    crewAvailable: demoCrewAvailable(),
+    memories: [],
+    claudeLogins: {},
+    plans: seedPlans(),
+    topUps: [{ id: "topup_10", priceCents: 1000, credits: 800, expiresInDays: CREDIT_LIFETIME_DAYS }],
+    subscription: seedSubscription(plan, now, signedUp),
+    grants: [
+      { id: "grant_signup", source: "signup", amount: 100, remaining: 100, cheapModelOnly: false, createdAt: signedUp, expiresAt: iso(Date.parse(signedUp) + CREDIT_LIFETIME_DAYS * DAY) },
+    ],
+    ledger: [{ id: "led_g1", delta: 100, reason: "grant", grantId: "grant_signup", description: "Sign-up credits", createdAt: signedUp }],
+    activity: [],
+    usage: {},
+    redeemedCoupons: [],
+  };
+}
+
+export function createSeed(now: Date, plan: PlanId = demoPlan(), account: DemoAccount = demoAccount()): DemoData {
+  if (account === "new") return createNewAccount(now);
   const money = seedMoney(now);
   const chats = seedChats(now, demoHasAutomationsChat());
   const aiMode = demoAiMode();
@@ -795,6 +869,9 @@ export function createSeed(now: Date, plan: PlanId = demoPlan()): DemoData {
     user: {
       id: "user_demo", email: "aarav@northwind.studio", emailVerified: true, name: "Aarav Shah",
       timezone: "Asia/Kolkata", timezoneSet: true, plan, role: "user", createdAt: signedUp,
+      // Went through the welcome flow when they signed up. The checklist was never hidden: it went
+      // by itself once the AI, an app and a first message were done.
+      onboardingCompletedAt: iso(Date.parse(signedUp) + 4 * MINUTE), gettingStartedDismissedAt: null,
     },
     availableChannels: ["telegram", "web"],
     channels: [{ id: "ch_telegram", channel: "telegram", displayId: "@aarav_s", linkedAt: iso(Date.parse(signedUp) + 5 * MINUTE) }],

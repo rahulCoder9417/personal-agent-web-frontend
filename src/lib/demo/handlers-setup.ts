@@ -122,7 +122,7 @@ const CLAUDE_LOGIN_MINUTES = 10;
  * 4. it isn't, but a Claude plan is connected → Claude Code, because the plan is the only AI there is
  * 5. otherwise nothing runs
  */
-function syncAgentSettings(state: DemoState): void {
+export function syncAgentSettings(state: DemoState): void {
   const settings = state.agentSettings;
   const ownKeyProviders = state.byok.filter((key) => key.set).map((key) => key.provider);
   const connected = settings.claude.connected;

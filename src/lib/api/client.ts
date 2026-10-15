@@ -6,7 +6,14 @@ export const api = createClient<paths>({ baseUrl: "/api" });
 
 type Schemas = components["schemas"];
 
+/**
+ * The account, with its two first-run marks: `onboardingCompletedAt` (when the welcome flow was
+ * finished or skipped; null: show it) and `gettingStartedDismissedAt` (when the "Getting started"
+ * checklist was hidden; null: it may show).
+ */
 export type Me = Schemas["Me"];
+/** What `PATCH /v1/me` takes. `onboardingCompleted` / `gettingStartedDismissed`: true sets the time (keeping the first one), false clears it. */
+export type MeUpdate = Schemas["MeUpdate"];
 export type PlanId = Schemas["PlanId"];
 export type ChannelType = Schemas["ChannelType"];
 export type ChannelLink = Schemas["ChannelLink"];

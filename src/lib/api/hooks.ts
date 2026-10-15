@@ -26,6 +26,8 @@ import {
   type CrewJob,
   type CrewJobInput,
   type McpServerCreate,
+  type Me,
+  type MeUpdate,
   type Message,
   type PlanId,
 } from "./client";
@@ -83,10 +85,40 @@ export function useMe() {
   return useQuery({ queryKey: qk.me, queryFn: () => unwrap(api.GET("/v1/me")) });
 }
 
+const updateMe = (body: MeUpdate): Promise<Me> => unwrap(api.PATCH("/v1/me", { body }));
+
 export function useUpdateMe() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name?: string; timezone?: string }) => unwrap(api.PATCH("/v1/me", { body })),
+    mutationFn: (body: Pick<MeUpdate, "name" | "timezone">) => updateMe(body),
+    onSuccess: (me) => qc.setQueryData(qk.me, me),
+  });
+}
+
+/**
+ * The welcome flow finished or skipped (`onboardingCompleted`), or the "Getting started" checklist
+ * hidden (`gettingStartedDismissed`); false undoes either. Shown at once, put back if the API says no.
+ */
+export function useUpdateOnboarding() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Pick<MeUpdate, "onboardingCompleted" | "gettingStartedDismissed">) => updateMe(body),
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: qk.me });
+      const previous = qc.getQueryData<Me>(qk.me);
+      const now = new Date().toISOString();
+      if (previous) {
+        qc.setQueryData<Me>(qk.me, {
+          ...previous,
+          ...(body.onboardingCompleted === undefined ? {} : { onboardingCompletedAt: body.onboardingCompleted ? now : null }),
+          ...(body.gettingStartedDismissed === undefined ? {} : { gettingStartedDismissedAt: body.gettingStartedDismissed ? now : null }),
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _body, context) => {
+      if (context?.previous) qc.setQueryData(qk.me, context.previous);
+    },
     onSuccess: (me) => qc.setQueryData(qk.me, me),
   });
 }
@@ -95,6 +127,11 @@ export function useUpdateMe() {
 
 // One request answers both: which chats are linked, and which channels can be offered.
 const channelsQuery = { queryKey: qk.channels, queryFn: () => unwrap(api.GET("/v1/channels")) };
+
+/** Both halves of `GET /v1/channels`: the linked chats (`items`) and the channels switched on (`available`). */
+export function useChannelList(enabled = true) {
+  return useQuery({ ...channelsQuery, enabled });
+}
 
 /** The chats this person has linked. */
 export function useChannels() {
@@ -128,9 +165,10 @@ export function useUnlinkChannel() {
  * chat is left out (`kind=chat`): it is pinned apart (`useAutomationsChat`). An older backend
  * ignores `kind` and has no Automations chat.
  */
-export function useConversations() {
+export function useConversations(enabled = true) {
   return useInfiniteQuery({
     queryKey: qk.conversations,
+    enabled,
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam }) => {
       const page = await unwrap(api.GET("/v1/conversations", { params: { query: { limit: PAGE, cursor: pageParam, kind: "chat" } } }));
@@ -409,8 +447,8 @@ export function findCachedApproval(qc: QueryClient, approvalId: string): Approva
 
 // ---------------------------------------------------------------- apps
 
-export function useApps() {
-  return useQuery({ queryKey: qk.apps, queryFn: () => unwrap(api.GET("/v1/apps")), select: (data) => data.items });
+export function useApps(enabled = true) {
+  return useQuery({ queryKey: qk.apps, queryFn: () => unwrap(api.GET("/v1/apps")), select: (data) => data.items, enabled });
 }
 
 export function useConnectApp() {
@@ -621,8 +659,8 @@ export function useAgentProgress() {
   });
 }
 
-export function useAgentSettings() {
-  return useQuery({ queryKey: qk.agentSettings, queryFn: () => unwrap(api.GET("/v1/agent/settings")) });
+export function useAgentSettings(enabled = true) {
+  return useQuery({ queryKey: qk.agentSettings, queryFn: () => unwrap(api.GET("/v1/agent/settings")), enabled });
 }
 
 function useSettingsMutation<TInput>(run: (input: TInput) => Promise<AgentSettings>) {

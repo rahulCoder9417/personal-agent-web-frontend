@@ -56,7 +56,7 @@ function UnlinkedRow({ channel }: { channel: LinkableChannel }) {
         <span className="text-[14px] font-semibold">{label}</span>
         <Meta>not linked yet</Meta>
       </div>
-      <ButtonLink href={`/onboarding?channel=${channel}`} size="sm" aria-label={`Link ${label}`}>
+      <ButtonLink href={`/onboarding?step=chat&channel=${channel}&return=%2Fsettings`} size="sm" aria-label={`Link ${label}`}>
         Link
       </ButtonLink>
     </li>
