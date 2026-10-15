@@ -409,6 +409,11 @@ body {
   .sheet-backdrop { animation: none; }
 }
 
+/* The cover over the chat while it waits for the account (src/components/onboarding/welcome-gate.tsx),
+   gone before the first paint when this browser remembers the account finishing the welcome flow
+   (the attribute is set by a script in src/app/(app)/layout.tsx; src/lib/onboarded-here.ts). */
+html[data-onboarded] .welcome-cover { display: none; }
+
 /* The sign-in pages (src/components/auth/auth-frame.tsx): the apps floating around the hero, as on
    textcrew.in. */
 .auth-float-a { animation: auth-float 7s ease-in-out infinite; }
