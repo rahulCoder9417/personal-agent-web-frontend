@@ -19,7 +19,14 @@ info:
     - Auth: Clerk session JWT as `Authorization: Bearer <token>` on every `/v1` route.
     - Lists use cursor pagination (`cursor`, `limit`); responses carry `nextCursor` (null at the end).
     - Money is in US cents; credits are integers (1 credit = $0.01 of price).
-    - Errors always use the `Error` schema.
+    - Errors always use the `Error` schema. A 500 `internal` error gives the request id as
+      `details.requestId`, so a report can quote it.
+    - Every answer carries an `X-Request-Id` header: the id the server logs this request under.
+      A caller may send its own `X-Request-Id` (up to 64 letters, digits, `_` or `-`); it is kept,
+      otherwise the server makes one. Not repeated under each route.
+    - Any signed-in route can answer 403 `account_suspended` while an admin has suspended the
+      account (see `POST /v1/admin/users/{userId}/suspend`), and 429 `rate_limited` from the
+      per-address limit. Neither is repeated under each route.
 servers:
   - url: https://api.example.com
     description: Production (replace with the real domain)
@@ -86,6 +93,10 @@ paths:
       description: |
         A `timezone` (an IANA name such as `Asia/Kolkata`, 400 for an unknown one) also makes
         `timezoneSet` true.
+
+        `onboardingCompleted` and `gettingStartedDismissed` are the web app's first-run marks (see
+        `Me`). `true` stamps the time now, or keeps the time already there; `false` clears it. Only
+        the signed-in user's own marks change.
       requestBody:
         required: true
         content:
@@ -1749,6 +1760,847 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  # ---------------------------------------------------------------- admin: one user's apps, chats and automations
+  # Support tools. Every action goes through the same module function as the user's own, and
+  # writes an audit row with the admin's id and the required reason. No Composio account ids,
+  # tokens or secrets, and chat ids only masked.
+  /v1/admin/overview:
+    get:
+      operationId: adminOverview
+      tags: [admin]
+      summary: The platform's numbers at a glance (admin)
+      description: |
+        Counts only: no name, email, id or text. "Today" starts at midnight UTC; "7 days" is the
+        last 7 × 24 hours. Turn counts come from the turn timings, which are kept 30 days.
+        `containers.awake` is null when the vm-manager can't be asked, and `jobs.failed` when the
+        job queues can't be read; the other numbers still come.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminOverview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/users:
+    get:
+      operationId: adminListUsers
+      tags: [admin]
+      summary: Users, newest first, with search (admin)
+      description: |
+        Deleted accounts are listed too, marked `deleted`. The balance is worked out from the
+        user's grants, as everywhere else. Never a message, a memory, a key or a token.
+      parameters:
+        - name: query
+          in: query
+          required: false
+          description: Part of an email or a name (any letter case), or a whole user id.
+          schema: { type: string, minLength: 1, maxLength: 200 }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminUser" }
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/users/{userId}/apps:
+    get:
+      operationId: adminListUserApps
+      tags: [admin]
+      summary: One user's app connections (admin)
+      description: |
+        Every connection the user has, in any state, newest first, from our own table. Composio is
+        not asked: use the recheck for that.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminUserApp" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/users/{userId}/apps/{connectionId}/disconnect:
+    post:
+      operationId: adminDisconnectUserApp
+      tags: [admin]
+      summary: Disconnect one of a user's apps (admin)
+      description: |
+        The same as the user's own disconnect: the account is removed at Composio and the
+        connection is deleted. App-event automations on that app are left as the user's own
+        disconnect leaves them. Audited with the admin's id and the reason.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: connectionId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200, pattern: '\S' }
+      responses:
+        "204": { description: Disconnected }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/users/{userId}/apps/{connectionId}/recheck:
+    post:
+      operationId: adminRecheckUserApp
+      tags: [admin]
+      summary: Ask Composio about one of a user's connections again (admin)
+      description: |
+        Runs the connection check now, whatever the connection's state: Composio is asked about
+        this account and its answer is copied (`ACTIVE` → active, `EXPIRED` → expired, `FAILED`
+        → error). An account Composio no longer has becomes `error`. One still being set up stays
+        `pending` and gets a fresh series of checks. Audited with the admin's id and the reason.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: connectionId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200, pattern: '\S' }
+      responses:
+        "200":
+          description: Checked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminRecheckResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: Composio can't be asked right now. Nothing changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/admin/users/{userId}/channels:
+    get:
+      operationId: adminListUserChannels
+      tags: [admin]
+      summary: One user's linked chats (admin)
+      description: The chat id itself is never returned, only a masked form.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminUserChannel" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/users/{userId}/channels/{channelLinkId}/unlink:
+    post:
+      operationId: adminUnlinkUserChannel
+      tags: [admin]
+      summary: Unlink one of a user's chats (admin)
+      description: |
+        The same as the user's own unlink (`DELETE /v1/channels/{channelLinkId}`), with the same
+        `channel_unlinked` entry in the user's activity log, marked as done by an admin. The chat
+        then gets the "not linked yet" reply. Audited with the admin's id and the reason.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/ChannelLinkId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200, pattern: '\S' }
+      responses:
+        "204": { description: Unlinked }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/users/{userId}/automations:
+    get:
+      operationId: adminListUserAutomations
+      tags: [admin]
+      summary: Every automation of one user, finished one-time reminders too (admin)
+      description: Newest first. The instruction text and the trigger's settings are left out.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminUserAutomation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/automations/{automationId}/pause:
+    post:
+      operationId: adminPauseAutomation
+      tags: [admin]
+      summary: Pause any user's automation (admin)
+      description: |
+        The same as the user's own pause (its timer is removed; app events for it are ignored), with
+        `pausedReason: admin`, so the user sees it was paused by Textcrew. Adding credits does not
+        resume it. 409 for a one-time reminder that already ran. Audited with the admin's id and
+        the reason.
+      parameters:
+        - $ref: "#/components/parameters/AutomationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200, pattern: '\S' }
+      responses:
+        "200":
+          description: Paused
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserAutomation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/automations/{automationId}/resume:
+    post:
+      operationId: adminResumeAutomation
+      tags: [admin]
+      summary: Resume any user's automation (admin)
+      description: |
+        The same as the user's own resume: its timer is set again and its failure count goes back
+        to 0. 409 for a one-time reminder that already ran. Audited with the admin's id and the
+        reason.
+      parameters:
+        - $ref: "#/components/parameters/AutomationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200, pattern: '\S' }
+      responses:
+        "200":
+          description: Resumed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserAutomation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/automations/{automationId}:
+    delete:
+      operationId: adminDeleteAutomation
+      tags: [admin]
+      summary: Delete any user's automation (admin)
+      description: |
+        The same as the user's own delete: its timer goes, and its Composio trigger with it (for
+        pull-request review, the watch on the repo, and with it the standing approval). Audited
+        with the admin's id and the reason.
+      parameters:
+        - $ref: "#/components/parameters/AutomationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200, pattern: '\S' }
+      responses:
+        "204": { description: Deleted }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/apps/summary:
+    get:
+      operationId: adminAppsSummary
+      tags: [admin]
+      summary: Per app, how many users connected it and whether it can be connected here (admin)
+      description: Numbers only, one row per app in the catalog.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminAppSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- admin: operations (jobs, audit, timings, config, health)
+  /v1/admin/jobs:
+    get:
+      operationId: adminListJobs
+      tags: [admin]
+      summary: Jobs in the queues, by queue and state (admin)
+      description: |
+        Newest first within a queue. Without `queue`, the four queues are paged one after the
+        other (inbound, outbound, scheduled, system). `waiting` includes the jobs waiting with a
+        priority (paid users' inbound turns). `data` holds ids only: every other field of the job's
+        data is left out and only its name is listed in `omittedKeys`, so no message text, token
+        or key is ever shown. `failedReason` is the error's first line, with anything that looks
+        like a secret removed.
+      parameters:
+        - name: queue
+          in: query
+          required: false
+          schema: { type: string, enum: [inbound, outbound, scheduled, system] }
+        - name: state
+          in: query
+          required: false
+          schema:
+            { type: string, enum: [failed, waiting, active, delayed, completed], default: failed }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        [id, queue, name, state, attempts, maxAttempts, createdAt, processedAt,
+                         finishedAt, dueAt, failedReason, userId, data, omittedKeys]
+                      properties:
+                        id: { type: string }
+                        queue: { type: string, enum: [inbound, outbound, scheduled, system] }
+                        name: { type: string, examples: [process-message] }
+                        state:
+                          { type: string, enum: [failed, waiting, active, delayed, completed] }
+                        attempts: { type: integer, description: Tries made so far }
+                        maxAttempts: { type: integer }
+                        createdAt: { type: string, format: date-time }
+                        processedAt: { type: [string, "null"], format: date-time }
+                        finishedAt: { type: [string, "null"], format: date-time }
+                        dueAt:
+                          type: [string, "null"]
+                          format: date-time
+                          description: When a delayed job becomes due. Null for any other job.
+                        failedReason:
+                          type: [string, "null"]
+                          description: First line of the last error, at most 300 characters, secrets removed.
+                        userId: { type: [string, "null"] }
+                        data:
+                          type: object
+                          description: The ids in the job's data (fields named `id` or ending in `Id`/`Ids`). Nothing else.
+                          additionalProperties:
+                            anyOf:
+                              - { type: string }
+                              - { type: number }
+                              - { type: array, items: { type: string } }
+                        omittedKeys:
+                          type: array
+                          items: { type: string }
+                          description: Names of the data fields left out. Their values are never shown.
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/jobs/counts:
+    get:
+      operationId: adminJobCounts
+      tags: [admin]
+      summary: How many jobs each queue holds, by state (admin)
+      description: "`waiting` includes the jobs waiting with a priority."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [queues]
+                properties:
+                  queues:
+                    type: array
+                    items:
+                      type: object
+                      required: [queue, failed, waiting, active, delayed, completed]
+                      properties:
+                        queue: { type: string, enum: [inbound, outbound, scheduled, system] }
+                        failed: { type: integer }
+                        waiting: { type: integer }
+                        active: { type: integer }
+                        delayed: { type: integer }
+                        completed: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/jobs/{queue}/{jobId}/retry:
+    post:
+      operationId: adminRetryJob
+      tags: [admin]
+      summary: Run a failed job once more (admin)
+      description: |
+        Only a failed job. It goes back in line and runs once more, as the "retry" button of the
+        queue board does: its own "already done?" checks decide what is left to do, so nothing is
+        done twice. Written to the audit log with the admin's id and the reason.
+      parameters:
+        - name: queue
+          in: path
+          required: true
+          schema: { type: string, enum: [inbound, outbound, scheduled, system] }
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "204": { description: Back in line }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/jobs/{queue}/{jobId}:
+    delete:
+      operationId: adminRemoveJob
+      tags: [admin]
+      summary: Remove a failed or finished job (admin)
+      description: |
+        Only a failed or a completed job; never one that is waiting, delayed or running (409).
+        Written to the audit log with the admin's id and the reason. The job's event, if it has
+        one, keeps its status in the database.
+      parameters:
+        - name: queue
+          in: path
+          required: true
+          schema: { type: string, enum: [inbound, outbound, scheduled, system] }
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "204": { description: Removed }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/audit:
+    get:
+      operationId: adminListAudit
+      tags: [admin]
+      summary: The audit log of every user, newest first (admin)
+      description: |
+        Every entry of the activity log: what users, agents, admins and the system did. Filters
+        combine. `from` and `to` bound the entry's time (`to` excluded). `details` comes with
+        every field that looks like a secret replaced by "[redacted]".
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema: { type: string, maxLength: 64 }
+        - name: actor
+          in: query
+          required: false
+          schema: { type: string, enum: [user, agent, admin, system] }
+        - name: action
+          in: query
+          required: false
+          schema: { type: string, maxLength: 64, examples: [credits_adjusted] }
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, userId, actor, action, summary, details, creditsCharged, createdAt]
+                      properties:
+                        id: { type: string }
+                        userId: { type: [string, "null"] }
+                        actor: { type: string, enum: [user, agent, admin, system] }
+                        action: { type: string, examples: [job_retried, credits_adjusted] }
+                        summary: { type: string }
+                        details:
+                          type: [object, "null"]
+                          additionalProperties: true
+                          description: The entry's details, secrets replaced by "[redacted]".
+                        creditsCharged: { type: [integer, "null"] }
+                        createdAt: { type: string, format: date-time }
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/timings/summary:
+    get:
+      operationId: adminTimingsSummary
+      tags: [admin]
+      summary: Where turns spent their time over the last days (admin)
+      description: |
+        From the turn timings only (kept 30 days). Per stage, as long as it kept the user waiting:
+        how many turns had it, the median and the 90th percentile in milliseconds. The wake is
+        split by kind (warm, cold, capacity, recreated). `total` is the time from the message
+        being queued to the answer. Then the turns per route, engine and outcome, and the 20
+        slowest turns with their biggest stage. Never any text.
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 30, default: 7 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [days, since, turns, stages, routes, engines, outcomes, slowest]
+                properties:
+                  days: { type: integer }
+                  since: { type: string, format: date-time }
+                  turns: { type: integer, description: Turns in the window }
+                  stages:
+                    type: array
+                    items:
+                      type: object
+                      required: [stage, count, p50Ms, p90Ms]
+                      properties:
+                        stage:
+                          type: string
+                          examples: [queue, route, wake cold, wake warm, engine start, first output, work, send answer, total]
+                        count: { type: integer }
+                        p50Ms: { type: integer }
+                        p90Ms: { type: integer }
+                  routes:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, count]
+                      properties:
+                        name: { type: string, description: "The route, or `none` for a turn that ended before routing" }
+                        count: { type: integer }
+                  engines:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, count]
+                      properties:
+                        name: { type: string, description: "hermes, claude_code, or `none`" }
+                        count: { type: integer }
+                  outcomes:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, count]
+                      properties:
+                        name: { type: string }
+                        count: { type: integer }
+                  slowest:
+                    type: array
+                    maxItems: 20
+                    items:
+                      type: object
+                      required:
+                        [deliveryId, userId, startedAt, totalMs, biggestStage, biggestStageMs, route,
+                         engine, wake, outcome]
+                      properties:
+                        deliveryId: { type: string }
+                        userId: { type: string }
+                        startedAt: { type: string, format: date-time }
+                        totalMs: { type: integer }
+                        biggestStage: { type: [string, "null"] }
+                        biggestStageMs: { type: [integer, "null"] }
+                        route: { type: [string, "null"] }
+                        engine: { type: [string, "null"] }
+                        wake: { type: [string, "null"] }
+                        outcome: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/timings/requests:
+    get:
+      operationId: adminRequestTimes
+      tags: [admin]
+      summary: How long the api's own requests took, per route (admin)
+      description: |
+        Response times of the api's HTTP requests (not turns: see `/v1/admin/timings/summary`).
+        Each request's time is counted in Redis, in a time bucket, per route and status class:
+        per 5 minutes (kept 2 hours) and per hour (kept 8 days). Nothing is written to the
+        database per request.
+
+        `window` is the last hour (read from 5-minute slots), the last 24 hours or the last 7
+        days (hourly slots). The current slot is included, so the window reaches back up to one
+        slot further; `since` is the start of the oldest slot read.
+
+        A route is the method and the route pattern, never the address with ids, e.g.
+        `GET /v1/conversations/:conversationId`; `GET (no route)` holds unknown addresses and
+        requests refused before routing. The health check and `/metrics` are not counted.
+        Percentiles are estimated from the buckets and are accurate to one bucket (at most about
+        a third of the value, usually much closer); `maxMs` is exact. The time is until the
+        answer starts: for the live stream, until the stream opens. `overall` is every request
+        together. Routes are sorted by p95, slowest first. Never a user, an address or a query.
+      parameters:
+        - name: window
+          in: query
+          required: false
+          schema: { type: string, enum: ["1h", "24h", "7d"], default: "24h" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [window, since, until, overall, routes]
+                properties:
+                  window: { type: string, enum: ["1h", "24h", "7d"] }
+                  since: { type: string, format: date-time, description: Start of the oldest slot read }
+                  until: { type: string, format: date-time, description: When the answer was made }
+                  overall: { $ref: "#/components/schemas/AdminRouteTimes" }
+                  routes:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminRouteTimes" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/config:
+    get:
+      operationId: adminGetConfig
+      tags: [admin]
+      summary: The settings that shape behaviour, read-only (admin)
+      description: |
+        Built from a fixed list, never by reading the whole environment. `settings` are the
+        settings that are not secret: switches, limits, lists and addresses (without any user
+        name or password in them). For each secret, `secrets` says only whether it is set. `apps`
+        is the app catalog with whether each app can be connected on this server, and how.
+        `AWAKE_CAP` is the vm-manager's own setting: the backend can't read it, so its value is
+        null.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [environment, settings, secrets, apps]
+                properties:
+                  environment: { type: string, enum: [development, test, production] }
+                  settings:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, group, value]
+                      properties:
+                        name: { type: string, examples: [CREW_AVAILABLE] }
+                        group: { type: string, examples: [crew] }
+                        value:
+                          anyOf:
+                            - { type: string }
+                            - { type: number }
+                            - { type: boolean }
+                            - { type: array, items: { type: string } }
+                            - { type: "null" }
+                        note: { type: string }
+                  secrets:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, set]
+                      properties:
+                        name: { type: string, examples: [COMPOSIO_API_KEY] }
+                        set: { type: boolean }
+                  apps:
+                    type: array
+                    items:
+                      type: object
+                      required: [slug, name, connectable, setup]
+                      properties:
+                        slug: { type: string }
+                        name: { type: string }
+                        connectable: { type: boolean }
+                        setup:
+                          type: string
+                          enum: [settings, made_by_server, server_may_make, none]
+                          description: |
+                            `settings`: named in COMPOSIO_AUTH_CONFIGS. `made_by_server`: the server
+                            made it earlier. `server_may_make`: COMPOSIO_MANAGED_APPS lets the server
+                            make it on the first connect. `none`: can't be connected here.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/health:
+    get:
+      operationId: adminGetHealth
+      tags: [admin]
+      summary: Can the backend reach what it depends on (admin)
+      description: |
+        Asks Postgres, Redis, the vm-manager, LiteLLM and Composio, each with a 3-second limit, and
+        says for each `ok`, `error` or `off` (not set up on this server), with a short message.
+        `ok` is true when none is `error`. `version` is the backend's version and the deployed
+        commit, when the deploy passed it on (`GIT_COMMIT`).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, checkedAt, version, services]
+                properties:
+                  ok: { type: boolean }
+                  checkedAt: { type: string, format: date-time }
+                  version:
+                    type: object
+                    required: [version, commit, node]
+                    properties:
+                      version: { type: string, examples: [0.1.0] }
+                      commit: { type: [string, "null"], examples: [accd3c4] }
+                      node: { type: string, examples: [v22.11.0] }
+                  services:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, status, message, ms]
+                      properties:
+                        name: { type: string, enum: [postgres, redis, vm-manager, litellm, composio] }
+                        status: { type: string, enum: [ok, error, "off"] }
+                        message: { type: string }
+                        ms: { type: integer, description: How long the check took }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   # ---------------------------------------------------------------- waitlist
   /v1/waitlist:
     post:
@@ -1855,6 +2707,697 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------- admin: one user's agent and container
+  # Every operation here is admin-only. Every change is written to the audit log with the admin's
+  # id and the reason. No response carries a container token, a Bridge secret, a LiteLLM key or an
+  # API key.
+  /v1/admin/users/{userId}/agent:
+    get:
+      operationId: adminGetUserAgent
+      tags: [admin]
+      summary: One user's agent and container, as support sees it (admin)
+      description: |
+        The container as the vm-manager reports it, the engine, whether a Claude plan is connected
+        (never its sign-in), Claude Code's model and effort, Scout's browser, what pays for the AI,
+        and the usage charged since midnight UTC. When the vm-manager can't be asked, the rest is
+        still answered and `container.reachable` is false.
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminAgent" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/users/{userId}/container/stop:
+    post:
+      operationId: adminStopContainer
+      tags: [admin]
+      summary: Stop one user's container now (admin)
+      description: |
+        A polite stop by default, the way the idle stop does it: Hermes saves to the user's folder
+        first. The vm-manager refuses it (409) while a turn runs, a message is being delivered or a
+        Claude sign-in waits for its code.
+
+        **`force: true` is dangerous.** It ends the container at once, in the middle of a turn if
+        there is one, without letting Hermes save. That turn fails as our fault: the user is told
+        "something went wrong on our side" and its credits are given back. Use it only for a turn
+        that is stuck.
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500, description: "Why. Kept in the audit log, not shown to the user." }
+                force:
+                  type: boolean
+                  default: false
+                  description: "**Dangerous**: stops it even in the middle of a turn (see above)."
+      responses:
+        "200":
+          description: Stopped
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [container]
+                properties:
+                  container: { $ref: "#/components/schemas/AdminContainer" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such user, or the user has no container
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: A polite stop was refused (a turn runs, a delivery is in flight, or a Claude sign-in waits)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: The vm-manager could not be asked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/admin/users/{userId}/container/wake:
+    post:
+      operationId: adminWakeContainer
+      tags: [admin]
+      summary: Wake one user's container now (admin)
+      description: |
+        The same wake a turn makes: the container is made first if the user has none, then started
+        and checked for ready; afterwards the engine and the browser switch are set again if they
+        differ. It needs the user to have credits, because awake time is charged to them (1 credit
+        per 10 minutes; the idle stop puts it back to sleep after 3 quiet minutes).
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500, description: "Why. Kept in the audit log, not shown to the user." }
+      responses:
+        "200":
+          description: Awake
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [container, wasStopped]
+                properties:
+                  container: { $ref: "#/components/schemas/AdminContainer" }
+                  wasStopped: { type: boolean, description: It was asleep and was started now. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The user is out of credits
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: The server is at its awake limit with nothing to stop, or the vm-manager could not be asked. Try again shortly.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/admin/users/{userId}/agent/reset:
+    post:
+      operationId: adminResetAgent
+      tags: [admin]
+      summary: Put chosen agent settings back to their defaults (admin)
+      description: |
+        `engine`: the chosen engine goes back to Hermes (a Claude plan stays connected; the user
+        can choose Claude Code again). `model` and `effort`: Claude Code's model and thinking effort
+        go back to Default, Claude Code's own choice. `browser`: Scout's browser switch is set again
+        from the user's plan and the deployment, as a plan change does. The same functions the user's
+        own settings use make each change, so the vm-manager is told the same way.
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, what]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500, description: "Why. Kept in the audit log, not shown to the user." }
+                what:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items: { type: string, enum: [engine, model, effort, browser] }
+      responses:
+        "200":
+          description: Reset; the agent as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminAgent" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: The browser switch could not be sent to the vm-manager (the other settings were reset)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/admin/users/{userId}/approvals:
+    get:
+      operationId: adminListUserApprovals
+      tags: [admin]
+      summary: One user's approvals, newest first (admin)
+      description: |
+        Every state unless `status` is given. Only the action's name, its app and the short summary
+        the user was shown: never the action's inputs.
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/ApprovalStatus" }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminApproval" }
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/approvals/{approvalId}/cancel:
+    post:
+      operationId: adminCancelApproval
+      tags: [admin]
+      summary: Cancel a waiting approval (admin)
+      description: |
+        Ends it the way the 24-hour expiry does: it becomes `expired`, the agent is not woken, and
+        nothing can run with it. A late tap on its button gets "That approval was already answered
+        or has expired". Only a waiting approval can be cancelled (409 otherwise).
+      parameters:
+        - { name: approvalId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500, description: "Why. Kept in the audit log, not shown to the user." }
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminApproval" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/users/{userId}/crew-jobs:
+    get:
+      operationId: adminListUserCrewJobs
+      tags: [admin]
+      summary: One user's crew jobs, newest first (admin)
+      description: |
+        Without the brief's text and without the report. `withReport=1` adds each job's report.
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+        - name: withReport
+          in: query
+          required: false
+          description: "`1` or `true` adds the report to each job."
+          schema: { type: string, enum: ["0", "1", "false", "true"] }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminCrewJob" }
+                  nextCursor: { type: [string, "null"] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/crew-jobs/{crewJobId}/cancel:
+    post:
+      operationId: adminCancelCrewJob
+      tags: [admin]
+      summary: Cancel a crew job that has not started (admin)
+      description: |
+        Only a `queued` job: it is marked `failed` with the error "Cancelled by Textcrew support",
+        it never runs, and the user is told in the job's chat. A running job can't be stopped
+        midway (409): the crew job has no stop signal yet. A finished one is 409 too.
+      parameters:
+        - { name: crewJobId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500, description: "Why. Kept in the audit log, not shown to the user." }
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminCrewJob" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ---------------------------------------------------------------- admin: accounts (role, suspend, delete, sign out, onboarding)
+  # Every call here needs a `reason` and writes one activity-log row for the user with the admin's
+  # id and that reason (the reason stays in the row's details; the user's own activity list shows
+  # only a neutral summary). An admin can't act on their own account this way, and an admin must
+  # lose the admin role before they can be suspended or deleted. Showing the welcome steps again
+  # (`onboarding/reset`) is harmless, so it is allowed on any account, an admin's own too.
+  /v1/admin/users/{userId}/role:
+    put:
+      operationId: adminSetUserRole
+      tags: [admin]
+      summary: Make a user an admin, or take the admin role away (admin)
+      description: |
+        The role lives in Clerk, in the user's public metadata (`role`). It is set there through
+        Clerk's Backend API first, then on our own row at once, so it applies from the user's next
+        request. Clerk's `user.updated` webhook that follows carries the same role. Setting the role
+        a user already has changes nothing and writes nothing. An admin can't remove their own admin
+        role (409). If Clerk can't be reached or isn't set up, nothing changes (503).
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role, reason]
+              additionalProperties: false
+              properties:
+                role: { type: string, enum: [user, admin] }
+                reason: { type: string, minLength: 1, maxLength: 500, pattern: "\\S" }
+      responses:
+        "200":
+          description: The account as it is now
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [account, changed]
+                properties:
+                  account:
+                    type: object
+                    required: [userId, role, status, suspendedAt]
+                    properties:
+                      userId: { type: string }
+                      role: { type: string, enum: [user, admin] }
+                      status: { type: string, enum: [active, suspended] }
+                      suspendedAt: { type: [string, "null"], format: date-time }
+                  changed: { type: boolean, description: False when the user already had this role. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503":
+          description: Clerk could not be reached or is not set up (`CLERK_SECRET_KEY`). Nothing changed. Retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/admin/users/{userId}/suspend:
+    post:
+      operationId: adminSuspendUser
+      tags: [admin]
+      summary: Suspend an account (admin)
+      description: |
+        Puts the account on hold until it is unsuspended:
+        - every signed-in call of the user answers 403 `account_suspended`, the live stream too;
+        - the user's container may no longer call the platform's tools or the git gateway;
+        - messages from the user's linked chats are saved but not answered; each chat gets at most
+          one short notice a day saying the account is suspended;
+        - the user's automations that are on, or paused for lack of credits, are paused with the
+          reason `admin`;
+        - the container is stopped politely through the vm-manager and is not woken again. A
+          container in the middle of a turn is not stopped: the vm-manager refuses, the turn
+          finishes, and the idle stop puts it to sleep 3 minutes later (`containerStopped: false`).
+        Suspending a suspended account again changes nothing and writes no second log row, but it
+        does try the pause and the stop again. Refused for your own account and for an admin (409).
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500, pattern: "\\S" }
+      responses:
+        "200":
+          description: Suspended
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [account, changed, automationsPaused, containerStopped]
+                properties:
+                  account:
+                    type: object
+                    required: [userId, role, status, suspendedAt]
+                    properties:
+                      userId: { type: string }
+                      role: { type: string, enum: [user, admin] }
+                      status: { type: string, enum: [active, suspended] }
+                      suspendedAt: { type: [string, "null"], format: date-time }
+                  changed: { type: boolean, description: False when the account was suspended already. }
+                  automationsPaused: { type: integer, description: Automations paused by this call. }
+                  containerStopped:
+                    type: boolean
+                    description: |
+                      True when the vm-manager stopped the container now (or there was none to stop).
+                      False when it refused (a turn is running): the idle stop does it later.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/users/{userId}/unsuspend:
+    post:
+      operationId: adminUnsuspendUser
+      tags: [admin]
+      summary: Lift a suspension (admin)
+      description: |
+        The account works again at once. The automations paused by the suspension come back: on,
+        if the user has credits; otherwise paused for lack of credits, so they come back with the
+        next credits like any other. The container wakes with the user's next message. Unsuspending
+        an active account changes nothing and writes no log row.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500, pattern: "\\S" }
+      responses:
+        "200":
+          description: Active again
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [account, changed, automationsResumed, automationsWaitingForCredits]
+                properties:
+                  account:
+                    type: object
+                    required: [userId, role, status, suspendedAt]
+                    properties:
+                      userId: { type: string }
+                      role: { type: string, enum: [user, admin] }
+                      status: { type: string, enum: [active, suspended] }
+                      suspendedAt: { type: [string, "null"], format: date-time }
+                  changed: { type: boolean, description: False when the account was active already. }
+                  automationsResumed: { type: integer }
+                  automationsWaitingForCredits:
+                    type: integer
+                    description: Paused for lack of credits instead, because the balance is zero.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/users/{userId}/sessions/revoke:
+    post:
+      operationId: adminRevokeUserSessions
+      tags: [admin]
+      summary: Sign a user out everywhere (admin)
+      description: |
+        Ends every active Clerk session of the user, through Clerk's Backend API. A session token
+        the browser already holds is checked without asking Clerk, so it keeps working until it
+        expires (Clerk's tokens last about a minute); after that the user must sign in again.
+        Signing out does not suspend the account.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500, pattern: "\\S" }
+      responses:
+        "200":
+          description: Signed out
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked: { type: integer, description: Sessions ended by this call. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: Clerk could not be reached or is not set up (`CLERK_SECRET_KEY`). Retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/admin/users/{userId}/onboarding/reset:
+    post:
+      operationId: adminResetUserOnboarding
+      tags: [admin]
+      summary: Show a user the welcome steps and the "Getting started" checklist again (admin)
+      description: |
+        Clears the user's two first-run marks, `onboardingCompletedAt` and
+        `gettingStartedDismissedAt` (see `Me`). The web app then shows the welcome steps on the
+        user's next visit, and the "Getting started" checklist while any of its steps is left.
+        Nothing else changes. Allowed on any account that is not deleted, an admin's own too. When
+        both marks are already empty, nothing changes and no log row is written (`changed: false`).
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500, pattern: "\\S" }
+      responses:
+        "200":
+          description: Both marks are empty now
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [userId, onboardingCompletedAt, gettingStartedDismissedAt, changed]
+                properties:
+                  userId: { type: string }
+                  onboardingCompletedAt: { type: "null" }
+                  gettingStartedDismissedAt: { type: "null" }
+                  changed:
+                    type: boolean
+                    description: False when both marks were already empty.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/users/{userId}:
+    get:
+      operationId: adminGetUser
+      tags: [admin]
+      summary: One user's details (admin)
+      description: |
+        Counts and metadata only. Never the user's messages, memories, keys, tokens, app account
+        names or the arguments of what the agent did: the activity entries are the one-line
+        summaries the user sees in their own activity log.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: adminUpdateUser
+      tags: [admin]
+      summary: Set a user's plan by hand (admin)
+      description: |
+        The steps a paid change of plan takes, with no payment and no credits: the plan, the
+        LiteLLM key's models and budget, Scout's browser switch (from the agent's next start) and
+        the queue priority. The same plan again changes nothing. Written to the activity log with
+        the admin's id. A Polar subscription that is still running can set its own plan again at
+        its next event; `subscription` says whether there is one.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan]
+              additionalProperties: false
+              properties:
+                plan: { $ref: "#/components/schemas/PlanId" }
+                reason:
+                  type: string
+                  maxLength: 200
+                  description: Why, for the activity log.
+      responses:
+        "200":
+          description: Done (or nothing to change)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminPlanChange" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      operationId: adminDeleteUser
+      tags: [admin]
+      summary: Delete an account (admin)
+      description: |
+        The same deletion a user's own goes through. The user is deleted in Clerk first (through
+        Clerk's Backend API); then the account is marked deleted at once and the deletion job runs:
+        the container and the user's folder (the vm-manager's `DeleteSandbox`), the LiteLLM key,
+        app connections, automations, linked chats, conversations, messages, files and memories,
+        and a renewing subscription is set to not renew. Clerk's `user.deleted` webhook that
+        follows finds the account already deleted and adds nothing.
+
+        `confirmEmail` must be the user's email (letter case and spaces around it don't matter),
+        else 400 and nothing happens. Refused for your own account and for an admin (409). The log
+        row keeps the admin's id, the deleted user's id and the reason; never the email or name.
+        An account already deleted answers 404.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, confirmEmail]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500, pattern: "\\S" }
+                confirmEmail: { type: string, maxLength: 320 }
+      responses:
+        "202":
+          description: Deleted in Clerk and on our side; the deletion job removes the rest
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [userId, status]
+                properties:
+                  userId: { type: string }
+                  status: { type: string, const: deleting }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503":
+          description: Clerk could not be reached or is not set up (`CLERK_SECRET_KEY`). Nothing changed. Retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   # ---------------------------------------------------------------- webhooks (called by external services)
   /webhooks/clerk:
@@ -2044,7 +3587,9 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     Forbidden:
-      description: Not allowed (e.g. not an admin)
+      description: |
+        Not allowed: `forbidden` (e.g. not an admin), or `account_suspended` (an admin suspended
+        the account; every signed-in call answers this until it is unsuspended)
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -2102,9 +3647,9 @@ components:
           properties:
             code:
               type: string
-              examples: [invalid_request, unauthorized, forbidden, not_found, rate_limited,
-                         out_of_credits, plan_limit, channel_disabled, invalid_or_expired_code,
-                         conflict, unavailable, internal]
+              examples: [invalid_request, unauthorized, forbidden, account_suspended, not_found,
+                         rate_limited, out_of_credits, plan_limit, channel_disabled,
+                         invalid_or_expired_code, conflict, unavailable, internal]
             message: { type: string }
             details: { type: object, additionalProperties: true }
 
@@ -2132,7 +3677,19 @@ components:
 
     Me:
       type: object
-      required: [id, email, emailVerified, name, timezone, timezoneSet, plan, role, credits, createdAt]
+      required:
+        - id
+        - email
+        - emailVerified
+        - name
+        - timezone
+        - timezoneSet
+        - plan
+        - role
+        - credits
+        - createdAt
+        - onboardingCompletedAt
+        - gettingStartedDismissedAt
       properties:
         id: { type: string }
         email: { type: string, format: email }
@@ -2155,12 +3712,41 @@ components:
             balance: { type: integer }
             nextExpiry: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
+        onboardingCompletedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When the user finished or skipped the web app's welcome steps. Null means not yet, so
+            the web app shows them. Every account starts with null, and so did the accounts made
+            before this field existed: they see the welcome steps once too. Set with
+            `PATCH /v1/me` `onboardingCompleted: true`; cleared with `false` (to see them again,
+            from Settings) or by an admin.
+        gettingStartedDismissedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When the user closed the "Getting started" checklist. Null means it may still show.
+            The web app also hides it by itself once every step is done, worked out from the
+            account's real data; the backend does not track the steps. Set with `PATCH /v1/me`
+            `gettingStartedDismissed: true`; cleared with `false` or by an admin.
 
     MeUpdate:
       type: object
       properties:
         name: { type: string, maxLength: 80 }
         timezone: { type: string }
+        onboardingCompleted:
+          type: boolean
+          description: |
+            `true`: the welcome steps are done (finished or skipped). Sets `onboardingCompletedAt`
+            to now; if it is already set, the first time is kept. `false`: clears it, so the web
+            app shows the welcome steps again.
+        gettingStartedDismissed:
+          type: boolean
+          description: |
+            `true`: the user closed the "Getting started" checklist. Sets
+            `gettingStartedDismissedAt` to now; if it is already set, the first time is kept.
+            `false`: clears it, so the checklist may show again.
 
     ChannelLink:
       type: object
@@ -2428,7 +4014,10 @@ components:
           enum: [pr_review, null]
           description: "`pr_review`: this automation is pull-request review for one repo (see `/v1/pr-reviews`)."
         enabled: { type: boolean }
-        pausedReason: { type: [string, "null"], enum: [out_of_credits, failures, user, null] }
+        pausedReason:
+          type: [string, "null"]
+          enum: [out_of_credits, failures, user, admin, suspended, null]
+          description: "`admin`: paused by Textcrew support. Adding credits does not resume it; the user can. `suspended`: paused while an admin suspended the account; it comes back when the account is unsuspended."
         nextRunAt: { type: [string, "null"], format: date-time }
         lastRunAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
@@ -2471,7 +4060,10 @@ components:
         enabled:
           type: boolean
           description: False while paused. A paused repo gets no reviews and gives no standing approval.
-        pausedReason: { type: [string, "null"], enum: [out_of_credits, failures, user, null] }
+        pausedReason:
+          type: [string, "null"]
+          enum: [out_of_credits, failures, user, admin, suspended, null]
+          description: "`admin`: paused by Textcrew support. Adding credits does not resume it; the user can. `suspended`: paused while an admin suspended the account; it comes back when the account is unsuspended."
         channel:
           $ref: "#/components/schemas/ChannelType"
           description: |
@@ -2931,6 +4523,506 @@ components:
               entries: { type: integer }
               attempts: { type: integer }
               lastAt: { type: string, format: date-time }
+
+    # ---- admin: one user's apps, chats and automations
+    AdminAppSetupSource:
+      type: string
+      enum: [settings, server_made, none]
+      description: |
+        Where this server's Composio setup for the app comes from. `settings`: named in
+        `COMPOSIO_AUTH_CONFIGS` (our own sign-in app, usually). `server_made`: made by the server
+        itself and kept in its table. `none`: no setup yet; with `connectable` true the server
+        makes one on the first connect (`COMPOSIO_MANAGED_APPS`).
+
+    AdminUserApp:
+      type: object
+      required: [id, app, appName, status, accountLabel, setupSource, connectable, connectedAt, lastCheckedAt]
+      properties:
+        id: { type: string, description: The connection's id }
+        app: { type: string, examples: [gmail] }
+        appName: { type: string, examples: [Gmail] }
+        status: { type: string, enum: [pending, active, expired, error] }
+        accountLabel: { type: [string, "null"], examples: [work@acme.com] }
+        setupSource: { $ref: "#/components/schemas/AdminAppSetupSource" }
+        connectable: { type: boolean, description: The app can be connected on this server today }
+        connectedAt:
+          type: string
+          format: date-time
+          description: When the user started connecting it (the connect link was made)
+        lastCheckedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When the platform last heard from Composio about this connection (a check, the app
+            list, Composio's webhook or an admin's recheck). Null if never.
+
+    AdminRecheckResult:
+      type: object
+      required: [connection, composioStatus, checksQueued]
+      properties:
+        connection: { $ref: "#/components/schemas/AdminUserApp" }
+        composioStatus:
+          type: [string, "null"]
+          description: What Composio said, e.g. ACTIVE, INITIATED, EXPIRED, FAILED. Null when it has no such account.
+          examples: [ACTIVE]
+        checksQueued:
+          type: boolean
+          description: The connection is still being set up, and a fresh series of checks was queued.
+
+    AdminUserChannel:
+      type: object
+      required: [id, channel, label, maskedChatId, linkedAt, enabled, blocked, lastInboundAt]
+      properties:
+        id: { type: string, description: The link's id }
+        channel: { $ref: "#/components/schemas/ChannelType" }
+        label:
+          type: string
+          description: What the user sees in Settings → Channels (a Telegram name or a masked number).
+          examples: ["@rahul", "+91 •••• ••42 10"]
+        maskedChatId:
+          type: string
+          description: The chat id or phone number, masked. The full id is never returned.
+          examples: ["•••• 6789", "+91 •••• ••42 10"]
+        linkedAt: { type: string, format: date-time }
+        enabled:
+          type: boolean
+          description: The channel is switched on on this server (`ENABLED_CHANNELS`).
+        blocked: { type: boolean, description: The user blocked the bot; nothing is sent there. }
+        lastInboundAt: { type: [string, "null"], format: date-time }
+
+    AdminUserAutomation:
+      type: object
+      required: [id, userId, title, kind, runAt, cron, trigger, repo, timezone, enabled, pausedReason, failCount, lastRunAt, nextRunAt, preset, completedAt, createdAt]
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        title: { type: string }
+        kind: { type: string, enum: [once, repeat, event] }
+        runAt: { type: [string, "null"], format: date-time, description: kind=once }
+        cron: { type: [string, "null"], description: kind=repeat }
+        trigger:
+          type: [object, "null"]
+          description: kind=event. The trigger's settings are left out.
+          required: [app, event]
+          properties:
+            app: { type: string }
+            event: { type: string }
+        repo:
+          type: [string, "null"]
+          description: Pull-request review only, the repo it watches.
+          examples: [acme/website]
+        timezone: { type: [string, "null"] }
+        enabled: { type: boolean }
+        pausedReason: { type: [string, "null"], enum: [out_of_credits, failures, user, admin, suspended, null] }
+        failCount: { type: integer, description: Failed runs in a row. Three pause it. }
+        lastRunAt: { type: [string, "null"], format: date-time }
+        nextRunAt: { type: [string, "null"], format: date-time }
+        preset: { type: [string, "null"], enum: [pr_review, null] }
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+          description: A one-time reminder that already ran. Not in the user's own list.
+        createdAt: { type: string, format: date-time }
+
+    AdminAppSummary:
+      type: object
+      required: [app, name, setupSource, connectable, users, active, pending, expired, failed]
+      properties:
+        app: { type: string, examples: [gmail] }
+        name: { type: string, examples: [Gmail] }
+        setupSource: { $ref: "#/components/schemas/AdminAppSetupSource" }
+        connectable: { type: boolean, description: The app can be connected on this server today }
+        users: { type: integer, description: "Users with at least one connection of this app, in any state" }
+        active: { type: integer, description: Connections that work }
+        pending: { type: integer, description: Connections started and not finished }
+        expired: { type: integer, description: Connections whose sign-in expired }
+        failed: { type: integer, description: Connections that failed (status `error`) }
+
+    # ---- admin: one user's agent and container (no tokens, secrets or keys in any of these)
+    AdminContainer:
+      type: object
+      description: |
+        The user's container as the vm-manager reports it. Never its token or its Bridge secret.
+        The vm-manager does not report when the container woke, so there is no "awake since".
+      required: [reachable, state, busy, lastActiveAt, imageVersion, memoryBytes, engine, claudeSignedIn, browserOn]
+      properties:
+        reachable:
+          type: boolean
+          description: False when the vm-manager could not be asked. The other fields are then null, and `state` is `unknown`.
+        state: { type: string, enum: [none, stopped, waking, awake, busy, broken, unknown] }
+        busy: { type: [boolean, "null"], description: In the middle of a turn. }
+        lastActiveAt:
+          type: [string, "null"]
+          format: date-time
+          description: The last delivered message, tool call or git call.
+        imageVersion: { type: [string, "null"], description: The agent image the container was made from. }
+        memoryBytes: { type: [integer, "null"], description: "Memory in use, while it runs." }
+        engine:
+          type: [string, "null"]
+          enum: [hermes, claude_code, null]
+          description: The engine the vm-manager has on record for the container.
+        claudeSignedIn:
+          type: [boolean, "null"]
+          description: Claude Code has its sign-in in the user's folder, as the vm-manager last saw it. Never the sign-in itself.
+        browserOn:
+          type: [boolean, "null"]
+          description: Scout's browser as the vm-manager has it on record (a running container gets a change at its next wake).
+
+    AdminAgent:
+      type: object
+      required: [userId, plan, container, engine, claude, claudeModel, claudeEffort, browser, ai, today]
+      properties:
+        userId: { type: string }
+        plan: { $ref: "#/components/schemas/PlanId" }
+        container: { $ref: "#/components/schemas/AdminContainer" }
+        engine:
+          type: object
+          required: [chosen, effective]
+          properties:
+            chosen: { $ref: "#/components/schemas/AgentRuntime" }
+            effective:
+              type: [string, "null"]
+              enum: [hermes, claude_code, null]
+              description: What runs (null when the user has no AI source).
+        claude:
+          type: object
+          required: [connected, connectedAt]
+          properties:
+            connected: { type: boolean }
+            connectedAt: { type: [string, "null"], format: date-time }
+        claudeModel: { type: [string, "null"], description: "Null: Default (Claude Code's own choice)." }
+        claudeEffort:
+          type: [string, "null"]
+          enum: [low, medium, high, xhigh, max, null]
+          description: "Null: Default (Claude Code's own choice)."
+        browser:
+          type: object
+          required: [available, wanted, onRecord]
+          properties:
+            available: { type: boolean, description: This deployment has the browser (`BROWSER_AVAILABLE`). }
+            wanted: { type: boolean, description: The deployment has it and the user's plan includes it. }
+            onRecord: { type: [boolean, "null"], description: What the vm-manager has on record (null without a container or when it can't be asked). }
+        ai:
+          type: object
+          required: [access, preference, serverMode, ownKeyProviders]
+          properties:
+            access:
+              type: string
+              enum: [claude_plan, own_key, platform, none]
+              description: What pays for the AI now (`platform` is Textcrew AI, paid in credits).
+            preference: { $ref: "#/components/schemas/AiPreference" }
+            serverMode:
+              type: string
+              enum: [platform, own_only]
+              description: The server's `AI_ACCESS_MODE`.
+            ownKeyProviders:
+              type: array
+              items: { $ref: "#/components/schemas/ByokProvider" }
+              description: The providers the user saved a key for. Never the key.
+        today:
+          type: object
+          description: |
+            Usage charged since midnight UTC, from the 5-minute usage syncs (the last few minutes
+            may not be in it yet).
+          required: [since, awakeSeconds, browserSeconds, creditsCharged]
+          properties:
+            since: { type: string, format: date-time }
+            awakeSeconds: { type: integer }
+            browserSeconds: { type: integer }
+            creditsCharged: { type: integer, description: "AI, awake time and browser time charged by those syncs." }
+
+    AdminApproval:
+      type: object
+      description: An approval without the action's inputs.
+      required: [id, userId, status, summary, app, action, createdAt, expiresAt, decidedAt, decidedVia, used]
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        status: { $ref: "#/components/schemas/ApprovalStatus" }
+        summary: { type: string, description: The short summary the user was shown. }
+        app: { type: [string, "null"], examples: [gmail] }
+        action: { type: [string, "null"], examples: [GMAIL_SEND_EMAIL] }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        decidedAt: { type: [string, "null"], format: date-time }
+        decidedVia:
+          type: [string, "null"]
+          description: How it was answered (`web`, `telegram:button`, ...), or `admin` when support cancelled it.
+        used: { type: boolean, description: An approved action already ran with it. }
+
+    AdminCrewJob:
+      type: object
+      description: A crew job without the brief's text. `report` only with `withReport=1`.
+      required: [id, userId, member, status, source, owner, repo, pullNumber, branch, reportTo, postedOnPullRequest, hasReport, error, createdAt, startedAt, finishedAt]
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        member: { type: string, enum: [patch, byte] }
+        status: { type: string, enum: [queued, running, done, failed] }
+        source: { type: string, enum: [app, chat] }
+        owner: { type: string }
+        repo: { type: string }
+        pullNumber: { type: [integer, "null"] }
+        branch: { type: [string, "null"] }
+        reportTo:
+          type: object
+          required: [channel, pullRequest, issue]
+          properties:
+            channel: { $ref: "#/components/schemas/ChannelType" }
+            pullRequest: { type: boolean }
+            issue: { type: boolean }
+        postedOnPullRequest: { type: boolean, description: The one review the brief allowed was posted. }
+        hasReport: { type: boolean }
+        report: { type: [string, "null"], description: Only with `withReport=1`. }
+        error: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: [string, "null"], format: date-time }
+        finishedAt: { type: [string, "null"], format: date-time }
+
+    AdminOverview:
+      type: object
+      required: [generatedAt, users, plans, turns, containers, credits, approvals, jobs, waitlist]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        users:
+          type: object
+          required: [total, newToday, new7d, active7d, deleted]
+          properties:
+            total: { type: integer, description: "Accounts that are not deleted" }
+            newToday: { type: integer }
+            new7d: { type: integer }
+            active7d: { type: integer, description: "Accounts that sent a message in the last 7 days, on any channel" }
+            deleted: { type: integer }
+        plans:
+          type: object
+          description: Accounts that are not deleted, by plan.
+          required: [free, pro, max]
+          properties:
+            free: { type: integer }
+            pro: { type: integer }
+            max: { type: integer }
+        turns:
+          type: object
+          required: [today, last7d, failedToday, failed7d]
+          properties:
+            today: { type: integer }
+            last7d: { type: integer }
+            failedToday: { type: integer, description: "Turns that ended in an error or failed" }
+            failed7d: { type: integer }
+        containers:
+          type: object
+          required: [awake]
+          properties:
+            awake:
+              type: [integer, "null"]
+              description: Containers waking, awake or busy right now. Null when the vm-manager can't be asked.
+        credits:
+          type: object
+          required: [month, granted, spent]
+          properties:
+            month: { type: string, examples: ["2026-10"] }
+            granted: { type: integer, description: "Credits granted this month (UTC), every source" }
+            spent: { type: integer, description: "Credits charged this month, less charges given back" }
+        approvals:
+          type: object
+          required: [open]
+          properties:
+            open: { type: integer, description: "Approvals waiting for an answer, not expired" }
+        jobs:
+          type: object
+          required: [failed]
+          properties:
+            failed:
+              type: [integer, "null"]
+              description: Failed jobs in the four queues (kept 30 days). Null when the queues can't be read.
+        waitlist:
+          type: object
+          required: [total, pending]
+          properties:
+            total: { type: integer }
+            pending: { type: integer }
+
+    AdminUser:
+      type: object
+      required: [id, email, emailVerified, name, timezone, plan, role, status, suspendedAt, flagged, createdAt, deletedAt, lastActiveAt, credits, engine, channels, connectedApps]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        emailVerified: { type: boolean }
+        name: { type: string }
+        timezone: { type: string }
+        plan: { $ref: "#/components/schemas/PlanId" }
+        role: { type: string, enum: [user, admin] }
+        status:
+          type: string
+          enum: [active, suspended, deleted]
+          description: "`deleted` when the account was deleted, else the account's own status."
+        suspendedAt: { type: [string, "null"], format: date-time, description: "When the current suspension started" }
+        flagged: { type: boolean, description: "Marked after a chargeback" }
+        createdAt: { type: string, format: date-time }
+        deletedAt: { type: [string, "null"], format: date-time }
+        lastActiveAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the user last sent a message, on any channel (messages are kept 365 days).
+        credits: { type: integer, description: "The balance, worked out from the grants" }
+        engine: { $ref: "#/components/schemas/AgentRuntime" }
+        channels:
+          type: array
+          description: The chat apps linked (the kinds only, never a chat id or number).
+          items: { type: string, enum: [whatsapp, telegram, imessage] }
+        connectedApps: { type: integer, description: "App connections that are active" }
+
+    AdminUserDetailApp:
+      type: object
+      required: [app, name, status, connectedAt]
+      properties:
+        app: { type: string, examples: [gmail] }
+        name: { type: string, examples: [Gmail] }
+        status: { type: string, enum: [pending, active, expired, error] }
+        connectedAt: { type: string, format: date-time }
+
+    AdminUserDetailAutomation:
+      type: object
+      required: [id, title, kind, preset, enabled, pausedReason, nextRunAt, lastRunAt, createdAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        kind: { type: string, enum: [once, repeat, event] }
+        preset: { type: [string, "null"], enum: [pr_review, null] }
+        enabled: { type: boolean }
+        pausedReason: { type: [string, "null"], enum: [out_of_credits, failures, user, admin, suspended, null] }
+        nextRunAt: { type: [string, "null"], format: date-time }
+        lastRunAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    AdminUserDetailCrewJob:
+      type: object
+      required: [id, member, status, source, repo, createdAt, finishedAt]
+      properties:
+        id: { type: string }
+        member: { type: string, enum: [patch, byte] }
+        status: { type: string, enum: [queued, running, done, failed] }
+        source: { type: string, enum: [app, chat] }
+        repo: { type: string, examples: [acme/website] }
+        createdAt: { type: string, format: date-time }
+        finishedAt: { type: [string, "null"], format: date-time }
+
+    AdminTurnTiming:
+      type: object
+      description: Where one turn's time went. Stage names and milliseconds only, never any text.
+      required: [id, startedAt, kind, channel, route, engine, wake, outcome, attempt, answeredMs, stages]
+      properties:
+        id: { type: string, description: "The turn's delivery id" }
+        startedAt: { type: string, format: date-time }
+        kind: { type: string }
+        channel: { type: string }
+        route: { type: [string, "null"], examples: [task, simple] }
+        engine: { type: [string, "null"], enum: [hermes, claude_code, null] }
+        wake: { type: [string, "null"], examples: [warm, cold, capacity, recreated] }
+        outcome: { type: string, examples: [done, simple, error, failed, retry] }
+        attempt: { type: integer }
+        answeredMs:
+          type: [integer, "null"]
+          description: How long after the message was queued the user had the answer.
+        stages:
+          type: array
+          items:
+            type: object
+            required: [name, ms]
+            properties:
+              name: { type: string, examples: [queue, route, wake, work] }
+              ms: { type: integer }
+
+    AdminRouteTimes:
+      type: object
+      description: |
+        Response times of one route (or of every request, in `overall`) over the window, in
+        milliseconds. All zero when no request was counted.
+      required: [route, count, clientErrors, serverErrors, p50Ms, p95Ms, p99Ms, maxMs]
+      properties:
+        route:
+          type: string
+          description: Method and route pattern; `all` in `overall`
+          examples: ["GET /v1/conversations", "POST /mcp", "GET (no route)", all]
+        count: { type: integer, description: Requests counted }
+        clientErrors: { type: integer, description: Answers with a 4xx status }
+        serverErrors: { type: integer, description: Answers with a 5xx status }
+        p50Ms: { type: integer, description: Half the requests took at most this }
+        p95Ms: { type: integer }
+        p99Ms: { type: integer }
+        maxMs: { type: integer, description: "The slowest request (exact)" }
+
+    AdminActivityEntry:
+      type: object
+      required: [id, actor, action, summary, creditsCharged, createdAt]
+      properties:
+        id: { type: string }
+        actor: { type: string, enum: [user, agent, admin, system] }
+        action: { type: string }
+        summary: { type: string }
+        creditsCharged: { type: [integer, "null"] }
+        createdAt: { type: string, format: date-time }
+
+    AdminUserDetail:
+      type: object
+      required: [user, subscription, credits, ledger, apps, automations, crewJobs, turns, activity, agent, container]
+      properties:
+        user: { $ref: "#/components/schemas/AdminUser" }
+        subscription:
+          $ref: "#/components/schemas/Subscription"
+          description: |
+            The Polar subscription, with its own plan when there is one (a plan set by hand can
+            differ from it); `status: none` and the user's plan when there is none.
+        credits: { $ref: "#/components/schemas/CreditBalance" }
+        ledger:
+          type: array
+          description: The last 20 changes to the user's credits, newest first.
+          items: { $ref: "#/components/schemas/LedgerEntry" }
+        apps:
+          type: array
+          items: { $ref: "#/components/schemas/AdminUserDetailApp" }
+        automations:
+          type: array
+          description: Automations that are not finished, newest first.
+          items: { $ref: "#/components/schemas/AdminUserDetailAutomation" }
+        crewJobs:
+          type: array
+          description: The last 20 crew jobs, newest first.
+          items: { $ref: "#/components/schemas/AdminUserDetailCrewJob" }
+        turns:
+          type: array
+          description: The last 20 turns' timings, newest first.
+          items: { $ref: "#/components/schemas/AdminTurnTiming" }
+        activity:
+          type: array
+          description: The last 20 activity-log entries, newest first.
+          items: { $ref: "#/components/schemas/AdminActivityEntry" }
+        agent:
+          type: object
+          required: [runtime, effectiveRuntime, aiAccess, claudeConnected]
+          properties:
+            runtime: { $ref: "#/components/schemas/AgentRuntime" }
+            effectiveRuntime: { type: [string, "null"], enum: [hermes, claude_code, null] }
+            aiAccess: { type: string, enum: [claude_plan, own_key, platform, none] }
+            claudeConnected: { type: boolean }
+        container:
+          description: The container's state from the vm-manager; null when it can't be asked.
+          oneOf:
+            - { $ref: "#/components/schemas/AgentStatus" }
+            - { type: "null" }
+
+    AdminPlanChange:
+      type: object
+      required: [userId, plan, previousPlan, changed, subscription]
+      properties:
+        userId: { type: string }
+        plan: { $ref: "#/components/schemas/PlanId" }
+        previousPlan: { $ref: "#/components/schemas/PlanId" }
+        changed: { type: boolean }
+        subscription:
+          $ref: "#/components/schemas/Subscription"
+          description: A running Polar subscription can set its own plan again at its next event.
 
     AgentRuntime:
       type: string
