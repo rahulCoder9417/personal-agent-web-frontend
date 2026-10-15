@@ -222,3 +222,20 @@ export const PencilIcon = (p: IconProps) => (
     <path d="M14.5 6.5l3 3" />
   </Base>
 );
+
+/** A question mark in a circle: Help. */
+export const HelpIcon = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M9.6 9.4a2.5 2.5 0 0 1 4.85.85c0 1.65-2.45 2.2-2.45 3.6" />
+    <path d="M12 16.9h.01" />
+  </Base>
+);
+
+/** Two links of a chain: copy the address of something. */
+export const LinkIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1" />
+    <path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1" />
+  </Base>
+);
