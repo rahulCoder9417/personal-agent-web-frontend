@@ -1,69 +1,18 @@
 "use client";
 
-import { AppIcon } from "@/components/brand-icon";
-import { toastError } from "@/components/toast";
-import { ButtonLink, Card, ErrorState, Meta, Pill, SkeletonRows } from "@/components/ui";
-import type { ChannelLink } from "@/lib/api/client";
-import { useAvailableChannels, useChannels, useUnlinkChannel } from "@/lib/api/hooks";
-import { linkableChannels, type LinkableChannel } from "@/lib/channels";
-import { CHANNEL_LABEL, formatDate } from "@/lib/format";
-import { ConfirmButton } from "@/components/confirm-button";
+import Link from "next/link";
+import { LinkedChatRow, UnlinkedChatRow } from "@/components/channels/chat-rows";
+import { ButtonLink, Card, ErrorState, Meta, SkeletonRows } from "@/components/ui";
+import { useAvailableChannels, useChannels } from "@/lib/api/hooks";
+import { linkableChannels } from "@/lib/channels";
+import { CHANNEL_LABEL } from "@/lib/format";
+import { INTEGRATIONS_PATH, linkChatHref } from "@/lib/integrations";
 import { SettingsGroup } from "./settings-rows";
 
-/** `off`: the chat app has been switched off since this chat was linked. It can still be unlinked. */
-function LinkedRow({ link, off }: { link: ChannelLink; off: boolean }) {
-  const unlink = useUnlinkChannel();
-  const label = CHANNEL_LABEL[link.channel];
-  return (
-    <li className="flex items-center gap-3 border-b border-line px-5 py-3.5 last:border-b-0">
-      <AppIcon name={link.channel} size={36} className={off ? "opacity-70" : undefined} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2">
-          <span className="text-[14px] font-semibold">{label}</span>
-          {off ? (
-            <span title={`${label} is switched off for now, so messages from it don’t reach Tex`}>
-              <Pill>Switched off</Pill>
-            </span>
-          ) : (
-            link.within24hWindow && (
-              <span title="Inside WhatsApp's 24-hour window, so Tex can reply freely">
-                <Pill tone="done">Replies open</Pill>
-              </span>
-            )
-          )}
-        </div>
-        <Meta className="truncate">
-          {link.displayId} · linked {formatDate(link.linkedAt)}
-        </Meta>
-      </div>
-      <ConfirmButton
-        label="Unlink"
-        confirmLabel="Unlink chat"
-        ariaLabel={`Unlink ${label} ${link.displayId}`}
-        pending={unlink.isPending}
-        onConfirm={() => unlink.mutate(link.id, { onError: (error) => toastError(`Couldn’t unlink ${label}`, error) })}
-      />
-    </li>
-  );
-}
-
-function UnlinkedRow({ channel }: { channel: LinkableChannel }) {
-  const label = CHANNEL_LABEL[channel];
-  return (
-    <li className="flex items-center gap-3 border-b border-line px-5 py-3.5 last:border-b-0">
-      <AppIcon name={channel} size={36} className="opacity-70" />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-[14px] font-semibold">{label}</span>
-        <Meta>not linked yet</Meta>
-      </div>
-      <ButtonLink href={`/onboarding?step=chat&channel=${channel}&return=%2Fsettings`} size="sm" aria-label={`Link ${label}`}>
-        Link
-      </ButtonLink>
-    </li>
-  );
-}
-
-/** Linked chats, then the chat apps that could be linked. Which ones are offered is the backend's call. */
+/**
+ * Linked chats, then the chat apps that could be linked. Which ones are offered is the backend's
+ * call. Linking happens in Integrations, where Link leads; a chat can be unlinked from either.
+ */
 export function LinkedChatsSection() {
   const channels = useChannels();
   const available = useAvailableChannels();
@@ -87,17 +36,29 @@ export function LinkedChatsSection() {
         <Card>
           <ul>
             {links.map((link) => (
-              <LinkedRow key={link.id} link={link} off={!linkable.some((channel) => channel === link.channel)} />
+              <LinkedChatRow key={link.id} link={link} off={!linkable.some((channel) => channel === link.channel)} />
             ))}
             {unlinked.map((channel) => (
-              <UnlinkedRow key={channel} channel={channel} />
+              <UnlinkedChatRow
+                key={channel}
+                channel={channel}
+                action={
+                  <ButtonLink href={linkChatHref(channel)} size="sm" aria-label={`Link ${CHANNEL_LABEL[channel]}`}>
+                    Link
+                  </ButtonLink>
+                }
+              />
             ))}
           </ul>
         </Card>
       )}
 
       <Meta className="text-[12px]">
-        Linking uses a one-time code that expires in 10 minutes. A chat we don’t know only gets a “link your account” reply.
+        Chat apps, apps and your own MCP servers are all in{" "}
+        <Link href={INTEGRATIONS_PATH} className="font-medium text-accent hover:text-accent-dark">
+          Integrations
+        </Link>
+        . Linking uses a one-time code that expires in 10 minutes.
       </Meta>
     </SettingsGroup>
   );
