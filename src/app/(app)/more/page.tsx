@@ -85,6 +85,7 @@ export default function MorePage() {
           />
           <Row href="/settings" icon={<SettingsIcon size={17} />} title="Settings" />
           <Row href="/crew" icon={<CrewIcon size={17} />} title="Crew" detail={crewNavNote(crew.data)} />
+          <Row href="/help" icon={glyph("?")} title="Help" detail="How Textcrew works" />
         </div>
       </PageBody>
     </Page>

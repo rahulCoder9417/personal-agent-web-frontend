@@ -88,6 +88,13 @@ describe("Sidebar, open", () => {
     expect(classes(tile(html))).toEqual(expect.arrayContaining(["invisible", "group-data-[collapsed]/nav:visible"]));
     expect(link(html, "/approvals")).not.toContain("title=");
   });
+
+  it("leads to Help, after Settings", () => {
+    const html = draw();
+    expect(link(html, "/help")).not.toBe("");
+    expect(html.indexOf('href="/help"')).toBeGreaterThan(html.indexOf('href="/settings"'));
+    expect(html).toContain(">Help</span>");
+  });
 });
 
 describe("Sidebar, folded to a rail of icons", () => {
