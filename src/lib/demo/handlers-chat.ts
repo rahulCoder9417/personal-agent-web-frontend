@@ -142,9 +142,8 @@ function askForApproval(state: DemoState, request: Message, risk: Risk): void {
   state.approvals.unshift(approval);
   emit(state, "approval.created", approval);
   logActivity(state, { actor: "agent", action: "approval_requested", summary: `Asked to ${lowerFirst(approval.summary)}` });
-  // As the backend does it: the ask is its own message carrying the approval, then Tex's words.
-  postFromTex(state, request.conversationId, `Approval needed: ${approval.summary}`, approval.id);
-  postFromTex(state, request.conversationId, "That one needs your OK before I do it.");
+  // As the backend does it: Tex's question is one message carrying the approval, made from its summary.
+  postFromTex(state, request.conversationId, `I'd like to ${lowerFirst(approval.summary)}. Approve or Deny below.`, approval.id);
 }
 
 type CrewJob = { crew: SpecialistId; name: string; steps: string[]; reply: string };
@@ -481,7 +480,7 @@ export const decideApproval: Handler = async ({ state, request, params }) => {
   logActivity(state, {
     actor: "user",
     action: "approval_decided",
-    summary: `${decision === "approve" ? "Approved" : "Rejected"} “${approval.summary}”`,
+    summary: `${decision === "approve" ? "Approved" : "Denied"} “${approval.summary}”`,
   });
   schedule(state, FOLLOW_UP_MS, () => followUp(state, approval));
   return json(approval);

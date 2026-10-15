@@ -165,6 +165,38 @@ describe("drafts: the answer", () => {
   });
 });
 
+describe("drafts: Tex stops to ask", () => {
+  it("folds what Tex did before the question into its card, and keeps writing after it", () => {
+    let drafts = draftArrived(NO_DRAFTS, draft(LONG), T0);
+    drafts = draftArrived(drafts, draft(""), T0 + 100);
+    drafts = messageArrived(drafts, answer({ id: "msg_card", approvalId: "ap_1" }));
+    expect(drafts.folded.msg_card.map((step) => step.text)).toEqual([LONG]);
+    expect(screen(drafts)).toEqual({ writing: null, steps: [], live: true });
+    // The turn may still write; that is not the card.
+    drafts = draftArrived(drafts, draft(LATER), T0 + 2000);
+    expect(writing(drafts)).toBe(LATER);
+  });
+
+  it("folds what is left into the question when the turn ends there, leaving nothing under it", () => {
+    let drafts = draftArrived(NO_DRAFTS, draft(LONG), T0);
+    drafts = draftArrived(drafts, draft(""), T0 + 100);
+    drafts = messageArrived(drafts, answer({ id: "msg_card", approvalId: "ap_1" }));
+    drafts = draftArrived(drafts, draft(LATER), T0 + 2000);
+    drafts = messageSettled(drafts, { id: "msg_in", direction: "in", status: "delivered" });
+    expect(screen(drafts)).toBeNull();
+    expect(drafts.folded.msg_card.map((step) => step.text)).toEqual([LONG, LATER]);
+    expect(drafts.closed).toContain("evt_1");
+  });
+
+  it("ends the question's turn with nothing on screen when it showed no steps", () => {
+    let drafts = draftArrived(NO_DRAFTS, draft(""), T0);
+    drafts = messageArrived(drafts, answer({ id: "msg_card", approvalId: "ap_1" }));
+    drafts = turnsOver(drafts);
+    expect(screen(drafts)).toBeNull();
+    expect(drafts.folded).toEqual({});
+  });
+});
+
 describe("drafts: a turn that ends without its answer", () => {
   it("keeps the steps on screen after a failed turn, and folds them into the apology", () => {
     let drafts = draftArrived(NO_DRAFTS, draft(LONG), T0);

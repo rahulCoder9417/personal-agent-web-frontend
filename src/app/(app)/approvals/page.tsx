@@ -12,7 +12,7 @@ import { useApprovals } from "@/lib/api/hooks";
 const TABS: { value: ApprovalStatus; label: string }[] = [
   { value: "pending", label: "Pending" },
   { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Rejected" },
+  { value: "rejected", label: "Denied" },
   { value: "expired", label: "Expired" },
 ];
 

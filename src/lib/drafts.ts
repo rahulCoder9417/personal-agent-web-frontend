@@ -59,6 +59,11 @@ export type DraftTurn = {
   steps: DraftStep[];
   /** The turn ended without its answer: its steps stay on screen until the next message arrives. */
   over: boolean;
+  /**
+   * The question Tex asked in this turn (the id of its approval card's message). The steps before
+   * it folded into it when it arrived; if the turn then ends without an answer, the rest do too.
+   */
+  card?: string;
 };
 
 export type Drafts = {
@@ -186,23 +191,33 @@ export function progressArrived(drafts: Drafts, line: ProgressLine): Drafts {
   return turns === drafts.turns ? drafts : { ...drafts, turns };
 }
 
+/** Steps fold into a message: after any that folded into it before, kept for the last `FOLDED_KEPT` messages. */
+function withFolded(folded: Drafts["folded"], messageId: string, steps: DraftStep[]): Drafts["folded"] {
+  if (!steps.length) return folded;
+  const before = folded[messageId] ?? [];
+  const kept = Object.entries(folded).filter(([id]) => id !== messageId).slice(-(FOLDED_KEPT - 1));
+  return { ...Object.fromEntries(kept), [messageId]: [...before, ...steps].slice(-STEPS_KEPT) };
+}
+
 /** The turn's steps fold into a message, and the turn leaves the screen. */
 function foldInto(drafts: Drafts, conversationId: string, messageId: string, steps: DraftStep[]): Drafts {
-  const rest = setTurn(drafts, conversationId, null);
-  if (!steps.length) return rest;
-  const kept = Object.entries(drafts.folded).filter(([id]) => id !== messageId).slice(-(FOLDED_KEPT - 1));
-  return { ...rest, folded: { ...Object.fromEntries(kept), [messageId]: steps } };
+  return { ...setTurn(drafts, conversationId, null), folded: withFolded(drafts.folded, messageId, steps) };
 }
 
 /**
  * A message was saved. Tex's answer (anything Tex wrote that isn't an approval card, the apology for
  * a failed turn among them) takes the draft's place, the turn's steps fold into it, and the turn's
- * later drafts are dropped. An approval card or an incoming message changes nothing while the turn
- * runs (Tex may still be writing after a card); once it ended without its answer, what it left on
- * screen folds into whichever message comes next.
+ * later drafts are dropped. An approval card is Tex stopping to ask: the steps before it fold into
+ * it, and the turn goes on (Tex may still be writing after a card, and what it writes is not the
+ * card). An incoming message changes nothing while the turn runs. Once a turn ended without its
+ * answer, what it left on screen folds into whichever message comes next.
  */
 export function messageArrived(drafts: Drafts, message: Pick<Message, "id" | "conversationId" | "direction" | "approvalId">): Drafts {
   const turn = drafts.turns[message.conversationId];
+  if (message.direction === "out" && message.approvalId && turn && !turn.over) {
+    const asked = { ...turn, steps: [], card: message.id };
+    return { ...setTurn(drafts, message.conversationId, asked), folded: withFolded(drafts.folded, message.id, turn.steps) };
+  }
   if (message.direction !== "out" || message.approvalId) {
     return turn?.over ? foldInto(drafts, message.conversationId, message.id, turn.steps) : drafts;
   }
@@ -211,10 +226,14 @@ export function messageArrived(drafts: Drafts, message: Pick<Message, "id" | "co
   return { ...drafts, answered: [...drafts.answered, message.conversationId] };
 }
 
-/** A turn ended without its answer: a run that was shown becomes a step, and the steps stay until the next message. */
+/**
+ * A turn ended without its answer: a run that was shown becomes a step, and the steps stay until the
+ * next message. A turn that asked a question ended there: its steps fold into the question.
+ */
 function ended(drafts: Drafts, conversationId: string, turn: DraftTurn): Drafts {
   const steps = withStep(turn.steps, turn.run);
   const closed = closing(drafts.closed, turn.turnId);
+  if (turn.card) return { ...foldInto(drafts, conversationId, turn.card, steps), closed };
   if (!steps.length) return { ...setTurn(drafts, conversationId, null), closed };
   return { ...setTurn(drafts, conversationId, { ...turn, run: null, steps, over: true }), closed };
 }

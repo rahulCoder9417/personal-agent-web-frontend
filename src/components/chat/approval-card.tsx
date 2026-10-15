@@ -3,7 +3,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Approval, type ApprovalStatus } from "@/lib/api/client";
 import { findCachedApproval, useDecideApproval } from "@/lib/api/hooks";
-import { approvalReason, splitDetails } from "@/lib/approvals";
+import { approvalQuestion, approvalReason, splitDetails } from "@/lib/approvals";
+import { noteAnswered } from "@/lib/chat-thread";
 import { cn, formatTimeLeft, titleCase } from "@/lib/format";
 import { AppIcon } from "../brand-icon";
 import { CheckIcon, CloseIcon } from "../icons";
@@ -12,8 +13,11 @@ import { AgentBubble } from "./agent-bubble";
 
 const STATUSES: ApprovalStatus[] = ["pending", "approved", "rejected", "expired"];
 
-/** There is no "get one approval" endpoint, so look through the lists, newest state first. */
-function useApproval(approvalId: string) {
+/**
+ * One approval, kept fresh by the live stream (`approval.created`, `approval.resolved`). There is no
+ * "get one approval" endpoint, so look through the lists, newest state first. Null asks for nothing.
+ */
+export function useApproval(approvalId: string | null) {
   const qc = useQueryClient();
   return useQuery({
     queryKey: ["approval", approvalId],
@@ -25,18 +29,19 @@ function useApproval(approvalId: string) {
       }
       return null;
     },
-    initialData: () => findCachedApproval(qc, approvalId),
+    initialData: () => (approvalId ? findCachedApproval(qc, approvalId) : undefined),
     staleTime: 10_000,
+    enabled: approvalId !== null,
   });
 }
 
 const RESULT: Record<Exclude<ApprovalStatus, "pending">, { text: string; className: string; done: boolean }> = {
   approved: { text: "You approved this", className: "text-success", done: true },
-  rejected: { text: "You rejected this", className: "text-danger", done: false },
+  rejected: { text: "You denied this", className: "text-danger", done: false },
   expired: { text: "This expired before it was answered", className: "text-muted", done: false },
 };
 
-/** The Approve / Reject card that sits in the thread where Tex stopped to ask. */
+/** The Approve / Deny card that sits in the thread, under Tex's question, where Tex stopped to ask. */
 export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string; fallbackText?: string }) {
   const qc = useQueryClient();
   const { data: approval, isLoading } = useApproval(approvalId);
@@ -54,7 +59,11 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
     decide.mutate(
       { approvalId, decision },
       {
-        onSuccess: (next) => qc.setQueryData(["approval", approvalId], next),
+        onSuccess: (next) => {
+          qc.setQueryData(["approval", approvalId], next);
+          // Tex picks the answer up at once: the thread shows it at work while it wakes for it.
+          noteAnswered(approvalId);
+        },
         // Someone (or the chat app) decided first: show what happened.
         onError: () => qc.invalidateQueries({ queryKey: ["approval", approvalId] }),
       },
@@ -102,7 +111,7 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
             Approve
           </Button>
           <Button className="flex-1" onClick={() => submit("reject")} disabled={decide.isPending}>
-            Reject
+            Deny
           </Button>
           <span className="pl-1 text-[12px] whitespace-nowrap text-muted tabular-nums">{formatTimeLeft(approval.expiresAt)}</span>
         </div>
@@ -116,5 +125,20 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
       )}
       <InlineError error={decide.error} className="px-4 pb-3" />
     </div>
+  );
+}
+
+/**
+ * Tex stopped to ask (a message carrying an approval): what it wants to do, in its own words ("I'd
+ * like to send an email to … Approve or Deny below."), with the Approve / Deny card right under it.
+ * An older ask ("Approval needed: …") only repeated the card's summary, so the card shows alone.
+ */
+export function ApprovalQuestion({ text, approvalId }: { text: string; approvalId: string }) {
+  const question = approvalQuestion(text);
+  return (
+    <>
+      {question && <AgentBubble text={question} />}
+      <ApprovalCard approvalId={approvalId} fallbackText={question ? undefined : text} />
+    </>
   );
 }

@@ -6,7 +6,7 @@ import type { Automation, Conversation, Message } from "@/lib/api/client";
 import { useAgentProgress, useAgentStatus, useThread } from "@/lib/api/hooks";
 import { updateDrafts, useDrafts } from "@/lib/api/stream";
 import { nextRunLine } from "@/lib/automations";
-import { threadIsWorking } from "@/lib/chat-thread";
+import { threadActivity, useAnsweredHere } from "@/lib/chat-thread";
 import { isAutomationsChat, readOnlyNote } from "@/lib/conversations";
 import type { ProgressLine } from "@/lib/crew";
 import { answerInThread, type DraftStep, stepLine, stepsToShow, turnAnswered, turnOnScreen } from "@/lib/drafts";
@@ -18,7 +18,7 @@ import { GettingStartedCard, useGettingStarted } from "../onboarding/getting-sta
 import { AgentFigure } from "../tex";
 import { Button, ButtonLink, EmptyState, ErrorState, Spinner } from "../ui";
 import { AgentBubble } from "./agent-bubble";
-import { ApprovalCard } from "./approval-card";
+import { ApprovalQuestion, useApproval } from "./approval-card";
 
 const STATUS_WORDS: Partial<Record<Message["status"], string>> = {
   queued: "sending",
@@ -95,8 +95,7 @@ function BubbleBody({ message, stepsToggle }: { message: Message; stepsToggle?: 
       <TexAvatar />
       <div className="flex min-w-0 flex-1 flex-col items-start gap-[5px]">
         {message.approvalId ? (
-          // The backend sends each ask as its own message ("Approval needed: …"); the card says it better.
-          <ApprovalCard approvalId={message.approvalId} fallbackText={message.text} />
+          <ApprovalQuestion text={message.text} approvalId={message.approvalId} />
         ) : (
           // What Tex wrote may be Markdown; what the person wrote, above, is always shown as typed.
           <AgentBubble text={message.text}>
@@ -271,6 +270,19 @@ function Working({ lines }: { lines: ProgressLine[] }) {
 }
 
 /**
+ * Tex asked a question and the turn has paused for the person: a quiet line under the card in place
+ * of the "working" bubble, so nothing spins while nothing happens.
+ */
+function WaitingForOk() {
+  return (
+    <p data-waiting className="ml-[42px] flex items-center gap-1.5 px-1 text-[12px] text-muted">
+      <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+      Waiting for your OK
+    </p>
+  );
+}
+
+/**
  * Tex's answer as it is written (`message.draft`), in place of the "working" bubble: drawn the way
  * the answer will be, Markdown included (half-written Markdown reads well enough until the answer
  * takes its place, in the same place and at the same width). Screen readers hear once that Tex is
@@ -388,7 +400,8 @@ function EmptyWebChat({ title, body }: { title: string; body: string }) {
 export function Thread({ conversation, loading, hasHistory }: { conversation: Conversation | null; loading: boolean; hasHistory: boolean }) {
   const qc = useQueryClient();
   const query = useThread(conversation?.id ?? null);
-  const busy = useAgentStatus().data?.state === "busy";
+  const status = useAgentStatus().data;
+  const busy = status?.state === "busy";
   const progress = useAgentProgress().data;
   const drafts = useDrafts();
   const scroller = useRef<HTMLDivElement>(null);
@@ -408,8 +421,15 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
   }, [newestFirst]);
   const newestId = messages[messages.length - 1]?.message.id;
   const count = messages.length;
+  // Tex's newest message is a question (an approval card): its approval says whether Tex waits for
+  // the person's OK, or works on the answer.
+  const newest = newestFirst[0];
+  const question = newest?.direction === "out" && newest.approvalId ? newest.approvalId : null;
+  const asked = useApproval(question).data;
+  const answeredHere = useAnsweredHere(question);
   // Only a turn in this conversation shows here, not one in another chat.
-  const working = threadIsWorking(busy, newestFirst);
+  const activity = threadActivity({ status, messages: newestFirst, approval: asked, answeredHere });
+  const working = activity === "working";
 
   // What Tex is writing in this conversation right now, and the steps before it.
   const onScreen = turnOnScreen(drafts, conversation?.id ?? null);
@@ -426,6 +446,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
   const stepCount = turn?.steps.length ?? 0;
   // A turn with no incoming message of its own here (an automation's run) is at work while it runs.
   const showWorking = writing === null && ((working && count > 0) || (turn?.live === true && busy && stepCount > 0));
+  const waitingForOk = activity === "waiting" && writing === null && !showWorking;
 
   const waiting = loading || (conversation !== null && query.isPending);
   const failed = conversation !== null && query.isError && !query.data;
@@ -444,7 +465,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
     } else if (stick.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [count, newestId, showWorking, writing, stepCount, empty]);
+  }, [count, newestId, showWorking, waitingForOk, writing, stepCount, empty]);
 
   // Content can grow after it first renders (an approval card loading, a font swapping in).
   // While following, stay pinned to the newest message through that too.
@@ -516,6 +537,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
         {(stepCount > 0 || writing !== null || showWorking) && (
           <TurnInProgress steps={turn?.steps ?? []} writing={writing} working={showWorking} lines={progress} />
         )}
+        {waitingForOk && <WaitingForOk />}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalReason, splitDetails } from "./approvals";
+import { approvalQuestion, approvalReason, splitDetails } from "./approvals";
 
 describe("approvalReason", () => {
   it("spots actions that reach other people", () => {
@@ -59,5 +59,18 @@ describe("splitDetails", () => {
 
   it("handles a missing details object", () => {
     expect(splitDetails(undefined)).toEqual({ preview: null, fields: [] });
+  });
+});
+
+describe("approvalQuestion", () => {
+  it("is Tex's question above the card", () => {
+    expect(approvalQuestion("I'd like to send an email to x@acme.com with subject \"Test\". Approve or Deny below.")).toBe(
+      "I'd like to send an email to x@acme.com with subject \"Test\". Approve or Deny below.",
+    );
+  });
+
+  it("leaves an older ask, which only repeated the card's summary, to the card", () => {
+    expect(approvalQuestion("Approval needed: Send this email to Maya")).toBeNull();
+    expect(approvalQuestion("  ")).toBeNull();
   });
 });
