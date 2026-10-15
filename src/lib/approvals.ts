@@ -65,3 +65,15 @@ export function splitDetails(raw?: Record<string, unknown>): { preview: string |
   }
   return { preview: previewKey ? (details[previewKey] as string) : null, fields };
 }
+
+/**
+ * Tex's words above an approval card: the message that carries the approval, in which Tex says what
+ * it wants to do and that it waits for Approve or Deny ("I'd like to send an email to … Approve or
+ * Deny below."). The backend's older asks ("Approval needed: …") only repeat the card's summary, so
+ * they give null: the card shows alone.
+ */
+export function approvalQuestion(text: string): string | null {
+  const question = text.trim();
+  if (!question || /^approval needed:/i.test(question)) return null;
+  return question;
+}
