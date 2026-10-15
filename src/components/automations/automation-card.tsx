@@ -15,6 +15,7 @@ import { ChatIcon, ClockIcon, PencilIcon, WarningIcon } from "../icons";
 import { toastError } from "../toast";
 import { ButtonLink, Pill, Switch } from "../ui";
 import { KIND_TINT, KindIcon } from "./kind-icon";
+import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
 
 /** Why a paused automation is paused, with the way out. Nothing for one the user paused themselves. */
 function PausedNote({ automation }: { automation: Automation }) {
@@ -25,8 +26,8 @@ function PausedNote({ automation }: { automation: Automation }) {
     const app = automation.trigger?.app;
     why = "It failed a few times in a row, so it was paused. Fix the cause, then turn it back on.";
     way = (
-      <Link href="/apps" className="font-medium text-accent hover:text-accent-dark">
-        {app ? `Check ${titleCase(app)} in Apps` : "Check your apps"}
+      <Link href={INTEGRATIONS_APPS_PATH} className="font-medium text-accent hover:text-accent-dark">
+        {app ? `Check ${titleCase(app)} in Integrations` : "Check your apps"}
       </Link>
     );
   } else if (automation.pausedReason === "out_of_credits") {

@@ -48,7 +48,7 @@ export function StepApps({ onDone, continueLabel = "Continue" }: { onDone: () =>
         <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.02em]">Connect the apps Tex should work in</h1>
         <p className="max-w-[560px] text-[15px] text-muted">
           Tex reads, searches and drafts in the apps you connect, and asks you before it sends or changes anything. Start with one; you can add
-          the rest any time from Apps.
+          the rest any time from Integrations.
         </p>
       </div>
 

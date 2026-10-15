@@ -103,7 +103,7 @@ describe("the checklist's steps", () => {
     const item = byId(fresh()).app;
     expect(item.body).toContain("Gmail, GitHub or Notion");
     expect(item.body).not.toContain("HubSpot");
-    expect(item.href).toBe("/apps");
+    expect(item.href).toBe("/integrations/apps");
   });
 
   it("counts an app as connected only with a working connection", () => {
@@ -129,6 +129,15 @@ describe("the checklist's steps", () => {
   it("names Telegram when it is the one chat app, and a chat app when there are several", () => {
     expect(byId(fresh()).chat.title).toBe("Link Telegram");
     expect(byId(fresh({ channels: { items: [], available: ["telegram", "whatsapp", "web"] } })).chat.title).toBe("Link a chat app");
+  });
+
+  it("links a chat app in Integrations, never in the welcome flow", () => {
+    expect(byId(fresh()).chat).toMatchObject({ href: "/integrations?link=telegram", action: "Link" });
+    // With several on offer, Integrations picks the first and offers the others.
+    expect(byId(fresh({ channels: { items: [], available: ["telegram", "whatsapp", "web"] } })).chat.href).toBe("/integrations");
+    for (const item of checklistItems(fresh())) {
+      if (item.id !== "ai") expect(item.href).not.toMatch(/^\/onboarding/);
+    }
   });
 
   it("counts a first message once a conversation has something said in it", () => {

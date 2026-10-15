@@ -6,6 +6,7 @@
 import { ApiError, errorMessage, type CrewJob, type CrewJobFocus, type CrewJobInput } from "./api/client";
 import { CHANNEL_LABEL } from "./format";
 import { parseRepo, repoName } from "./pr-review";
+import { INTEGRATIONS_APPS_PATH } from "./integrations";
 
 export type JobMember = "patch" | "byte";
 
@@ -214,7 +215,7 @@ export function describeCreateError(error: unknown, member: JobMember): JobError
   if (error.status === 400) return { message: error.message, field: true };
   if (error.outOfCredits) return { message: `You’re out of credits, so ${name} can’t start.`, link: { href: "/settings/credits", label: "Add credits" } };
   if (error.status === 409 && /github/i.test(error.message))
-    return { message: `GitHub isn’t connected. ${name} needs it to clone the repo.`, link: { href: "/apps", label: "Open Apps" } };
+    return { message: `GitHub isn’t connected. ${name} needs it to clone the repo.`, link: { href: INTEGRATIONS_APPS_PATH, label: "Open Integrations" } };
   if (error.status === 409) return { message: error.message };
   if (error.status === 429) return { message: "That’s a lot of jobs in an hour. Wait a little and try again." };
   if (error.status === 404) return { message: "Crew jobs aren’t on this server yet." };

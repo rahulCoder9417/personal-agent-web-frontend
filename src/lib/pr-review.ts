@@ -3,6 +3,7 @@
 
 import { ApiError, errorMessage, type ChannelType, type PrReviewRepo } from "./api/client";
 import { CHANNEL_LABEL } from "./format";
+import { INTEGRATIONS_APPS_PATH } from "./integrations";
 
 export type RepoRef = { owner: string; repo: string };
 
@@ -88,7 +89,7 @@ export function describeReviewState(review: Pick<PrReviewRepo, "enabled" | "paus
     return { label: "Paused", tone: "danger", why: "Paused because you ran out of credits.", fix: { href: "/settings/credits", label: "Add credits" } };
   }
   if (review.pausedReason === "failures") {
-    return { label: "Paused", tone: "danger", why: "Paused after a few reviews in a row failed.", fix: { href: "/apps", label: "Check GitHub in Apps" } };
+    return { label: "Paused", tone: "danger", why: "Paused after a few reviews in a row failed.", fix: { href: INTEGRATIONS_APPS_PATH, label: "Check GitHub in Integrations" } };
   }
   return { label: "Paused", tone: "muted", why: review.pausedReason === "user" ? "Paused by you." : "Paused." };
 }
@@ -126,12 +127,12 @@ export function describeEnableError(error: unknown, repo: string, plan: PlanCont
       : { message: `${allows}, and each repo with review on counts as one. Turn one off, or upgrade.`, link: { href: "/settings/plans", label: "See plans" } };
   }
   if (error.status === 409) {
-    return { message: "GitHub isn’t connected. Connect it in Apps, then turn review on.", link: { href: "/apps", label: "Open Apps" } };
+    return { message: "GitHub isn’t connected. Connect it in Integrations, then turn review on.", link: { href: INTEGRATIONS_APPS_PATH, label: "Open Integrations" } };
   }
   if (error.status === 400) {
     return {
       message: `Couldn’t start watching ${repo}. Check that the repo exists and that the GitHub account you connected has admin access to it.`,
-      link: { href: "/apps", label: "Check GitHub in Apps" },
+      link: { href: INTEGRATIONS_APPS_PATH, label: "Check GitHub in Integrations" },
     };
   }
   if (error.status === 429) return { message: "Too many tries. Wait a little and try again." };

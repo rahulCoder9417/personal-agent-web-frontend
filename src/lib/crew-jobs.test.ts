@@ -145,7 +145,7 @@ describe("refusals", () => {
       field: true,
     });
     expect(describeCreateError(new ApiError(402, "out_of_credits", "x"), "byte")).toMatchObject({ message: "You’re out of credits, so Byte can’t start.", link: { href: "/settings/credits" } });
-    expect(describeCreateError(new ApiError(409, "conflict", "Connect GitHub first"), "patch")).toMatchObject({ link: { href: "/apps" } });
+    expect(describeCreateError(new ApiError(409, "conflict", "Connect GitHub first"), "patch")).toMatchObject({ link: { href: "/integrations/apps" } });
     expect(describeCreateError(new ApiError(409, "conflict", "5 crew jobs are already waiting."), "patch")).toEqual({ message: "5 crew jobs are already waiting." });
     expect(describeCreateError(new ApiError(429, "rate_limited", "x"), "patch").message).toMatch(/a lot of jobs/);
     expect(describeCreateError(new ApiError(404, "not_found", "x"), "patch").message).toMatch(/aren’t on this server/);

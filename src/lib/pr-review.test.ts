@@ -65,7 +65,7 @@ describe("describeReviewState", () => {
       why: "Paused because you ran out of credits.",
       fix: { href: "/settings/credits" },
     });
-    expect(describeReviewState({ enabled: false, pausedReason: "failures" })).toMatchObject({ tone: "danger", fix: { href: "/apps" } });
+    expect(describeReviewState({ enabled: false, pausedReason: "failures" })).toMatchObject({ tone: "danger", fix: { href: "/integrations/apps" } });
     expect(describeReviewState({ enabled: false, pausedReason: null })).toEqual({ label: "Paused", tone: "muted", why: "Paused." });
   });
 });
@@ -97,17 +97,17 @@ describe("describeEnableError", () => {
     expect(describeEnableError(error(403, "plan_limit"), "acme/website").message).toContain("Your plan’s automations are used up");
   });
 
-  it("sends someone without GitHub to the Apps screen", () => {
+  it("sends someone without GitHub to Integrations → Apps", () => {
     expect(describeEnableError(error(409, "conflict"), "acme/website")).toEqual({
-      message: "GitHub isn’t connected. Connect it in Apps, then turn review on.",
-      link: { href: "/apps", label: "Open Apps" },
+      message: "GitHub isn’t connected. Connect it in Integrations, then turn review on.",
+      link: { href: "/integrations/apps", label: "Open Integrations" },
     });
   });
 
   it("names the repo GitHub wouldn't let us watch, and what to check", () => {
     const refused = describeEnableError(error(400, "invalid_request"), "acme/website");
     expect(refused.message).toBe("Couldn’t start watching acme/website. Check that the repo exists and that the GitHub account you connected has admin access to it.");
-    expect(refused.link).toEqual({ href: "/apps", label: "Check GitHub in Apps" });
+    expect(refused.link).toEqual({ href: "/integrations/apps", label: "Check GitHub in Integrations" });
   });
 
   it("asks for patience when there were too many tries", () => {

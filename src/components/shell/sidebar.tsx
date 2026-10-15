@@ -11,6 +11,7 @@ import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { PANEL_MOTION, useMotionReady } from "@/lib/motion";
 import { PANELS } from "@/lib/panels";
 import { useStoredFlag } from "@/lib/stored-flag";
+import { INTEGRATIONS_PATH } from "@/lib/integrations";
 import { ActivityIcon, ApprovalsIcon, AppsIcon, AutomationsIcon, ChatIcon, ChevronsLeftIcon, CrewIcon, SettingsIcon } from "../icons";
 import { GettingStartedNav } from "../onboarding/getting-started";
 import { IconButton } from "../ui";
@@ -190,7 +191,7 @@ export function Sidebar() {
     { href: "/activity", label: "Activity", icon: <ActivityIcon size={18} /> },
   ];
   const setup: Item[] = [
-    { href: "/apps", label: "Apps", icon: <AppsIcon size={18} /> },
+    { href: INTEGRATIONS_PATH, label: "Integrations", icon: <AppsIcon size={18} /> },
     { href: "/crew", label: "Crew", icon: <CrewIcon size={18} />, note: crewNavNote(crew.data) },
     { href: "/settings", label: "Settings", icon: <SettingsIcon size={18} /> },
   ];

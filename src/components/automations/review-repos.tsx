@@ -21,6 +21,7 @@ import {
   type PlanContext,
   type ReviewError,
 } from "@/lib/pr-review";
+import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
 
 /** "5 min ago", "yesterday", "12 Sep": formatAgo, but fit for the middle of a sentence. */
 function ago(iso: string): string {
@@ -133,8 +134,8 @@ export function GitHubNotice() {
         <span className="font-semibold">{github === "expired" ? "GitHub needs reconnecting." : "GitHub isn’t connected."}</span>{" "}
         <span className="text-muted">Patch needs it to see your pull requests and comment on them.</span>
       </p>
-      <ButtonLink href="/apps" size="sm" variant="primary">
-        {github === "expired" ? "Reconnect in Apps" : "Connect in Apps"}
+      <ButtonLink href={INTEGRATIONS_APPS_PATH} size="sm" variant="primary">
+        {github === "expired" ? "Reconnect GitHub" : "Connect GitHub"}
       </ButtonLink>
     </div>
   );
@@ -202,8 +203,8 @@ export function AddReviewRepoForm() {
             blocked ? (
               <>
                 {github === "expired" ? "Reconnect GitHub first, in " : "Connect GitHub first, in "}
-                <Link href="/apps" className="font-medium text-accent hover:text-accent-dark">
-                  Apps
+                <Link href={INTEGRATIONS_APPS_PATH} className="font-medium text-accent hover:text-accent-dark">
+                  Integrations
                 </Link>
                 .
               </>

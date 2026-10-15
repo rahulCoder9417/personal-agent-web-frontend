@@ -72,7 +72,7 @@ describe("sign-in proxy", () => {
   });
 
   it("asks for a session everywhere else", async () => {
-    for (const path of ["/", "/approvals", "/apps", "/apps/mcp", "/settings", "/settings/plans", "/onboarding", "/more", "/crew", "/activity"]) {
+    for (const path of ["/", "/approvals", "/integrations", "/integrations/apps", "/integrations/mcp", "/apps", "/apps/mcp", "/settings", "/settings/plans", "/onboarding", "/more", "/crew", "/activity"]) {
       expect(await open(path), path).toBe(false);
     }
   });
