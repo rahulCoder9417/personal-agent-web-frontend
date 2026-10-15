@@ -619,6 +619,14 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         ],
       },
       {
+        id: "faq-blocked",
+        title: "Tex’s replies don’t arrive on Telegram",
+        blocks: [
+          p("If you blocked the Textcrew bot, Telegram won’t let Tex send anything to that chat, and {chatApps} marks it **Blocked the bot**. Unblock the bot in Telegram and send it a message: the mark goes, and replies reach you again."),
+          note("Until then, look for Tex’s answers in the web chat."),
+        ],
+      },
+      {
         id: "faq-link-code",
         title: "My link code doesn’t work",
         blocks: [

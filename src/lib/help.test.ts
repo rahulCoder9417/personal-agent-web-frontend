@@ -145,6 +145,7 @@ describe("searching the help", () => {
     expect(ids(searchHelp(HELP_SECTIONS, "Unlink TELEGRAM"))).toContain("telegram-unlink");
     expect(ids(searchHelp(HELP_SECTIONS, "unlink credits"))).toEqual([]);
     expect(ids(searchHelp(HELP_SECTIONS, "doesnt answer"))).toContain("faq-no-answer");
+    expect(ids(searchHelp(HELP_SECTIONS, "blocked bot"))[0]).toBe("faq-blocked");
   });
 
   it("finds nothing for words the help doesn't have", () => {
