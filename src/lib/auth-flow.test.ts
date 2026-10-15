@@ -1,6 +1,9 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   afterAuthPath,
+  afterSignUpPath,
   describeAuthError,
   dropsLeftoverSignIn,
   firstParam,
@@ -12,6 +15,7 @@ import {
   signUpNextStep,
   SOCIAL_PROVIDERS,
   ssoCallbackStep,
+  WELCOME_PATH,
   withRedirect,
   type SsoSignIn,
   type SsoSignUp,
@@ -60,6 +64,34 @@ describe("afterAuthPath", () => {
   it("falls back to the home screen when the app's own address can't be read", () => {
     expect(afterAuthPath("/apps", "")).toBe("/");
     expect(afterAuthPath("https://app.textcrew.in/apps", "not an address")).toBe("/");
+  });
+});
+
+describe("afterSignUpPath", () => {
+  it("takes a new account straight to the welcome flow instead of the home screen", () => {
+    expect(afterSignUpPath(null, ORIGIN)).toBe("/onboarding");
+    // Opening app.textcrew.in signed out: the proxy sends its home address along.
+    expect(afterSignUpPath("https://app.textcrew.in/", ORIGIN)).toBe("/onboarding");
+    expect(afterSignUpPath("/", ORIGIN)).toBe("/onboarding");
+  });
+
+  it("is a page of this app", () => {
+    expect(WELCOME_PATH).toBe("/onboarding");
+    expect(existsSync(join(import.meta.dirname, "..", "app", WELCOME_PATH, "page.tsx"))).toBe(true);
+  });
+
+  it("keeps a page the person was sent from, as a sign-in does", () => {
+    expect(afterSignUpPath("https://app.textcrew.in/settings/plans?checkout=done", ORIGIN)).toBe("/settings/plans?checkout=done");
+    expect(afterSignUpPath("/apps", ORIGIN)).toBe("/apps");
+    // The home screen with something asked for (a request typed in) is not the plain home screen.
+    expect(afterSignUpPath("/?draft=hello", ORIGIN)).toBe("/?draft=hello");
+  });
+
+  it("never leaves the app, and never lands on a sign-in page", () => {
+    expect(afterSignUpPath("https://evil.example/steal", ORIGIN)).toBe("/onboarding");
+    expect(afterSignUpPath("//evil.example/steal", ORIGIN)).toBe("/onboarding");
+    expect(afterSignUpPath("/sign-up", ORIGIN)).toBe("/onboarding");
+    expect(afterSignUpPath("/sso-callback", ORIGIN)).toBe("/onboarding");
   });
 });
 

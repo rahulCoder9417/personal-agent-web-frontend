@@ -7,6 +7,7 @@ import { useEffect, useId, useState, type FormEvent } from "react";
 import { Button, Field } from "@/components/ui";
 import {
   afterAuthPath,
+  afterSignUpPath,
   describeAuthError,
   SIGN_IN_PATH,
   signUpNextStep,
@@ -94,7 +95,7 @@ export function SignUpForm({ redirectUrl }: { redirectUrl: string | null }) {
     const next = signUpNextStep(signUp.status, signUp.unverifiedFields, signUp.missingFields);
     switch (next.kind) {
       case "done": {
-        const blocked = await finish((params) => signUp.finalize(params));
+        const blocked = await finish((params) => signUp.finalize(params), { newAccount: true });
         if (blocked) fail(null, blocked);
         return !blocked;
       }
@@ -163,7 +164,11 @@ export function SignUpForm({ redirectUrl }: { redirectUrl: string | null }) {
   const continueWith = (strategy: SocialStrategy) =>
     void run("social", async () => {
       const destination = afterAuthPath(redirectUrl, window.location.origin);
-      await ok(signUp.sso({ strategy, redirectUrl: destination, redirectCallbackUrl: withRedirect(SSO_CALLBACK_PATH, destination) }));
+      // Clerk sends the browser straight to `redirectUrl` only once the sign-up is complete, that is
+      // for a new account: the welcome flow. Someone who already has an account goes through the
+      // callback page, which signs them in and keeps `destination`.
+      const newAccount = afterSignUpPath(redirectUrl, window.location.origin);
+      await ok(signUp.sso({ strategy, redirectUrl: newAccount, redirectCallbackUrl: withRedirect(SSO_CALLBACK_PATH, destination) }));
       // By now the browser is on its way to the provider. If Clerk had no address to send it to, act on what it says instead.
       return signUp.verifications.externalAccount.externalVerificationRedirectURL ? true : advance(false);
     });

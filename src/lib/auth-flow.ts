@@ -43,6 +43,20 @@ export function afterAuthPath(redirectUrl: string | null | undefined, origin: st
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+/** The welcome flow, where a new account starts. */
+export const WELCOME_PATH = "/onboarding";
+
+/**
+ * Where to land once a new account exists: like `afterAuthPath`, except that the home screen
+ * becomes the welcome flow. A new account hasn't finished the flow, so the home screen would only
+ * ask the API for the account and then send it there; going straight there saves that stop. A
+ * page the person was sent from is kept, as for a sign-in.
+ */
+export function afterSignUpPath(redirectUrl: string | null | undefined, origin: string): string {
+  const path = afterAuthPath(redirectUrl, origin);
+  return path === "/" ? WELCOME_PATH : path;
+}
+
 /** `path` carrying the page to land on afterwards, for the links between the sign-in pages. */
 export function withRedirect(path: string, redirectUrl: string | null | undefined): string {
   if (!redirectUrl || redirectUrl === "/") return path;
