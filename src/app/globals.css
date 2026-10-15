@@ -408,3 +408,24 @@ body {
   .sheet-up,
   .sheet-backdrop { animation: none; }
 }
+
+/* The sign-in pages' backgrounds (src/components/auth/looks/). A fine grain, drawn by an SVG noise
+   filter, and the slow drift of the lights. */
+.auth-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+
+.aurora-drift-a { animation: aurora-drift-a 26s ease-in-out infinite alternate; }
+.aurora-drift-b { animation: aurora-drift-b 31s ease-in-out infinite alternate; }
+.aurora-drift-c { animation: aurora-drift-c 23s ease-in-out infinite alternate; }
+
+@keyframes aurora-drift-a { to { transform: translate(8%, 6%) scale(1.08); } }
+@keyframes aurora-drift-b { to { transform: translate(-7%, 5%) scale(0.94); } }
+@keyframes aurora-drift-c { to { transform: translate(6%, -6%) scale(1.06); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-drift-a,
+  .aurora-drift-b,
+  .aurora-drift-c { animation: none; }
+}

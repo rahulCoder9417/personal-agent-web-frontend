@@ -2,74 +2,66 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Brand } from "@/components/shell/brand";
-import { AuthFrame } from "./auth-frame";
+import { AUTH_LOOK, AuthFrame, type AuthLook } from "./auth-frame";
 
-const draw = () => renderToStaticMarkup(createElement(AuthFrame, null, createElement("form", { id: "the-form" })));
+const draw = (look?: AuthLook) => renderToStaticMarkup(createElement(AuthFrame, { look, children: createElement("form", { id: "the-form" }) }));
 const tag = (html: string, name: string) => new RegExp(`<${name}[^>]*>`).exec(html)?.[0] ?? "";
 const classes = (element: string) => (/class="([^"]*)"/.exec(element)?.[1] ?? "").replaceAll("&amp;", "&").split(" ");
-const style = (element: string) => (/style="([^"]*)"/.exec(element)?.[1] ?? "").replaceAll("&quot;", '"');
-// The wrappers of the example job and of the crew's row: decoration, hidden from screen readers.
-const exampleJob = (html: string) => /<div aria-hidden="true" class="([^"]*)"><div[^>]*>(?:(?!<\/aside>)[\s\S])*Waiting for your OK/.exec(html)?.[1];
-const crewRow = (html: string) => /<div aria-hidden="true" class="([^"]*)"><ul/.exec(html)?.[1];
+const styles = (html: string) => [...html.matchAll(/style="([^"]*)"/g)].map((match) => match[1].replaceAll("&quot;", '"')).join(" ");
+/** The classes of the element that holds the form. */
+const formColumn = (html: string) => /<div class="([^"]*)"><form id="the-form">/.exec(html)?.[1].split(" ") ?? [];
 
-describe("AuthFrame on a wide screen", () => {
-  it("gives the brand panel exactly half the width, edge to edge, and only from 1024px", () => {
-    const panel = classes(tag(draw(), "aside"));
-    expect(panel).toEqual(expect.arrayContaining(["hidden", "lg:flex", "w-1/2", "shrink-0"]));
-    // Not a box inset in the page: no margin and no rounded corners.
-    expect(panel.filter((name) => /^(m[trblxy]?-|rounded)/.test(name))).toEqual([]);
-  });
-
-  it("paints the panel in Tex's blue from the design tokens, not colours of its own", () => {
-    const paint = style(tag(draw(), "aside"));
-    expect(paint).toContain("var(--accent)");
-    expect(paint).toContain("var(--accent-dark)");
-    expect(paint).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-  });
-
-  it("centres the form in the right half, at a comfortable width", () => {
-    const html = draw();
-    const column = /<div class="([^"]*)"><form id="the-form">/.exec(html)?.[1].split(" ") ?? [];
-    expect(column).toEqual(expect.arrayContaining(["m-auto", "w-full", "max-w-[400px]"]));
-    expect(classes(tag(html, "main"))).toEqual(expect.arrayContaining(["flex-1", "overflow-y-auto"]));
-  });
-
-  it("reads out the headline and the line under it; the example job and the crew are decoration", () => {
-    const html = draw();
-    expect(html).toMatch(/<h2[^>]*>Got a lot of work\?<br\/>Just text your crew\.<\/h2>/);
-    expect(exampleJob(html)).toBeDefined();
-    expect(crewRow(html)).toBeDefined();
-  });
-
-  it("leaves out the example job and then the crew as the window gets shorter, rather than cutting them off", () => {
-    const html = draw();
-    expect(exampleJob(html)).toContain("[@media(max-height:620px)]:hidden");
-    const crew = crewRow(html) ?? "";
-    expect(crew).toContain("[@media(max-height:480px)]:hidden");
-    // The figures give way before anything is cut: the row may shrink, down to a floor.
-    expect(crew).toContain("min-h-[140px]");
-    expect(classes(tag(html, "aside"))).toContain("overflow-hidden");
-  });
-
-  it("has the crew stand in a row, each with its name and what it does", () => {
-    const html = draw();
-    for (const [name, role] of [
-      ["Tex", "captain"],
-      ["Byte", "code"],
-      ["Patch", "code review"],
-      ["Scout", "research"],
-    ]) {
-      expect(html).toContain(`>${name}</span><span class="text-white/65">${role}</span>`);
-    }
+describe("AuthFrame", () => {
+  it("wears the chosen look by default", () => {
+    expect(AUTH_LOOK).toBe("aurora");
+    expect(draw()).toBe(draw(AUTH_LOOK));
   });
 });
 
-describe("AuthFrame on a phone", () => {
-  it("has a compact header with the lockup and the crew's faces, hidden once the panel shows", () => {
-    const header = draw().match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
-    expect(classes(tag(header, "header"))).toEqual(expect.arrayContaining(["lg:hidden", "h-14"]));
-    expect(header).toContain("textcrew");
-    expect(header.match(/rounded-full ring-2 ring-surface/g)).toHaveLength(4);
+describe("the aurora look", () => {
+  const html = draw("aurora");
+
+  it("centres the form at a comfortable width, in a page that scrolls rather than cutting anything off", () => {
+    expect(formColumn(html)).toEqual(expect.arrayContaining(["mx-auto", "w-full", "max-w-[400px]"]));
+    expect(classes(tag(html, "div"))).toEqual(expect.arrayContaining(["h-dvh", "overflow-y-auto"]));
+    expect(classes(tag(html, "main"))).toContain("flex-1");
+  });
+
+  it("paints the sky in the crew's colours from the design tokens, not colours of its own", () => {
+    const paint = styles(html);
+    for (const token of ["--accent-dark", "--screen", "--accent", "--byte", "--patch", "--scout"]) expect(paint).toContain(`var(${token})`);
+    expect(paint).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  });
+
+  it("has the whole page as the sky on a wide screen, and a band of it above the form on a phone", () => {
+    const skies = [...html.matchAll(/<div aria-hidden="true" class="([^"]*overflow-hidden[^"]*)" style="background:color-mix/g)].map((match) => match[1].split(" "));
+    expect(skies).toHaveLength(2);
+    expect(skies[0]).toEqual(expect.arrayContaining(["fixed", "inset-0", "hidden", "lg:block"]));
+    expect(skies[1]).toEqual(expect.arrayContaining(["absolute", "inset-0"]));
+    // The band holds the lockup and the line, and is hidden once the whole page is the sky.
+    const band = /<div class="([^"]*)"><div aria-hidden="true" class="[^"]*absolute inset-0/.exec(html)?.[1].split(" ") ?? [];
+    expect(band).toEqual(expect.arrayContaining(["lg:hidden"]));
+  });
+
+  it("puts the form on a white card on a wide screen and a white sheet on a phone", () => {
+    const card = /<div class="([^"]*)"><div aria-hidden="true" class="pointer-events-none/.exec(html)?.[1].split(" ") ?? [];
+    expect(card).toEqual(expect.arrayContaining(["bg-surface", "rounded-t-[28px]", "lg:rounded-[24px]", "lg:w-[440px]"]));
+  });
+
+  it("reads out the headline and the line under it; the sky, the example job and the crew are decoration", () => {
+    expect(html).toMatch(/<h2[^>]*>Got a lot of work\?<br\/>Just text <span[^>]*>your crew\.<\/span><\/h2>/);
+    expect(html).toContain("hands each part to the right specialist");
+    expect(html).toMatch(/<div aria-hidden="true" class="[^"]*"><div[^>]*backdrop-blur-xl[^>]*>(?:(?!<\/section>)[\s\S])*Waiting for your OK/);
+    // The crew looking over the card, and their hands on its edge: on a phone and on a wide screen.
+    const crew = [...html.matchAll(/<div aria-hidden="true" class="pointer-events-none flex justify-center ([^"]*)"/g)].map((match) => match[1]);
+    expect(crew).toHaveLength(4);
+    expect(html.match(/aria-label=""/g)?.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it("leaves out the example job and then the crew as the window gets shorter, rather than cutting them off", () => {
+    expect(html).toMatch(/<div aria-hidden="true" class="\[@media\(max-height:700px\)\]:hidden"><div[^>]*backdrop-blur-xl/);
+    const wide = [...html.matchAll(/class="pointer-events-none flex justify-center [^"]*hidden lg:flex ([^"]*)"/g)].map((match) => match[1]);
+    expect(wide).toEqual(["[@media(max-height:640px)]:lg:hidden", "[@media(max-height:640px)]:lg:hidden"]);
   });
 });
 
