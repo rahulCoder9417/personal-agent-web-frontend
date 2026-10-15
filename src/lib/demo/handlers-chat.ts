@@ -28,6 +28,7 @@ import {
   startWebConversation,
 } from "./handlers-conversations";
 import { memoryRequestOf, rememberFact } from "./handlers-memory";
+import { syncAgentSettings } from "./handlers-setup";
 import { BYTE_REPLY, SCOUT_REPLY } from "./replies";
 import type { SpecialistId } from "./seed";
 import { balanceOf, chargeAppAction, chargePaidTool, chargeUsage, emit, logActivity, nextId, schedule, setAgentState, type DemoState } from "./store";
@@ -209,6 +210,9 @@ const LONG_LINE_MS = [800, 700] as const;
 /** How long each of the day turn's tools takes. */
 const TOOL_MS = 700;
 
+/** The backend's answer to a message when there is no AI to run the agent on (`turn.ts`), before the address. */
+export const NO_AI_REPLY = "Connect your own AI first: add an API key or connect your Claude plan at";
+
 /** Tex's answer to a request that isn't a fact to remember, a risky action or a job for the crew. */
 function plainReply(text: string): string {
   return `Got it. In the demo account nothing is really done, but this is where I’d tell you how “${truncate(text, 80)}” went.`;
@@ -341,6 +345,17 @@ export const sendMessage: Handler = async ({ state, request }) => {
   state.sentIds[clientMessageId] = message.id;
   emit(state, "message.created", message);
   messageSaved(state, message);
+
+  // No AI to think with (Textcrew AI off, none of their own): as the backend does, the agent isn't
+  // woken and one line says what to do.
+  syncAgentSettings(state);
+  if (state.agentSettings.aiAccess === "none") {
+    schedule(state, ANSWER_MS, () => {
+      setMessageStatus(state, message.id, "read");
+      postFromTex(state, message.conversationId, `${NO_AI_REPLY} ${new URL(request.url).origin}/settings/ai`);
+    });
+    return json(message, 202);
+  }
 
   schedule(state, PICKUP_MS, () => {
     setAgentState(state, "busy");

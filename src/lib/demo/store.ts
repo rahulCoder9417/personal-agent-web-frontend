@@ -2,7 +2,7 @@
 // more than one endpoint needs (events, credits, the activity log).
 
 import type { ActivityEntry, AgentStatus, CreditBalance, StreamEvent } from "@/lib/api/client";
-import { createSeed, dayKey, emptyDay, type DayUsage, type DemoData } from "./seed";
+import { createSeed, dayKey, demoAccount, emptyDay, type DayUsage, type DemoAccount, type DemoData } from "./seed";
 
 export type Listener = (event: StreamEvent) => void;
 
@@ -19,8 +19,8 @@ const KEY = "__textcrewDemoStore";
 type Holder = { [KEY]?: DemoState };
 const holder = globalThis as unknown as Holder;
 
-function createState(now: Date): DemoState {
-  return { ...createSeed(now), seq: 0, listeners: new Set(), timers: new Set(), demoRunScheduled: false };
+function createState(now: Date, account: DemoAccount = demoAccount()): DemoState {
+  return { ...createSeed(now, undefined, account), seq: 0, listeners: new Set(), timers: new Set(), demoRunScheduled: false };
 }
 
 export function getStore(): DemoState {
@@ -28,14 +28,17 @@ export function getStore(): DemoState {
   return holder[KEY];
 }
 
-/** Starts the account over (tests call this before each case). */
-export function resetDemoStore(now: Date = new Date()): DemoState {
+/**
+ * Starts the account over: tests before each case, and `POST /api/demo/reset` to look at a new
+ * account (or the usual one again) without restarting the app.
+ */
+export function resetDemoStore(now: Date = new Date(), account: DemoAccount = demoAccount()): DemoState {
   const previous = holder[KEY];
   if (previous) {
     for (const timer of previous.timers) clearTimeout(timer);
     previous.listeners.clear();
   }
-  holder[KEY] = createState(now);
+  holder[KEY] = createState(now, account);
   return holder[KEY];
 }
 

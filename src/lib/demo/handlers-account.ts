@@ -38,14 +38,30 @@ function isTimezone(value: string): boolean {
   }
 }
 
+/** A yes or no in the body: absent, or true or false. */
+function booleanField(body: Record<string, unknown>, name: string): boolean | undefined {
+  const value = body[name];
+  if (value !== undefined && typeof value !== "boolean") throw badRequest(`${name} must be true or false`);
+  return value;
+}
+
+/**
+ * The profile, and what the backend keeps about getting started: `onboardingCompleted` (the welcome
+ * flow finished or skipped) and `gettingStartedDismissed` (the checklist hidden). True keeps when,
+ * once (asking again leaves the first date); false clears it.
+ */
 export const updateMe: Handler = async ({ state, request }) => {
   const body = await readJson(request);
   const name = stringField(body, "name", { max: 80 })?.trim();
   const timezone = stringField(body, "timezone");
+  const completed = booleanField(body, "onboardingCompleted");
+  const dismissed = booleanField(body, "gettingStartedDismissed");
   if (name !== undefined && name.length === 0) throw badRequest("name can't be empty");
   if (timezone !== undefined && !isTimezone(timezone)) throw badRequest("timezone isn't a known time zone");
   if (name !== undefined) state.user.name = name;
   if (timezone !== undefined) Object.assign(state.user, { timezone, timezoneSet: true });
+  if (completed !== undefined) state.user.onboardingCompletedAt = completed ? (state.user.onboardingCompletedAt ?? nowIso()) : null;
+  if (dismissed !== undefined) state.user.gettingStartedDismissedAt = dismissed ? (state.user.gettingStartedDismissedAt ?? nowIso()) : null;
   return json(me(state));
 };
 
@@ -82,12 +98,19 @@ function makeLinkCode(): string {
   return `LINK-${String(Math.floor(1000 + Math.random() * 9000))}-${letter()}${letter()}`;
 }
 
+/** "@meera_i" for Meera Iyer: the Telegram username a chat linked in the demo shows. The usual account keeps its own. */
+function handleOf(state: DemoState, channel: Linkable): string {
+  if (channel !== "telegram" || state.user.id === "user_demo") return LINK_TARGETS[channel].displayId;
+  const [first = "you", last = ""] = state.user.name.toLowerCase().split(/\s+/);
+  return `@${first}${last ? `_${last[0]}` : ""}`;
+}
+
 function linkChannel(state: DemoState, channel: Linkable): void {
   if (state.channels.some((link) => link.channel === channel)) return;
   const link: ChannelLink = {
     id: nextId(state, "ch"),
     channel,
-    displayId: LINK_TARGETS[channel].displayId,
+    displayId: handleOf(state, channel),
     linkedAt: nowIso(),
     ...(channel === "whatsapp" ? { within24hWindow: true } : {}),
   };
