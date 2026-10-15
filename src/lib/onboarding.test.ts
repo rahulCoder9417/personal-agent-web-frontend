@@ -8,12 +8,12 @@ import {
   checklistProgress,
   firstMessages,
   hasSpoken,
+  homeView,
   nextStep,
   offeredStep,
   readFlowParams,
   safeReturnPath,
   type SetupData,
-  shouldOpenWelcome,
   showChecklist,
   stepHref,
   stepLabel,
@@ -241,25 +241,47 @@ describe("the welcome flow", () => {
   });
 });
 
-describe("when the welcome flow opens by itself", () => {
+describe("what opening the chat shows", () => {
   const notDone = { onboardingCompletedAt: null };
+  const done = { onboardingCompletedAt: T1 };
+  const view = (input: Partial<Parameters<typeof homeView>[0]>) =>
+    homeView({ me: undefined, failed: false, asked: false, leftThisVisit: false, ...input });
 
-  it("opens while the account says it hasn't been finished or skipped, whoever the person is", () => {
-    expect(shouldOpenWelcome({ me: notDone, asked: false, leftThisVisit: false })).toBe(true);
-    expect(shouldOpenWelcome({ me: { onboardingCompletedAt: T1 }, asked: false, leftThisVisit: false })).toBe(false);
+  it("is the welcome flow while the account says it hasn't been finished or skipped, whoever the person is", () => {
+    expect(view({ me: notDone })).toBe("welcome");
+    expect(view({ me: done })).toBe("app");
   });
 
-  it("waits for the account, and stays shut on a backend that can't remember it", () => {
-    expect(shouldOpenWelcome({ me: undefined, asked: false, leftThisVisit: false })).toBe(false);
-    expect(shouldOpenWelcome({ me: {} as { onboardingCompletedAt: string | null }, asked: false, leftThisVisit: false })).toBe(false);
+  it("shows nothing of the app until the account has loaded: a new account's first screen is the flow", () => {
+    // The founder's sign-up: the chat and the sidebar were drawn while GET /v1/me was on its way.
+    expect(view({ me: undefined })).toBe("wait");
+    expect(view({ me: undefined, asked: null })).toBe("wait");
   });
 
-  it("doesn't get in the way of a link that asked for something", () => {
-    expect(shouldOpenWelcome({ me: notDone, asked: true, leftThisVisit: false })).toBe(false);
+  it("says the account didn't load, rather than showing the app around nothing", () => {
+    expect(view({ me: undefined, failed: true })).toBe("error");
+    // Once it has loaded, an older failure doesn't matter.
+    expect(view({ me: notDone, failed: true })).toBe("welcome");
+    expect(view({ me: done, failed: true })).toBe("app");
+  });
+
+  it("waits for the address before sending someone to the flow, but not to open the app", () => {
+    expect(view({ me: notDone, asked: null })).toBe("wait");
+    expect(view({ me: done, asked: null })).toBe("app");
+  });
+
+  it("stays shut on a backend that can't remember it", () => {
+    expect(view({ me: {} as { onboardingCompletedAt: string | null } })).toBe("app");
+  });
+
+  it("doesn't get in the way of a link that asked for something, nor wait for the account then", () => {
+    expect(view({ me: notDone, asked: true })).toBe("app");
+    expect(view({ me: undefined, asked: true })).toBe("app");
   });
 
   it("doesn't send someone back once they left it, even if saving that failed", () => {
-    expect(shouldOpenWelcome({ me: notDone, asked: false, leftThisVisit: true })).toBe(false);
+    expect(view({ me: notDone, leftThisVisit: true })).toBe("app");
+    expect(view({ me: undefined, leftThisVisit: true })).toBe("app");
   });
 
   it("remembers leaving for this page's life only, and forgets when the tour is asked for again", () => {

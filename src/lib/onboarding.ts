@@ -309,15 +309,34 @@ export function nextStep(steps: readonly StepId[], current: StepId): StepId | nu
 }
 
 /**
- * Whether opening the chat should first show the welcome flow: the account says it hasn't been
- * finished or skipped (`onboardingCompletedAt` is null), whoever the person is, new or not. Not
- * when it was left in this page's life already (its save may have failed: the app is never held
- * up for it), nor when a link asked for something (a request typed in, the Automations chat):
- * that goes where it asked, and the flow comes the next time the chat is opened. A backend that
- * doesn't send the field (undefined) can't remember it, so the flow doesn't open by itself.
+ * What opening the chat (the home page, `/`) shows:
+ * - `app`: the app, with its sidebar and the chat;
+ * - `welcome`: the welcome flow, and nothing of the app before or around it;
+ * - `wait`: only a spinner on the plain page, while that isn't known yet;
+ * - `error`: only "That didn't load" and Try again, when the account couldn't be loaded.
+ *
+ * The flow comes while the account says it hasn't been finished or skipped
+ * (`onboardingCompletedAt` is null), whoever the person is, new or not. Until the account has
+ * loaded, nothing of the app shows: it could be the flow's turn. Not when it was left in this
+ * page's life already (its save may have failed: the app is never held up for it), nor when a
+ * link asked for something (a request typed in, the Automations chat; `asked` is null until the
+ * address has been read): that goes where it asked, at once, and the flow comes the next time the
+ * chat is opened. A backend that doesn't send the field (undefined) can't remember it, so the flow
+ * doesn't open by itself.
  */
-export function shouldOpenWelcome(input: { me: Pick<Me, "onboardingCompletedAt"> | undefined; asked: boolean; leftThisVisit: boolean }): boolean {
-  return input.me?.onboardingCompletedAt === null && !input.asked && !input.leftThisVisit;
+export type HomeView = "app" | "welcome" | "wait" | "error";
+
+export function homeView(input: {
+  me: Pick<Me, "onboardingCompletedAt"> | undefined;
+  /** Loading the account failed, and it isn't being tried again right now. */
+  failed: boolean;
+  asked: boolean | null;
+  leftThisVisit: boolean;
+}): HomeView {
+  if (input.leftThisVisit || input.asked === true) return "app";
+  if (input.me === undefined) return input.failed ? "error" : "wait";
+  if (input.me.onboardingCompletedAt !== null) return "app";
+  return input.asked === null ? "wait" : "welcome";
 }
 
 let left = false;
