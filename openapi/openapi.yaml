@@ -585,7 +585,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: Already decided or expired
+          description: Already decided, expired or replaced by a newer request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -3917,7 +3917,11 @@ components:
 
     ApprovalStatus:
       type: string
-      enum: [pending, approved, rejected, expired]
+      description: |
+        `replaced`: the agent asked again for the same action with corrected details, and this
+        request was set aside for the newer one. It was not run and can no longer be answered.
+        The user did not reject it.
+      enum: [pending, approved, rejected, expired, replaced]
 
     Approval:
       type: object

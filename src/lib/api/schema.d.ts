@@ -2433,8 +2433,13 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
-        /** @enum {string} */
-        ApprovalStatus: "pending" | "approved" | "rejected" | "expired";
+        /**
+         * @description `replaced`: the agent asked again for the same action with corrected details, and this
+         *     request was set aside for the newer one. It was not run and can no longer be answered.
+         *     The user did not reject it.
+         * @enum {string}
+         */
+        ApprovalStatus: "pending" | "approved" | "rejected" | "expired" | "replaced";
         Approval: {
             id: string;
             status: components["schemas"]["ApprovalStatus"];
@@ -4384,7 +4389,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description Already decided or expired */
+            /** @description Already decided, expired or replaced by a newer request */
             409: {
                 headers: {
                     [name: string]: unknown;

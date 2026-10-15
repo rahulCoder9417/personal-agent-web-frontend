@@ -9,14 +9,17 @@ import type { Mood } from "@/components/tex";
 import type { ApprovalStatus } from "@/lib/api/client";
 import { useApprovals } from "@/lib/api/hooks";
 
-const TABS: { value: ApprovalStatus; label: string }[] = [
+/** A replaced request has no tab: Tex asked again, and the newer request is the one listed. */
+type Tab = Exclude<ApprovalStatus, "replaced">;
+
+const TABS: { value: Tab; label: string }[] = [
   { value: "pending", label: "Pending" },
   { value: "approved", label: "Approved" },
   { value: "rejected", label: "Denied" },
   { value: "expired", label: "Expired" },
 ];
 
-const EMPTY: Record<ApprovalStatus, { mood: Mood; title: string; body: string }> = {
+const EMPTY: Record<Tab, { mood: Mood; title: string; body: string }> = {
   pending: {
     mood: "done",
     title: "All caught up",
@@ -40,11 +43,11 @@ const EMPTY: Record<ApprovalStatus, { mood: Mood; title: string; body: string }>
 };
 
 export default function ApprovalsPage() {
-  const [tab, setTab] = useState<ApprovalStatus>("pending");
+  const [tab, setTab] = useState<Tab>("pending");
   const [selected, setSelected] = useState<string | null>(null);
 
   // One query per tab: the counts in the tabs stay right, and switching tabs is instant.
-  const lists: Record<ApprovalStatus, ReturnType<typeof useApprovals>> = {
+  const lists: Record<Tab, ReturnType<typeof useApprovals>> = {
     pending: useApprovals("pending"),
     approved: useApprovals("approved"),
     rejected: useApprovals("rejected"),
@@ -55,8 +58,8 @@ export default function ApprovalsPage() {
   // Fall back to the first row when the selected approval has left this list.
   const active = approvals.find((a) => a.id === selected) ?? approvals[0] ?? null;
 
-  const options: FilterOption<ApprovalStatus>[] = TABS.map((t) => ({ ...t, count: lists[t.value].data?.length }));
-  const pick = (next: ApprovalStatus) => {
+  const options: FilterOption<Tab>[] = TABS.map((t) => ({ ...t, count: lists[t.value].data?.length }));
+  const pick = (next: Tab) => {
     setTab(next);
     setSelected(null);
   };

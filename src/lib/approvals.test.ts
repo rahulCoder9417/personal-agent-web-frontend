@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalQuestion, approvalReason, splitDetails } from "./approvals";
+import { APPROVAL_RESULT, approvalOutcome, approvalQuestion, approvalReason, splitDetails } from "./approvals";
 
 describe("approvalReason", () => {
   it("spots actions that reach other people", () => {
@@ -72,5 +72,22 @@ describe("approvalQuestion", () => {
   it("leaves an older ask, which only repeated the card's summary, to the card", () => {
     expect(approvalQuestion("Approval needed: Send this email to Maya")).toBeNull();
     expect(approvalQuestion("  ")).toBeNull();
+  });
+});
+
+describe("an answered approval", () => {
+  it("says the user's own answer only for a yes or a no", () => {
+    expect(APPROVAL_RESULT.approved.text).toBe("You approved this");
+    expect(APPROVAL_RESULT.rejected.text).toBe("You denied this");
+    // Tex asked again with corrected details: that is not the user's no.
+    expect(APPROVAL_RESULT.replaced).toEqual({ text: "Replaced by a newer request", tone: "muted", icon: null });
+    expect(APPROVAL_RESULT.expired.text).not.toMatch(/^You /);
+  });
+
+  it("never claims more than the answer", () => {
+    expect(approvalOutcome("approved")).toBe("Tex was told to go ahead.");
+    expect(approvalOutcome("replaced")).toContain("Nothing was done with it");
+    expect(approvalOutcome("rejected")).toBe("Tex didn’t do this.");
+    expect(approvalOutcome("expired")).toContain("Nothing was done");
   });
 });
