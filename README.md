@@ -8,7 +8,7 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
                                          token on the server)
 ```
 
-- **Screens**: chat, approvals, automations and pull-request review, activity, integrations (the chat apps, the apps and your own MCP servers: see [Integrations](#integrations)), crew and crew jobs, settings (general, agent and AI, memory, credits, plans), the welcome flow and the "Getting started" checklist (see [Getting started](#getting-started)), sign-in and sign-up.
+- **Screens**: chat, approvals, automations and pull-request review, activity, integrations (the chat apps, the apps and your own MCP servers: see [Integrations](#integrations)), crew and crew jobs, settings (general, agent and AI, memory, credits, plans), help (see [Help](#help)), the welcome flow and the "Getting started" checklist (see [Getting started](#getting-started)), sign-in and sign-up.
 - **One layout, two shapes**: on a wide screen a sidebar sits beside the current screen, and folds down to a rail of icons; on a phone there is a top bar, the screen edge to edge and five tabs along the bottom (the rest is under More). See [Panels that fold](#panels-that-fold).
 - **Every screen takes the whole width**, except Settings, which is one readable column beside its sections. See [Width](#width) and [Settings](#settings).
 - **Installable on a phone**: "Add to Home Screen" on Android and iPhone opens it in its own window. See [Installing on a phone](#installing-on-a-phone).
@@ -132,10 +132,24 @@ Finishing the last step, or "Skip for now", saves `onboardingCompleted: true` an
 - **Where**: in an empty chat, under Tex; in the sidebar, as a card above the credits ("2 of 5", a bar and the next step) that opens the whole list beside the sidebar, a ring with the count on the folded rail; and at the top of More on a phone. While the chat shows it, the sidebar's card steps aside, so it is never on screen twice.
 - **When it goes**: by itself once the AI, an app and a first message are done (the optional ones don't keep it), or when the person hides it with × (`gettingStartedDismissed: true`). Settings → General → Getting started brings a hidden checklist back and shows the welcome tour again (`onboardingCompleted: false`, then the flow opens).
 - **The side panel's own note** stays only for a missing AI ("Tex needs an AI"), since Tex can't answer without one; linking a chat app is on the checklist.
+- **The way to Help**: the checklist ends with "How Textcrew works" (the card and the sidebar's popover), and the flow's last step offers "See how it works", which leaves the flow like its other links. See [Help](#help).
 
 ### A brand-new account in the demo
 
 `TEXTCREW_DEMO_ACCOUNT=new pnpm dev` starts the demo as someone who has just signed up (`createNewAccount` in `src/lib/demo/seed.ts`): Meera, on the Free plan, with the 100 sign-up credits, nothing linked or connected, nothing said, the time zone still UTC (the browser's is set on the first page) and both first-run marks empty, so the chat leads to the welcome flow. Without restarting: `POST /api/demo/reset?account=new` (or `account=seeded` for the usual account, whose welcome flow was finished when it signed up and whose checklist has gone by itself), then reload; `&ai=own_only` takes Textcrew AI off, as the beta runs, so the AI step is needed and a message sent without an AI gets the backend's own note ("Connect your own AI first…"). In the flow: the Claude plan connects with any code of four characters, the Telegram code links itself after six seconds, and an app connects on "Continue to Google". The route answers 404 outside demo mode.
+
+## Help
+
+`/help` explains how Textcrew works, in short answers, for what the welcome flow can't say: the Telegram bot's commands, the three ways to give Tex an AI, apps and why Google's screen names Composio, approvals, automations, credits and plans, memory and privacy, and what to do when something doesn't work.
+
+- **Where it is**: "Help" after Settings in the sidebar; on a phone, the last row of More (More stays lit on it). Also linked from the "Getting started" checklist, the welcome flow's last step, and Settings → General → Help.
+- **The page** (`src/components/help/help-screen.tsx`): a search in the header; what Textcrew is, with the most asked answers; the nine topics as cards (a row each on a phone); then each topic with buttons to the screens it is about, and its answers as cards in as many columns as fit (`Columns`, at least 380px each). The whole width is used; a paragraph keeps a comfortable line.
+- **An answer** is a question and short blocks: paragraphs, numbered steps, lists, a two-column table (the bot's commands), notes, and messages to try. A message to try has "Try it →", which opens the chat with it typed in and not sent (`/?draft=`, as on the crew page).
+- **Each answer has an address of its own** (`/help#telegram-commands`), opened with the answer ringed (`:target`). Its link button copies the address, with a toast; if the browser refuses, the address bar gets it and a toast says so. Useful for sending someone the answer to their question.
+- **The search** wants every word typed, in any case and without accents (`/new` is a word). The answer whose question holds every word comes first, then the one that says the words most often; a topic comes as high as its best answer (`searchHelp` in `src/lib/help.ts`). With nothing found, it says so, with a way back and a link that asks Tex in chat.
+- **The words** are in `src/lib/help-content.ts`, written from what the backend does today (`../beckend/docs/hld-mvp.md`, `backend-report.md` and the bot's code), in plain words. They are not fetched: when the backend changes something a user sees (a limit, a command, a price, a reply), change the sentence there too. The crew's examples, the three kinds of automation and what credits pay for come from `crew.ts`, `automations.ts` and `credit-costs.ts`, so those stay the same everywhere.
+- **The markup in a sentence** (`parseInline`): `{apps}` is a link to a place, named as the app names it ("Integrations → Apps"); `[words](#ai)` a link; `**bold**` a button's name; `` `code` `` something to type. Every place is one entry of `PLACES` in `src/lib/help.ts`, with its name and address, the Integrations ones from `src/lib/integrations.ts` ("Link Telegram" is `linkChatHref("telegram")`, never the welcome flow). When a screen moves or is renamed, only that table changes.
+- **Tests**: every topic and answer is drawn, every link on the page leads to a page the app has (read from `src/app`, `src/test/app-routes.ts`), to a part of the page or to the privacy policy, every bot command is explained, and the search finds what it should.
 
 ## What the backend decides
 
@@ -281,7 +295,7 @@ Settings has five sections: General, Agent & AI, Memory, Credits and Plans (`src
 
 - **Where the sections are**: from 1280px a column of links on the left of the screen (`RouteNav` in `src/components/route-tabs.tsx`); below that a strip of tabs under the title, as on the other screens. The app's own sidebar takes the left from 768px, and a second column beside it any earlier would squeeze Credits and Plans.
 - **One column of groups**: a group is a heading, a line on what is in it, and a card of rows (`SettingsGroup` and `SettingRow` in `src/components/settings/settings-rows.tsx`). A row has the setting's name and a line of help on the left and its control on the right, 280px wide; on a phone the control goes under the words. A control that needs the room (the choice of agent) sits under its name at every width.
-- **General**: Profile (name, email, time zone, and Save changes), Linked chats (the same rows as Integrations → Chat apps; Link leads there, and a line points to Integrations for the apps and MCP servers), Getting started, Your data, and Account (who is signed in and Sign out; Delete account, which asks for DELETE first).
+- **General**: Profile (name, email, time zone, and Save changes), Linked chats (the same rows as Integrations → Chat apps; Link leads there, and a line points to Integrations for the apps and MCP servers), Getting started (the welcome tour and the checklist again), Help (the way to the Help page), Your data, and Account (who is signed in and Sign out; Delete account, which asks for DELETE first).
 - **Agent & AI**: on top, what runs now and what pays for it, with "How it’s decided" folded away under it (a `<details>`). Then **Engine**: the agent (Hermes or Claude Code) and Claude Code's model and thinking effort. Then **AI access**: the three ways to give Tex its AI, each a card with its name, its tag ("Recommended", "Beta") and where it stands ("In use", "Not available") at the top.
 - **Memory**: the kinds one under another.
 
@@ -444,6 +458,7 @@ src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell
   chat/folding-pane.tsx  a column beside the thread that slides shut and open (the chat history, the side panel)
   toast.tsx          toasts, drawn by sonner: a confirmation, or an action that failed
   page.tsx           a screen's header and full-width body, columns of cards, the reading width
+  help/              the Help page: the screen, and how a piece of help is drawn
   select.tsx         the dropdowns: Select (a button and a list) and Combobox (a field that searches a list)
   route-tabs.tsx     a screen's pages as tabs under its title, or as a column of links (Settings)
   settings/settings-rows.tsx  the parts of a settings screen: a group, and a row with its control on the right
@@ -483,13 +498,18 @@ src/lib/
   claude-code.ts     Claude Code's model and thinking effort as the dropdowns offer them
   credit-costs.ts    what credits pay for, in the words every screen uses
   checkout.ts        what a Polar checkout is waiting for, and when it has arrived
+  help.ts            the Help page's parts: what an answer is made of, the places it links to, the markup, the search
+  help-content.ts    the Help page's words
   onboarding.ts      getting started: which steps are done (from the API), when the checklist shows and goes,
                      the welcome flow's steps, and what opening the chat shows (the flow, the app, or a spinner)
+src/test/            for tests only: the pages the app has, read from src/app
 ```
 
 `src/lib`, `src/components` and most of `src/app` started as a copy of the desktop app's. Until they share a package, a fix to a shared screen has to be made in both repos.
 
 ## Not done yet
+
+- Help's words are written by hand from the backend's docs and code, and nothing checks them against the backend. The bot has no `/help` command of its own (Tex answers it like any message), and its "not linked" replies send people to "Settings → Channels", which the app calls Integrations → Chat apps; the help says so.
 
 - Admin screens (`/v1/admin/*`).
 - A dark theme. The app is light only, on purpose (`color-scheme: only light` in `globals.css`). The toasts, the crew page, the automations page, the dropdowns and the settings screens take every colour from the design tokens, so they would follow a dark set of tokens (the settings and the dropdowns were checked with a trial set); the primary button (white text on the ink colour) and the figures' own colours would still need one.
