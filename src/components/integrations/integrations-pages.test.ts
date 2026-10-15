@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The Integrations screen, drawn from the demo backend's answers: its tabs, and each tab's states
 // (loading, failed, linked, not linked, nothing on offer, locked behind a plan).
@@ -85,6 +85,55 @@ describe("Integrations → Chat apps", () => {
     expect(words).toContain("Always on");
     // Linked already: no code to ask for.
     expect(words).not.toContain("Get my Telegram code");
+    // A backend from before the masked id, the last message and `blocked`: the row as it was.
+    expect(words).not.toContain("Last message");
+    expect(words).not.toContain("Blocked the bot");
+    expect(words).not.toContain("••••");
+  });
+
+  describe("what each linked chat says about itself", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-01T14:30:00"));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("shows the masked chat id and when the chat last wrote, from the demo backend", async () => {
+      const qc = await withChannels();
+      const words = text(draw(qc, createElement(ChatAppsTab)));
+      expect(words).toContain("@aarav_s · •••• 4821");
+      expect(words).toContain("Last message 17 min ago");
+      expect(words).toContain("Linked");
+      expect(words).not.toContain("Blocked the bot");
+    });
+
+    it("says “Blocked the bot” for a chat that blocked it, with what to do", async () => {
+      const qc = await withChannels((channels) => ({
+        ...channels,
+        items: [{ ...TELEGRAM, maskedChatId: "•••• 4821", lastInboundAt: "2026-10-01T12:20:00", blocked: true }],
+      }));
+      const html = draw(qc, createElement(ChatAppsTab));
+      const words = text(html);
+      expect(words).toContain("Blocked the bot");
+      expect(words).toContain("Last message 2h ago");
+      expect(words).toContain("Unblock the bot in Telegram and send it a message to start again.");
+      // Not also marked as working.
+      expect(html).not.toMatch(/>Linked<\/span>/);
+      expect(html).toMatch(/<button[^>]*aria-label="Unlink Telegram @aarav_s"[^>]*>/);
+    });
+
+    it("doesn't repeat a WhatsApp number that is already shown masked", async () => {
+      const number = "+91 •••• ••42 10";
+      const qc = await withChannels(() => ({
+        available: ["whatsapp", "web"],
+        items: [{ id: "ch_wa", channel: "whatsapp", displayId: number, maskedChatId: number, linkedAt: "2026-09-26T10:00:00.000Z", lastInboundAt: null, blocked: false }],
+      }));
+      const words = text(draw(qc, createElement(ChatAppsTab)));
+      expect(words.split(number)).toHaveLength(2);
+      expect(words).not.toContain("Last message");
+    });
   });
 
   it("offers the one-time code right there when Telegram isn't linked yet", async () => {
