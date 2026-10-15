@@ -615,7 +615,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         title: "The bot says this chat isn’t linked",
         blocks: [
           p("The chat isn’t tied to your account yet, or it was unlinked. Link it again with a new code: {linkTelegram}."),
-          note("The bot’s message says Settings → Channels. In the app that is {chatApps}."),
+          note("The bot’s message tells you where to get the code: {chatApps}."),
         ],
       },
       {
