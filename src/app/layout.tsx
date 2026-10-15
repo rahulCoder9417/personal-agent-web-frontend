@@ -5,6 +5,7 @@ import { Providers } from "@/components/shell/providers";
 import { APP_BACKGROUND, APP_DESCRIPTION, APP_NAME } from "@/lib/app-meta";
 import { SIGN_IN_PATH, SIGN_UP_PATH } from "@/lib/auth-flow";
 import { builtAuthMode } from "@/lib/auth-mode";
+import { coverHintScript } from "@/lib/onboarded-here";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -37,6 +38,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   const page = (
     // suppressHydrationWarning: browser extensions add attributes to <html> before React loads.
     <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <head>
+        {/* Before anything is painted: whether this browser remembers the signed-in account finishing
+            the welcome flow, so the chat shows at once instead of under its cover (onboarded-here.ts).
+            suppressHydrationWarning on <html> also covers the attribute it may set there. */}
+        <script dangerouslySetInnerHTML={{ __html: coverHintScript(mode) }} />
+      </head>
       <body className="h-full">
         <Providers mode={mode}>{children}</Providers>
       </body>

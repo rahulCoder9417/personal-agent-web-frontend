@@ -245,7 +245,7 @@ describe("what opening the chat shows", () => {
   const notDone = { onboardingCompletedAt: null };
   const done = { onboardingCompletedAt: T1 };
   const view = (input: Partial<Parameters<typeof homeView>[0]>) =>
-    homeView({ me: undefined, failed: false, asked: false, leftThisVisit: false, ...input });
+    homeView({ me: undefined, failed: false, asked: false, leftThisVisit: false, remembered: false, ...input });
 
   it("is the welcome flow while the account says it hasn't been finished or skipped, whoever the person is", () => {
     expect(view({ me: notDone })).toBe("welcome");
@@ -282,6 +282,24 @@ describe("what opening the chat shows", () => {
   it("doesn't send someone back once they left it, even if saving that failed", () => {
     expect(view({ me: notDone, leftThisVisit: true })).toBe("app");
     expect(view({ me: undefined, leftThisVisit: true })).toBe("app");
+  });
+
+  it("shows the app at once where this browser remembers the account finishing the flow", () => {
+    expect(view({ me: undefined, remembered: true })).toBe("app");
+    expect(view({ me: undefined, asked: null, remembered: true })).toBe("app");
+    // As before the gate: the app shows, with its own errors, rather than "That didn't load".
+    expect(view({ me: undefined, failed: true, remembered: true })).toBe("app");
+    expect(view({ me: done, remembered: true })).toBe("app");
+  });
+
+  it("still sends someone to the flow when the account says it isn't done after all (an admin reset)", () => {
+    expect(view({ me: notDone, remembered: true })).toBe("welcome");
+    expect(view({ me: notDone, remembered: true, asked: true })).toBe("app");
+    expect(view({ me: notDone, remembered: true, leftThisVisit: true })).toBe("app");
+  });
+
+  it("waits without the note: a new account, or a browser that hasn't seen this account yet", () => {
+    expect(view({ me: undefined, remembered: false })).toBe("wait");
   });
 
   it("remembers leaving for this page's life only, and forgets when the tour is asked for again", () => {

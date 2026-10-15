@@ -4,6 +4,7 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { useState } from "react";
 import { toastError } from "@/components/toast";
 import { Button } from "@/components/ui";
+import { onboardedHere } from "@/lib/onboarded-here";
 
 // These use Clerk's hooks, so they may only be rendered when ClerkProvider is in the tree
 // (that is, never in demo mode).
@@ -14,6 +15,8 @@ export function ClerkSignOutButton() {
 
   const run = async () => {
     setPending(true);
+    // This browser's note that the welcome flow was done goes with the session.
+    onboardedHere.forgetAll();
     try {
       await signOut({ redirectUrl: "/sign-in" });
     } catch (caught) {
@@ -39,6 +42,7 @@ export function ClerkDeleteAccountButton({ confirmed }: { confirmed: boolean }) 
     setPending(true);
     try {
       await user.delete();
+      onboardedHere.forgetAll();
       // A full page load on purpose: the session is gone, so nothing cached should survive.
       window.location.replace(`${window.location.origin}/sign-in`);
     } catch (caught) {
