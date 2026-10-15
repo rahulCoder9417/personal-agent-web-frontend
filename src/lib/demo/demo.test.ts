@@ -1022,6 +1022,28 @@ describe("setup", () => {
     expect(channels.body.items.map((link) => link.channel)).toEqual(["telegram"]);
   });
 
+  it("gives the linked Telegram chat its masked id, the last time it wrote, and not blocked", async () => {
+    const [telegram] = (await call<{ items: ChannelLink[] }>("GET", "channels")).body.items;
+    const lastIn = getStore()
+      .messages.filter((message) => message.channel === "telegram" && message.direction === "in")
+      .map((message) => message.createdAt)
+      .sort()
+      .at(-1);
+    expect(telegram).toMatchObject({ displayId: "@aarav_s", maskedChatId: "•••• 4821", lastInboundAt: lastIn, blocked: false });
+    expect(Date.parse(telegram.lastInboundAt!)).toBe(NOW.getTime() - 17 * 60_000);
+  });
+
+  it("has the Telegram chat block the bot with TEXTCREW_DEMO_TELEGRAM=blocked", async () => {
+    vi.stubEnv("TEXTCREW_DEMO_TELEGRAM", "blocked");
+    try {
+      resetDemoStore(NOW);
+      const [telegram] = (await call<{ items: ChannelLink[] }>("GET", "channels")).body.items;
+      expect(telegram).toMatchObject({ channel: "telegram", blocked: true });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("refuses a link code for a chat app that is switched off", async () => {
     const off = await call<ErrorBody & { error: { details?: { channel?: string } } }>("POST", "channels/link-codes", { channel: "imessage" });
     expect(off.status).toBe(403);
@@ -1037,7 +1059,10 @@ describe("setup", () => {
     expect(code.body.deepLink).toContain(encodeURIComponent(code.body.code));
     expect((await call<{ items: ChannelLink[] }>("GET", "channels")).body.items).toHaveLength(0);
     vi.advanceTimersByTime(6000);
-    expect((await call<{ items: ChannelLink[] }>("GET", "channels")).body.items.map((link) => link.channel)).toEqual(["telegram"]);
+    const linked = (await call<{ items: ChannelLink[] }>("GET", "channels")).body.items;
+    expect(linked.map((link) => link.channel)).toEqual(["telegram"]);
+    // Sending the code was the chat's first message.
+    expect(linked[0]).toMatchObject({ maskedChatId: "•••• 4821", lastInboundAt: linked[0].linkedAt, blocked: false });
   });
 
   it("keeps a chat that was linked before its channel was switched off, and refuses web chat when that is off", async () => {
