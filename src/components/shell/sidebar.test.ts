@@ -95,6 +95,15 @@ describe("Sidebar, open", () => {
     expect(html.indexOf('href="/help"')).toBeGreaterThan(html.indexOf('href="/settings"'));
     expect(html).toContain(">Help</span>");
   });
+
+  it("leads to Pricing under Set up, after Crew and before Settings", () => {
+    const html = draw();
+    expect(links(html, "/pricing")).toHaveLength(1);
+    expect(html).toMatch(/<a [^>]*href="\/pricing"[^>]*>.*?>Pricing<\/span>/);
+    expect(html.indexOf('href="/pricing"')).toBeGreaterThan(html.indexOf('href="/crew"'));
+    expect(html.indexOf('href="/pricing"')).toBeLessThan(html.indexOf('href="/settings"'));
+    expect(links(html, "/settings/plans")).toEqual([]);
+  });
 });
 
 describe("Sidebar, folded to a rail of icons", () => {
