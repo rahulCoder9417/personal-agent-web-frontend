@@ -5,7 +5,7 @@ import { cn, formatDate, formatTimeLeft } from "@/lib/format";
 import { BrandIcon } from "../brand-icon";
 import { ApprovalsIcon } from "../icons";
 import { IconTile } from "../ui";
-import { approvalReason, type ApprovalReason } from "@/lib/approvals";
+import { approvalReasonOf, type ApprovalReason } from "@/lib/approvals";
 
 export const REASON_TEXT: Record<ApprovalReason["tone"], string> = {
   info: "text-accent-dark",
@@ -37,7 +37,7 @@ export function ApprovalList({
     <ul className="flex flex-col gap-2">
       {approvals.map((approval) => {
         const on = approval.id === selectedId;
-        const reason = approvalReason(approval.action);
+        const reason = approvalReasonOf(approval);
         return (
           <li key={approval.id}>
             <button

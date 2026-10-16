@@ -3,9 +3,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Approval, type ApprovalStatus } from "@/lib/api/client";
 import { findCachedApproval, useDecideApproval } from "@/lib/api/hooks";
-import { APPROVAL_RESULT, approvalQuestion, approvalReason, splitDetails, type SettledStatus } from "@/lib/approvals";
+import { APPROVAL_RESULT, approvalQuestion, approvalReasonOf, ownAction, splitDetails, type SettledStatus } from "@/lib/approvals";
 import { noteAnswered } from "@/lib/chat-thread";
 import { cn, formatTimeLeft, titleCase } from "@/lib/format";
+import { OwnActionDetails } from "../approvals/own-action";
 import { AppIcon } from "../brand-icon";
 import { CheckIcon, CloseIcon } from "../icons";
 import { Button, InlineError } from "../ui";
@@ -47,8 +48,10 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
   // The approval can't be found (very old, or already cleaned up): show the message as any other of Tex's.
   if (!approval) return fallbackText ? <AgentBubble text={fallbackText} /> : null;
 
-  const reason = approvalReason(approval.action);
-  const { preview, fields } = splitDetails(approval.details);
+  const reason = approvalReasonOf(approval);
+  // One of the agent's own actions (a command, a push, a job run again): shown as it is, not as fields.
+  const own = ownAction(approval);
+  const { preview, fields } = own ? { preview: null, fields: [] } : splitDetails(approval.details);
   const pending = approval.status === "pending";
   const result = pending ? null : APPROVAL_RESULT[approval.status as SettledStatus];
   const submit = (decision: "approve" | "reject") =>
@@ -84,6 +87,12 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
           <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">{approval.summary}</span>
         </div>
       </div>
+
+      {own && (
+        <div className="mx-4 mb-3 rounded-xl bg-surface-2 px-3.5 py-3">
+          <OwnActionDetails action={own} compact />
+        </div>
+      )}
 
       {(fields.length > 0 || preview) && (
         <div className="mx-4 mb-3 flex flex-col gap-2 rounded-xl bg-surface-2 px-3.5 py-3">

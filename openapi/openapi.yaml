@@ -12,7 +12,11 @@ info:
     Not covered here:
     - `/mcp`: the Platform MCP, which speaks the MCP protocol (streamable HTTP), not REST.
     - `/git`: the git gateway, which speaks git smart HTTP.
-      Both are for user containers only and answer 404 from the internet.
+    - `/mcp/gate`: the check Claude Code's gate hook makes before a command or file change that
+      needs the user's OK (POST JSON `{tool, target, why, cwd?}` with the container token; answers
+      `{decision: allow | asked | refused, message, approvalId?}`). See docs/backend-report.md,
+      "Approvals for the agent's own actions".
+      All three are for user containers only and answer 404 from the internet.
     - Backend ↔ vm-manager: gRPC, defined in `vm-manager/proto/vm/v1/vm.proto`.
 
     Conventions:
@@ -4559,9 +4563,24 @@ components:
 
     Approval:
       type: object
-      required: [id, status, summary, createdAt, expiresAt]
+      required: [id, kind, status, summary, createdAt, expiresAt]
       properties:
         id: { type: string }
+        kind:
+          type: string
+          enum: [app_action, crew_job, command, git_push, crew_rerun, other]
+          description: |
+            What the user is asked to approve, so the card can show it plainly:
+            - `app_action`: an action in a connected app (`app`, `action`, `details.arguments`).
+            - `crew_job`: a crew job whose report is posted on a pull request.
+            - `command`: one of the agent's own commands or file changes (Claude Code).
+              `details`: `tool` (Bash, Edit, Write, NotebookEdit), `target` (the exact command, or
+              the file), `why` (why it needs an OK, in plain words), `folder` (where it was asked).
+            - `git_push`: a push to a branch that already existed. `details`: `repo`
+              ("owner/repo"), `branch`, `force` (true: it rewrites the branch's history).
+            - `crew_rerun`: run a crew job again with what its run was refused allowed.
+              `details`: `job` (the job's title), `items` (one plain line each).
+            - `other`: anything else.
         status: { $ref: "#/components/schemas/ApprovalStatus" }
         summary: { type: string, examples: ["Send email to priya@acme.com: \"Report delayed to Monday\""] }
         app: { type: [string, "null"], examples: [gmail] }
@@ -5092,8 +5111,8 @@ components:
       type: object
       required:
         [id, member, status, title, owner, repo, pullNumber, branch, instructions, focus, acceptance,
-         commands, finish, reportTo, source, report, error, conversationId, createdAt, startedAt,
-         finishedAt]
+         commands, finish, reportTo, source, report, error, conversationId, blocked, rerunOf,
+         createdAt, startedAt, finishedAt]
       properties:
         id: { type: string, examples: [crj_01jb2k3m4n5p6q7r8s9t0v1w2x] }
         member: { type: string, enum: [patch, byte] }
@@ -5136,6 +5155,17 @@ components:
         conversationId:
           type: [string, "null"]
           description: The web conversation the report was sent to, once known.
+        blocked:
+          type: array
+          items: { type: string }
+          description: |
+            What the job's run was refused because the brief does not cover it (a command that
+            needs the user's OK, a push to a branch that already existed), one plain line each.
+            After the run the user is asked, with an Approve button, whether to run the job again
+            with exactly these allowed.
+        rerunOf:
+          type: [string, "null"]
+          description: The earlier job this one runs again, after the user approved what it was refused.
         createdAt: { type: string, format: date-time }
         startedAt: { type: [string, "null"], format: date-time }
         finishedAt: { type: [string, "null"], format: date-time }

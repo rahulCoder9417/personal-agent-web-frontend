@@ -7,7 +7,8 @@ import { READING } from "../page";
 import { toastError } from "../toast";
 import { Button, IconTile, Pill, type PillTone } from "../ui";
 import { ApprovalIcon } from "./approval-list";
-import { approvalOutcome, approvalReason, splitDetails, type ApprovalReason, type SettledStatus } from "@/lib/approvals";
+import { OwnActionDetails } from "./own-action";
+import { approvalOutcome, approvalReasonOf, ownAction, splitDetails, type ApprovalReason, type SettledStatus } from "@/lib/approvals";
 
 type Decision = "approve" | "reject";
 
@@ -44,8 +45,10 @@ function settledLine(approval: Approval): string {
 /** Everything about one approval, and the two buttons while it is still waiting. */
 export function ApprovalDetail({ approval, onDecided }: { approval: Approval; onDecided: (decision: Decision) => void }) {
   const decide = useDecideApproval();
-  const reason = approvalReason(approval.action);
-  const { preview, fields } = splitDetails(approval.details);
+  const reason = approvalReasonOf(approval);
+  // One of the agent's own actions (a command, a push, a job run again): shown as it is, not as fields.
+  const own = ownAction(approval);
+  const { preview, fields } = own ? { preview: null, fields: [] } : splitDetails(approval.details);
   const pending = approval.status === "pending";
   const choosing = decide.isPending ? decide.variables?.decision : undefined;
 
@@ -81,12 +84,14 @@ export function ApprovalDetail({ approval, onDecided }: { approval: Approval; on
 
       <div className="flex flex-wrap items-center gap-2">
         <span className={cn("rounded-full px-2.5 py-0.5 text-[12px] font-medium", REASON_CHIP[reason.tone])}>{reason.label}</span>
-        {(approval.app || approval.action) && (
+        {!own && (approval.app || approval.action) && (
           <span className="text-[12px] text-muted">
             {[approval.app && titleCase(approval.app), approval.action].filter(Boolean).join(" · ")}
           </span>
         )}
       </div>
+
+      {own && <OwnActionDetails action={own} />}
 
       {fields.length > 0 && (
         <dl className="flex flex-col gap-2">

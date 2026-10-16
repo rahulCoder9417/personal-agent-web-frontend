@@ -2873,6 +2873,21 @@ export interface components {
         ApprovalStatus: "pending" | "approved" | "rejected" | "expired" | "replaced";
         Approval: {
             id: string;
+            /**
+             * @description What the user is asked to approve, so the card can show it plainly:
+             *     - `app_action`: an action in a connected app (`app`, `action`, `details.arguments`).
+             *     - `crew_job`: a crew job whose report is posted on a pull request.
+             *     - `command`: one of the agent's own commands or file changes (Claude Code).
+             *       `details`: `tool` (Bash, Edit, Write, NotebookEdit), `target` (the exact command, or
+             *       the file), `why` (why it needs an OK, in plain words), `folder` (where it was asked).
+             *     - `git_push`: a push to a branch that already existed. `details`: `repo`
+             *       ("owner/repo"), `branch`, `force` (true: it rewrites the branch's history).
+             *     - `crew_rerun`: run a crew job again with what its run was refused allowed.
+             *       `details`: `job` (the job's title), `items` (one plain line each).
+             *     - `other`: anything else.
+             * @enum {string}
+             */
+            kind: "app_action" | "crew_job" | "command" | "git_push" | "crew_rerun" | "other";
             status: components["schemas"]["ApprovalStatus"];
             /** @example Send email to priya@acme.com: "Report delayed to Monday" */
             summary: string;
@@ -3430,6 +3445,15 @@ export interface components {
             error: string | null;
             /** @description The web conversation the report was sent to, once known. */
             conversationId: string | null;
+            /**
+             * @description What the job's run was refused because the brief does not cover it (a command that
+             *     needs the user's OK, a push to a branch that already existed), one plain line each.
+             *     After the run the user is asked, with an Approve button, whether to run the job again
+             *     with exactly these allowed.
+             */
+            blocked: string[];
+            /** @description The earlier job this one runs again, after the user approved what it was refused. */
+            rerunOf: string | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
