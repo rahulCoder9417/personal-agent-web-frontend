@@ -23,6 +23,14 @@
   --online: #22a45d;
   --danger: #b42318;
   --danger-soft: #fdecea;
+  /* Amber: something needs the person (an app to connect, a step waiting for an OK). Red is kept
+     for what failed. */
+  --warn: #b54708;
+  --warn-dot: #f79009;
+  --warn-soft: #fffaeb;
+  --warn-line: #fedf89;
+  /* The quietest grey: chevrons, grips, a dot for "nothing happened". */
+  --faint: #a39f96;
   --scout: #11a39b;
   --tock: #ff6b2c;
   /* The crew's own colours (Tex wears the accent, Scout has --scout above). */
@@ -60,11 +68,16 @@
   --color-online: var(--online);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-dot: var(--warn-dot);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-line: var(--warn-line);
+  --color-faint: var(--faint);
   --color-scout: var(--scout);
   --color-tock: var(--tock);
   --color-byte: var(--byte);
   --color-patch: var(--patch);
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
   --shadow-soft: 0 1px 2px rgb(21 21 21 / 0.04), 0 8px 24px -12px rgb(21 21 21 / 0.12);
   --shadow-raised: 0 0 0 1px rgb(21 21 21 / 0.06), 0 1px 2px rgb(21 21 21 / 0.06);
@@ -448,4 +461,18 @@ html[data-onboarded] .welcome-cover { display: none; }
 
 .automation-canvas .react-flow__attribution a {
   color: var(--muted);
+}
+
+/* The automation screens keep to three text sizes: 24px for the page's title, 14px for titles and
+   body, 12px for details, chips and labels. Their own parts are written in those three. The shared
+   controls drawn inside them (fields, lists, switches, the date and time pickers) come in sizes of
+   their own; these rules bring each to the nearest of the three, on those screens only, and in the
+   lists and sheets those controls open over them. Outside any layer, so they win over the utilities. */
+:is(.type-scale, body:has(.type-scale) > .z-50)
+  :where(.text-\[13px\], .text-\[13\.5px\], .text-\[14\.5px\], .text-\[15px\], .text-\[16px\], .text-\[17px\], .text-\[19px\], .text-\[20px\], .text-\[21px\]) {
+  font-size: 14px;
+}
+
+:is(.type-scale, body:has(.type-scale) > .z-50) :where(.text-\[10\.5px\], .text-\[11px\], .text-\[11\.5px\], .text-\[12\.5px\]) {
+  font-size: 12px;
 }

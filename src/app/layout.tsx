@@ -1,6 +1,6 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import { Providers } from "@/components/shell/providers";
 import { APP_BACKGROUND, APP_DESCRIPTION, APP_NAME } from "@/lib/app-meta";
 import { SIGN_IN_PATH, SIGN_UP_PATH } from "@/lib/auth-flow";
@@ -8,7 +8,9 @@ import { builtAuthMode } from "@/lib/auth-mode";
 import { coverHintScript } from "@/lib/onboarded-here";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+// The app's face: Plus Jakarta Sans for all text (it took over from Geist Sans), Geist Mono for code,
+// repo names and other mono text. Both are served from this app by next/font, not from Google.
+const appSans = Plus_Jakarta_Sans({ variable: "--font-app-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -37,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   const mode = builtAuthMode();
   const page = (
     // suppressHydrationWarning: browser extensions add attributes to <html> before React loads.
-    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${appSans.variable} ${geistMono.variable} h-full antialiased`}>
       <head>
         {/* Before anything is painted: whether this browser remembers the signed-in account finishing
             the welcome flow, so the chat shows at once instead of under its cover (onboarded-here.ts).
