@@ -4,8 +4,8 @@ import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Settings → General, "Tell me on Telegram when…": shown once Telegram is linked, three switches
-// and quiet hours, each change saved at once and said in a toast, and put back when the backend
+// Settings → General, "Tell me on Telegram when…": shown once Telegram is linked, four switches
+// (an automation's approvals among them) and quiet hours, each change saved at once and said in a toast, and put back when the backend
 // says no. The requests go to the demo backend, which answers as the real one would.
 
 const net = vi.hoisted(() => {
@@ -94,15 +94,19 @@ async function flip(name: string) {
 }
 
 describe("Tell me on Telegram when…", () => {
-  it("shows three switches and quiet hours once Telegram is linked, as they start", async () => {
+  it("shows four switches and quiet hours once Telegram is linked, as they start", async () => {
     await draw();
     expect(group()?.id).toBe("telegram-notices");
     expect(isOn("Byte or Patch finishes a job")).toBe(true);
     expect(isOn("Pull-request reviews finish")).toBe(true);
     expect(isOn("Automation runs finish")).toBe(false);
+    expect(isOn("An automation needs my OK")).toBe(true);
     expect(isOn("Quiet hours")).toBe(true);
     const words = group()?.textContent ?? "";
     expect(words).toContain("Always in addition to the chat you asked in, never instead.");
+    // No longer "approvals reach Telegram whatever these say": only an automation's do.
+    expect(words).not.toContain("whatever these say");
+    expect(words).toContain("Approve or Deny on Telegram when an automation asks; what you ask in the web app stays here.");
     expect(words).toContain("In your time zone (Asia/Kolkata)");
     expect(words).toContain("10:00 PM to 8:00 AM, over midnight.");
   });
@@ -121,6 +125,26 @@ describe("Tell me on Telegram when…", () => {
     expect(isOn("Automation runs finish")).toBe(true);
     expect(toasts.done).toEqual([{ title: "Automation runs finish: on" }]);
     expect(demo.user.notifications.automationRuns).toBe(true);
+  });
+
+  it("switches an automation's approvals off and on, with a toast each time", async () => {
+    await draw();
+    await flip("An automation needs my OK");
+    expect(net.patches).toEqual([{ notifications: { automationApprovals: false } }]);
+    expect(isOn("An automation needs my OK")).toBe(false);
+    expect(toasts.done).toEqual([{ title: "An automation needs my OK: off" }]);
+    expect(demo.user.notifications.automationApprovals).toBe(false);
+    await flip("An automation needs my OK");
+    expect(isOn("An automation needs my OK")).toBe(true);
+    expect(toasts.done.at(-1)).toEqual({ title: "An automation needs my OK: on" });
+  });
+
+  it("puts a refused change of an automation's approvals back", async () => {
+    net.refuse = 500;
+    await draw();
+    await flip("An automation needs my OK");
+    expect(isOn("An automation needs my OK")).toBe(true);
+    expect(toasts.failed).toEqual([{ title: "Couldn’t save that" }]);
   });
 
   it("switching quiet hours off hides the times", async () => {
