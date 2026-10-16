@@ -1,19 +1,21 @@
 import type { ReactNode } from "react";
 import { Page, PageHeader } from "@/components/page";
 import { RouteNav, RouteTabs, type RouteTab } from "@/components/route-tabs";
+import { PRICING_PATH } from "@/lib/pricing";
 
 const SECTIONS: RouteTab[] = [
   { href: "/settings", label: "General", exact: true },
   { href: "/settings/agent", label: "Agent & AI" },
   { href: "/settings/memory", label: "Memory" },
   { href: "/settings/credits", label: "Credits" },
-  { href: "/settings/plans", label: "Plans" },
+  // Plans have a screen of their own now, Pricing; the section stays here as the way to it.
+  { href: PRICING_PATH, label: "Plans" },
 ];
 
 /**
  * Settings: the sections in a column on the left from 1280px, and as tabs under the title below
  * that. The app's own sidebar already takes 236px from 768px; with a second column beside it any
- * earlier, Credits and Plans would be squeezed.
+ * earlier, Credits would be squeezed.
  */
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (

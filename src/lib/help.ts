@@ -4,6 +4,7 @@
 
 import { chatDraftHref } from "./chat-link";
 import { INTEGRATIONS_APPS_PATH, INTEGRATIONS_MCP_PATH, INTEGRATIONS_PATH, linkChatHref } from "./integrations";
+import { PRICING_PATH } from "./pricing";
 
 // ---------------------------------------------------------------- places
 
@@ -37,7 +38,7 @@ export const PLACES = {
   ai: { label: "Settings → Agent & AI", short: "Agent & AI", href: "/settings/agent" },
   memory: { label: "Settings → Memory", short: "Memory", href: "/settings/memory" },
   credits: { label: "Settings → Credits", short: "Credits", href: "/settings/credits" },
-  plans: { label: "Settings → Plans", short: "Plans", href: "/settings/plans" },
+  plans: { label: "Pricing", href: PRICING_PATH },
   account: { label: "Settings → General → Account", short: "Account", href: "/settings" },
   privacy: { label: "textcrew.in/privacy", href: "https://textcrew.in/privacy" },
 } as const satisfies Record<string, Place>;

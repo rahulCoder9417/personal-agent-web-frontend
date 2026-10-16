@@ -10,6 +10,7 @@ import type { App } from "@/lib/api/client";
 import { useConnectApp } from "@/lib/api/hooks";
 import { leaveTo, openInNewTab } from "@/lib/navigate";
 import { connectCopy, describeConnectError, type ConnectCopy, type ConnectPurpose } from "./apps-logic";
+import { PRICING_PATH } from "@/lib/pricing";
 
 /** A coin, for the line about credits. Drawn here: the shared icon set has none. */
 function CoinIcon({ size = 16 }: { size?: number }) {
@@ -106,7 +107,7 @@ export function ConnectDialog({
         },
         onError: (error) => {
           const refusal = describeConnectError(app.name, error);
-          toastError(refusal.title, refusal.detail, refusal.plans ? { label: "See plans", href: "/settings/plans" } : undefined);
+          toastError(refusal.title, refusal.detail, refusal.plans ? { label: "See plans", href: PRICING_PATH } : undefined);
           dialog.current?.close();
         },
       },

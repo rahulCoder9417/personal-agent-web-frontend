@@ -72,7 +72,7 @@ describe("sign-in proxy", () => {
   });
 
   it("asks for a session everywhere else", async () => {
-    for (const path of ["/", "/approvals", "/integrations", "/integrations/apps", "/integrations/mcp", "/apps", "/apps/mcp", "/settings", "/settings/plans", "/onboarding", "/more", "/crew", "/activity"]) {
+    for (const path of ["/", "/approvals", "/integrations", "/integrations/apps", "/integrations/mcp", "/apps", "/apps/mcp", "/settings", "/settings/plans", "/pricing", "/onboarding", "/more", "/crew", "/activity"]) {
       expect(await open(path), path).toBe(false);
     }
   });
@@ -99,7 +99,7 @@ describe("sign-in proxy", () => {
     };
     expect(await landing("/sign-in")).toBe("https://app.textcrew.in/");
     expect(await landing("/sign-in?redirect_url=https%3A%2F%2Fapp.textcrew.in%2Fapps%3Fconnected%3Dgithub")).toBe("https://app.textcrew.in/apps?connected=github");
-    expect(await landing("/sign-up?redirect_url=%2Fsettings%2Fplans")).toBe("https://app.textcrew.in/settings/plans");
+    expect(await landing("/sign-up?redirect_url=%2Fpricing")).toBe("https://app.textcrew.in/pricing");
     // Never to another site, and never back to a sign-in page.
     expect(await landing("/sign-in?redirect_url=https%3A%2F%2Fevil.example%2F")).toBe("https://app.textcrew.in/");
     expect(await landing("/sign-up?redirect_url=%2Fsign-in")).toBe("https://app.textcrew.in/");
@@ -150,7 +150,7 @@ describe("sign-in proxy", () => {
 
   it("runs on pages and API routes, and skips static files", () => {
     const [pages, api] = config.matcher.map((pattern) => new RegExp(`^${pattern}$`));
-    for (const path of ["/", "/sign-in", "/sign-up", "/sso-callback", "/settings/plans"]) expect(pages.test(path), path).toBe(true);
+    for (const path of ["/", "/sign-in", "/sign-up", "/sso-callback", "/pricing"]) expect(pages.test(path), path).toBe(true);
     for (const path of ["/_next/static/chunk.js", "/icons/icon-192.png", "/manifest.webmanifest", "/favicon.ico"]) expect(pages.test(path), path).toBe(false);
     expect(api.test("/api/v1/me")).toBe(true);
   });

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ActivityIcon, AppsIcon, ChevronRightIcon, CrewIcon, SettingsIcon } from "@/components/icons";
+import { ActivityIcon, AppsIcon, ChevronRightIcon, CrewIcon, PricingIcon, SettingsIcon } from "@/components/icons";
 import { GettingStartedCard, useGettingStarted } from "@/components/onboarding/getting-started";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { AgentFigure } from "@/components/tex";
@@ -10,6 +10,7 @@ import { useAgentSettings, useChannels, useCrew, useMe, useMemories, usePlans } 
 import { crewNavNote } from "@/lib/crew";
 import { CHANNEL_LABEL, formatNumber, initials } from "@/lib/format";
 import { INTEGRATIONS_PATH } from "@/lib/integrations";
+import { PRICING_PATH } from "@/lib/pricing";
 
 function Row({ href, icon, title, detail }: { href: string; icon: ReactNode; title: string; detail?: string }) {
   return (
@@ -70,7 +71,7 @@ export default function MorePage() {
           />
           <Row href="/activity" icon={<ActivityIcon size={17} />} title="Activity log" />
           <Row href="/settings/credits" icon={glyph("¢")} title="Credits" detail={me.data ? formatNumber(me.data.credits.balance) : undefined} />
-          <Row href="/settings/plans" icon={glyph("$")} title="Plans and billing" detail={plan?.name} />
+          <Row href={PRICING_PATH} icon={<PricingIcon size={17} />} title="Pricing" detail={plan?.name} />
           <Row
             href="/settings/agent"
             icon={<AgentFigure who="tex" glyph size={20} label="" />}

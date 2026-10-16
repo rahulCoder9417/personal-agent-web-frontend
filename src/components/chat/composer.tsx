@@ -8,6 +8,7 @@ import { formatBytes } from "@/lib/format";
 import { CloseIcon, FileIcon, PaperclipIcon, SendIcon } from "../icons";
 import { AgentFigure } from "../tex";
 import { ButtonLink, InlineError, Spinner } from "../ui";
+import { PRICING_PATH } from "@/lib/pricing";
 
 const MAX_FILES = 5;
 /** The backend refuses anything larger (413). */
@@ -31,7 +32,7 @@ function OutOfCredits() {
         <ButtonLink href="/settings/credits" size="sm">
           Buy a top-up
         </ButtonLink>
-        <ButtonLink href="/settings/plans" variant="primary" size="sm">
+        <ButtonLink href={PRICING_PATH} variant="primary" size="sm">
           Upgrade
         </ButtonLink>
       </div>
