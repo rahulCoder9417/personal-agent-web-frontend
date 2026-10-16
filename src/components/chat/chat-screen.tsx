@@ -50,18 +50,21 @@ function ReadOnly({ channel }: { channel: ChannelType }) {
 
 /**
  * `/?chat=automations` (the Automations screen's link, and the last line of a run's copy on
- * Telegram) opens the Automations chat. Read once, then the address is tidied. Reading the address
- * needs a Suspense boundary.
+ * Telegram) opens the Automations chat; `/?conversation=<id>` (the link in a Telegram notice, such
+ * as "Byte finished") opens that conversation. Read once, then the address is tidied. Reading the
+ * address needs a Suspense boundary.
  */
-function OpenFromLink({ onAutomations }: { onAutomations: () => void }) {
+function OpenFromLink({ onAutomations, onConversation }: { onAutomations: () => void; onConversation: (id: string) => void }) {
   const params = useSearchParams();
   const router = useRouter();
   const wanted = params.get("chat") === "automations";
+  const conversation = params.get("conversation");
   useEffect(() => {
-    if (!wanted) return;
-    onAutomations();
+    if (!wanted && !conversation) return;
+    if (wanted) onAutomations();
+    else if (conversation) onConversation(conversation);
     router.replace("/");
-  }, [wanted, onAutomations, router]);
+  }, [wanted, conversation, onAutomations, onConversation, router]);
   return null;
 }
 
@@ -158,6 +161,14 @@ export function ChatScreen() {
     setWantAutomations(false);
     setDrawer(false);
   };
+  const openLinked = useCallback(
+    (conversationId: string) => {
+      setPickedId(conversationId);
+      setWantAutomations(false);
+      setDrawer(false);
+    },
+    [setDrawer],
+  );
   const openAutomations = useCallback(() => {
     setPickedId(null);
     setWantAutomations(true);
@@ -327,7 +338,7 @@ export function ChatScreen() {
       <SidePanel besideChats={!hidden} hidden={panelHidden} motion={motion} onHide={() => PANELS.sidePanel.set(true)} />
 
       <Suspense fallback={null}>
-        <OpenFromLink onAutomations={openAutomations} />
+        <OpenFromLink onAutomations={openAutomations} onConversation={openLinked} />
       </Suspense>
 
       <Drawer open={drawer && !wide} onClose={() => setDrawer(false)}>

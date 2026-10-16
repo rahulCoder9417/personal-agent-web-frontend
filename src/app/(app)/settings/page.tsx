@@ -5,6 +5,7 @@ import { LinkedChatsSection } from "@/components/settings/general-chats";
 import { AccountSection, YourDataSection } from "@/components/settings/general-data";
 import { GettingStartedSection } from "@/components/settings/general-getting-started";
 import { HelpSection } from "@/components/settings/general-help";
+import { TelegramNoticesSection } from "@/components/settings/general-notifications";
 import { ProfileSection } from "@/components/settings/general-profile";
 import { SETTINGS_COLUMN, SettingsGroup } from "@/components/settings/settings-rows";
 import { Card, ErrorState, SkeletonRows } from "@/components/ui";
@@ -30,6 +31,7 @@ export default function GeneralSettingsPage() {
         <ProfileSection key={`${me.data.id}-${me.data.timezoneSet}`} me={me.data} />
       )}
       <LinkedChatsSection />
+      {me.data && <TelegramNoticesSection me={me.data} />}
       {me.data && <GettingStartedSection me={me.data} />}
       <HelpSection />
       <YourDataSection />

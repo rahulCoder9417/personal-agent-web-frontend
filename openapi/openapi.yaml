@@ -97,6 +97,9 @@ paths:
         `onboardingCompleted` and `gettingStartedDismissed` are the web app's first-run marks (see
         `Me`). `true` stamps the time now, or keeps the time already there; `false` clears it. Only
         the signed-in user's own marks change.
+
+        `notifications` changes only the fields it names (see `NotificationSettings`). Quiet hours
+        whose start and end are the same are refused (400).
       requestBody:
         required: true
         content:
@@ -3876,6 +3879,7 @@ components:
         - createdAt
         - onboardingCompletedAt
         - gettingStartedDismissedAt
+        - notifications
       properties:
         id: { type: string }
         email: { type: string, format: email }
@@ -3915,6 +3919,63 @@ components:
             The web app also hides it by itself once every step is done, worked out from the
             account's real data; the backend does not track the steps. Set with `PATCH /v1/me`
             `gettingStartedDismissed: true`; cleared with `false` or by an admin.
+        notifications: { $ref: "#/components/schemas/NotificationSettings" }
+
+    NotificationSettings:
+      type: object
+      description: |
+        What the user is told on Telegram (the web app shows it only once Telegram is linked). A
+        notice on Telegram is always in addition to the chat the work was asked in, never instead
+        of it, and nothing is sent while Telegram is not linked, switched off or blocked. An
+        approval is sent to Telegram too whenever Telegram is linked, whatever these say.
+      required: [crewJobs, prReviews, automationRuns, quietHours]
+      properties:
+        crewJobs:
+          type: boolean
+          description: |
+            A short notice when a crew job (Patch or Byte) asked in the web app finishes or fails,
+            with a link to its report. A job asked on Telegram reports there anyway. On at first.
+        prReviews:
+          type: boolean
+          description: A copy of each pull-request review's verdict. On at first.
+        automationRuns:
+          type: boolean
+          description: |
+            A copy of each answer of an automation made in the web app. An automation made on
+            Telegram always sends its answer there. Off at first.
+        quietHours: { $ref: "#/components/schemas/QuietHours" }
+
+    QuietHours:
+      type: object
+      description: |
+        In the user's time zone (`Me.timezone`). Inside these hours Telegram messages are sent
+        silently (no sound on the phone); none is held back. `start` after `end` runs over
+        midnight. At first on, 22:00 to 08:00.
+      required: [enabled, start, end]
+      properties:
+        enabled: { type: boolean }
+        start: { $ref: "#/components/schemas/ClockTime" }
+        end: { $ref: "#/components/schemas/ClockTime" }
+
+    ClockTime:
+      type: string
+      description: A time of day, 24-hour, `HH:MM`.
+      pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+      examples: ["22:00"]
+
+    NotificationSettingsUpdate:
+      type: object
+      description: Only the fields given change.
+      properties:
+        crewJobs: { type: boolean }
+        prReviews: { type: boolean }
+        automationRuns: { type: boolean }
+        quietHours:
+          type: object
+          properties:
+            enabled: { type: boolean }
+            start: { $ref: "#/components/schemas/ClockTime" }
+            end: { $ref: "#/components/schemas/ClockTime" }
 
     MeUpdate:
       type: object
@@ -3933,6 +3994,7 @@ components:
             `true`: the user closed the "Getting started" checklist. Sets
             `gettingStartedDismissedAt` to now; if it is already set, the first time is kept.
             `false`: clears it, so the checklist may show again.
+        notifications: { $ref: "#/components/schemas/NotificationSettingsUpdate" }
 
     ChannelLink:
       type: object

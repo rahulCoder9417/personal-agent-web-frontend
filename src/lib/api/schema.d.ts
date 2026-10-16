@@ -43,6 +43,9 @@ export interface paths {
          *     `onboardingCompleted` and `gettingStartedDismissed` are the web app's first-run marks (see
          *     `Me`). `true` stamps the time now, or keeps the time already there; `false` clears it. Only
          *     the signed-in user's own marks change.
+         *
+         *     `notifications` changes only the fields it names (see `NotificationSettings`). Quiet hours
+         *     whose start and end are the same are refused (400).
          */
         patch: operations["updateMe"];
         trace?: never;
@@ -2402,6 +2405,54 @@ export interface components {
              *     `gettingStartedDismissed: true`; cleared with `false` or by an admin.
              */
             gettingStartedDismissedAt: string | null;
+            notifications: components["schemas"]["NotificationSettings"];
+        };
+        /**
+         * @description What the user is told on Telegram (the web app shows it only once Telegram is linked). A
+         *     notice on Telegram is always in addition to the chat the work was asked in, never instead
+         *     of it, and nothing is sent while Telegram is not linked, switched off or blocked. An
+         *     approval is sent to Telegram too whenever Telegram is linked, whatever these say.
+         */
+        NotificationSettings: {
+            /**
+             * @description A short notice when a crew job (Patch or Byte) asked in the web app finishes or fails,
+             *     with a link to its report. A job asked on Telegram reports there anyway. On at first.
+             */
+            crewJobs: boolean;
+            /** @description A copy of each pull-request review's verdict. On at first. */
+            prReviews: boolean;
+            /**
+             * @description A copy of each answer of an automation made in the web app. An automation made on
+             *     Telegram always sends its answer there. Off at first.
+             */
+            automationRuns: boolean;
+            quietHours: components["schemas"]["QuietHours"];
+        };
+        /**
+         * @description In the user's time zone (`Me.timezone`). Inside these hours Telegram messages are sent
+         *     silently (no sound on the phone); none is held back. `start` after `end` runs over
+         *     midnight. At first on, 22:00 to 08:00.
+         */
+        QuietHours: {
+            enabled: boolean;
+            start: components["schemas"]["ClockTime"];
+            end: components["schemas"]["ClockTime"];
+        };
+        /**
+         * @description A time of day, 24-hour, `HH:MM`.
+         * @example 22:00
+         */
+        ClockTime: string;
+        /** @description Only the fields given change. */
+        NotificationSettingsUpdate: {
+            crewJobs?: boolean;
+            prReviews?: boolean;
+            automationRuns?: boolean;
+            quietHours?: {
+                enabled?: boolean;
+                start?: components["schemas"]["ClockTime"];
+                end?: components["schemas"]["ClockTime"];
+            };
         };
         MeUpdate: {
             name?: string;
@@ -2418,6 +2469,7 @@ export interface components {
              *     `false`: clears it, so the checklist may show again.
              */
             gettingStartedDismissed?: boolean;
+            notifications?: components["schemas"]["NotificationSettingsUpdate"];
         };
         /**
          * @description One of the user's linked chats. `maskedChatId`, `lastInboundAt` and `blocked` are the same

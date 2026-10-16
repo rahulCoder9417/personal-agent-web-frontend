@@ -49,6 +49,7 @@ import {
   type ConversationList,
 } from "../conversations";
 import type { ProgressLine } from "../crew";
+import { withNotificationChange, type NotificationSettingsUpdate } from "../notifications";
 
 // One place for every query key, so the event stream and mutations invalidate the same things.
 export const qk = {
@@ -125,6 +126,27 @@ export function useUpdateOnboarding() {
       return { previous };
     },
     onError: (_error, _body, context) => {
+      if (context?.previous) qc.setQueryData(qk.me, context.previous);
+    },
+    onSuccess: (me) => qc.setQueryData(qk.me, me),
+  });
+}
+
+/**
+ * What Tex tells the user on Telegram (`notifications`: only the fields given change). Shown at
+ * once, put back if the API says no.
+ */
+export function useUpdateNotifications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (change: NotificationSettingsUpdate) => updateMe({ notifications: change }),
+    onMutate: async (change) => {
+      await qc.cancelQueries({ queryKey: qk.me });
+      const previous = qc.getQueryData<Me>(qk.me);
+      if (previous) qc.setQueryData<Me>(qk.me, { ...previous, notifications: withNotificationChange(previous.notifications, change) });
+      return { previous };
+    },
+    onError: (_error, _change, context) => {
       if (context?.previous) qc.setQueryData(qk.me, context.previous);
     },
     onSuccess: (me) => qc.setQueryData(qk.me, me),

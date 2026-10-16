@@ -1,6 +1,7 @@
 // The demo account's starting data. Every timestamp is worked out from "now", so today's
 // messages are always today's and the credits always have the same number of days left.
 
+import { DEFAULT_NOTIFICATIONS } from "@/lib/notifications";
 import type {
   ActivityEntry,
   AgentSettings,
@@ -849,6 +850,7 @@ export function createNewAccount(now: Date, plan: PlanId = process.env.TEXTCREW_
       id: `user_new_${now.getTime().toString(36)}`, email: "meera@lumen.studio", emailVerified: true, name: "Meera Iyer",
       timezone: "UTC", timezoneSet: false, plan, role: "user", createdAt: signedUp,
       onboardingCompletedAt: null, gettingStartedDismissedAt: null,
+      notifications: structuredClone(DEFAULT_NOTIFICATIONS),
     },
     availableChannels: ["telegram", "web"],
     channels: [],
@@ -904,6 +906,7 @@ export function createSeed(now: Date, plan: PlanId = demoPlan(), account: DemoAc
       // Went through the welcome flow when they signed up. The checklist was never hidden: it went
       // by itself once the AI, an app and a first message were done.
       onboardingCompletedAt: iso(Date.parse(signedUp) + 4 * MINUTE), gettingStartedDismissedAt: null,
+      notifications: structuredClone(DEFAULT_NOTIFICATIONS),
     },
     availableChannels: ["telegram", "web"],
     channels: [seedTelegramLink(iso(Date.parse(signedUp) + 5 * MINUTE), chats.messages)],
