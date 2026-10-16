@@ -2430,6 +2430,13 @@ export interface components {
             /** @enum {string} */
             status: "queued" | "processing" | "sent" | "delivered" | "read" | "failed";
             approvalId?: string | null;
+            /**
+             * @description The `clientMessageId` the web app sent this message with (`POST /v1/messages`). Only
+             *     on a message the user wrote in the web app; left out on every other message. A client
+             *     that shows a message before the server has answered (an optimistic bubble) matches it
+             *     to the saved one with this, also when the saved one arrives first on the live stream.
+             */
+            clientMessageId?: string;
             /** Format: date-time */
             createdAt: string;
         };
