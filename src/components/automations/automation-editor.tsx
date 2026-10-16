@@ -270,9 +270,15 @@ export function AutomationEditor({
         </ol>
       )}
 
-      <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-line bg-surface/95 px-4 py-3 shadow-[var(--shadow-raised)] backdrop-blur">
+      <div className="z-10 -mx-1 flex md:sticky md:bottom-0 flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-line bg-surface/95 px-4 py-3 shadow-[var(--shadow-raised)] backdrop-blur">
         <p aria-live="polite" className="min-w-0 flex-1 basis-[260px] text-[12.5px] text-fg-2">
-          {checking ? "Checking…" : knownBad ? "Some boxes need a fix before it can be saved." : (runs ?? (editor.mode ? "Looks good." : "Pick when it runs to begin."))}
+          {!editor.mode && touched.size === 0
+            ? "Pick when it runs to begin, then fill in each box."
+            : checking
+              ? "Checking…"
+              : knownBad
+                ? "Some boxes need a fix before it can be saved."
+                : (runs ?? "Looks good.")}
           {!checking && knownBad && runs && <span className="block text-muted">{runs}</span>}
         </p>
         <div className="flex flex-wrap items-center gap-2">

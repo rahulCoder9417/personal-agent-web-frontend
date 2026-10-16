@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useApps, useAutomations, useMe } from "@/lib/api/hooks";
+import { useApps, useMe } from "@/lib/api/hooks";
 import { appChoices, EDITOR_TEMPLATES, emptyEditor, type EditorParts } from "@/lib/automation-editor";
 import { AUTOMATION_KINDS } from "@/lib/automations";
 import { chatDraftHref } from "@/lib/chat-link";
@@ -14,7 +14,6 @@ import { ButtonLink, IconTile, SectionLabel } from "../ui";
 import { AutomationEditor } from "./automation-editor";
 import { BackToAutomations } from "./automation-screen";
 import { KIND_TINT, KindIcon } from "./kind-icon";
-import { PlanMeter } from "./plan-meter";
 
 /**
  * `/automations/new` without a draft: an empty canvas to build one by hand, box by box, with a few
@@ -23,7 +22,6 @@ import { PlanMeter } from "./plan-meter";
 export function NewAutomation() {
   const me = useMe();
   const apps = useApps();
-  const automations = useAutomations();
   const zone = me.data?.timezone;
   const [template, setTemplate] = useState<{ id: string; start: EditorParts } | null>(null);
   const empty = useMemo(() => (zone ? emptyEditor(zone) : null), [zone]);
@@ -40,7 +38,6 @@ export function NewAutomation() {
             fill it in. Nothing runs until you save; Save paused lets you try it first with Run once now.
           </p>
         </div>
-        {automations.data && <PlanMeter used={automations.data.length} />}
       </div>
 
       <section aria-labelledby="editor-templates" className="flex flex-col gap-2.5">

@@ -212,7 +212,7 @@ function Saved({ automation, editing: editingAtFirst = false }: { automation: Au
         {review
           ? "How Patch reviews this repo, step by step. Turn it on or off on the review screen."
           : start
-            ? "Change any box: click it (on a phone, scroll down the form). The server checks each change as you go; nothing changes until you save."
+            ? "Change any box: click it on the canvas, or fill in the form on a phone. Each change is checked as you go; nothing changes until you save."
             : finished
               ? "This reminder has run its one time, so it is finished. It shows how Tex ran it."
               : "This is how Tex runs it, step by step. Edit changes any box; Run once now tries it, on or paused."}

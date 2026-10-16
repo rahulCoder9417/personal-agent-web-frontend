@@ -63,7 +63,7 @@ describe("editing a saved automation", () => {
     qc.setQueryData(qk.automation(automation.id), automation);
     const html = draw(qc, createElement(AutomationScreen, { automationId: automation.id, editing: true }));
     const words = text(html);
-    expect(words).toContain("Change any box");
+    expect(words).toContain("Change any box: click it on the canvas");
     expect(html).toContain(`value="${automation.title}"`);
     expect(words).toContain("On a schedule");
     expect(words).toContain("On days");
