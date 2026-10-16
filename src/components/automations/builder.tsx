@@ -846,7 +846,7 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
                   pending={pendingLabel ? { label: pendingLabel, onCancel: () => setPending(null) } : null}
                   notConnected={notConnected}
                   onConnect={(app: App) => connect.open(app, "connect")}
-                  loading={lists.pending || events.pending}
+                  loading={apps.isPending || lists.pending || events.pending}
                   dragging={dragging?.key ?? null}
                 />
               </div>
