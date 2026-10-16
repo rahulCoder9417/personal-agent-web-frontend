@@ -437,7 +437,7 @@ describe("chat", () => {
     const read = async () => new TextDecoder().decode((await reader.read()).value);
 
     expect(response.headers.get("content-type")).toBe("text/event-stream");
-    expect(await read()).toBe("event: ready\ndata: {}\n\n");
+    expect(await read()).toBe('event: ready\ndata: {"resumed":false}\n\n');
 
     await call("PATCH", "automations/aut_meetings", { enabled: false });
     const frame = await read();
