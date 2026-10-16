@@ -90,8 +90,8 @@ describe("the Help page", () => {
       expect(crew).toContain(`href="/?draft=${encodeURIComponent(example)}"`);
     expect(crew).toContain("Fix the typo in the README on my repo");
     expect(crew).toContain("There is no form for the crew: you ask in plain words.");
-    // Reviewing every pull request in a repo is the one thing set up on a screen.
-    expect(crew).toContain('href="/automations/reviews"');
+    // Reviewing every pull request in a repo is the one thing set up on a screen: its template's canvas.
+    expect(crew).toContain('href="/automations/new?template=pr-review"');
     expect(html).not.toMatch(/Give (Patch a review|Byte a job|the crew a job)|Crew page|crew jobs?/i);
   });
 

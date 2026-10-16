@@ -497,6 +497,51 @@ const days = (list: readonly number[], time: string): Schedule => ({ ...DEFAULT_
 /** Ready-made starts for the empty canvas. Each fills the form; everything can be changed after. */
 export const EDITOR_TEMPLATES: readonly EditorTemplate[] = [
   {
+    id: "morning-email",
+    name: "Morning email summary",
+    blurb: "Every morning Tex reads your unread email and sends you the short version.",
+    app: "gmail",
+    fill: (e) => ({
+      ...e,
+      mode: "schedule",
+      schedule: days(ALL_DAYS, "09:00"),
+      title: "Morning email summary",
+      instruction: "Sum up my unread email every morning",
+      apps: [],
+      steps: [
+        { ...emptyStep("action", "fetch"), app: "gmail", action: "GMAIL_FETCH_EMAILS", inputs: { query: "is:unread newer_than:1d" } },
+        { ...emptyStep("tex", "sum", "fetch"), instruction: "Sum up these emails in a few lines, the important ones first." },
+      ],
+    }),
+  },
+  {
+    id: "meeting-prep",
+    name: "Meeting prep",
+    blurb: "Before your day starts, who’s coming to each meeting and what you last talked about.",
+    app: "googlecalendar",
+    fill: (e) => ({
+      ...e,
+      mode: "schedule",
+      schedule: days(WEEKDAYS, "08:30"),
+      title: "Meeting prep",
+      instruction: "Tell me who is coming to each of today’s meetings on Google Calendar, and what we last wrote to each other about it in Gmail.",
+      apps: ["googlecalendar", "gmail"],
+    }),
+  },
+  {
+    id: "weekly-reminder",
+    name: "A weekly reminder",
+    blurb: "Tex reminds you at the time you pick. No apps needed.",
+    fill: (e) => ({
+      ...e,
+      mode: "schedule",
+      schedule: days([5], "17:00"),
+      title: "Friday report reminder",
+      instruction: "Remind me to send the weekly report.",
+      apps: [],
+    }),
+  },
+  {
     id: "daily-briefing",
     name: "Daily briefing at 8",
     blurb: "Every morning: today’s meetings and the emails that need you.",

@@ -13,12 +13,13 @@ import { ApiError, type App, type AppAction, type AppEventSetting } from "@/lib/
 import { useAppActions } from "@/lib/api/hooks";
 import { appChoices } from "@/lib/automation-editor";
 import { LOCKED_LINE, TEX_STEP_NOTE } from "@/lib/automation-flow";
-import { conditionWords, FIRST_STEP_NOTE, MAX_READ_APPS, type ConditionKind, type EditorStep, type StepType } from "@/lib/automation-steps";
+import type { Lane } from "@/lib/automation-lanes";
+import { conditionWords, FIRST_STEP_NOTE, MAX_READ_APPS, type ConditionKind, type EditorStep } from "@/lib/automation-steps";
 import { titleCase } from "@/lib/format";
 import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
-import { LockIcon } from "../icons";
+import { ChevronRightIcon, LockIcon } from "../icons";
 import { MultiSelect } from "../multi-select";
-import { RadioCards, SegmentedControl } from "../segmented-control";
+import { RadioCards } from "../segmented-control";
 import { Combobox, Select, type ListItem, type ListOption } from "../select";
 import { Button, inputClass, SwitchRow } from "../ui";
 import { appOptions as appListOptions, Label, Problems, SettingField, textareaClass } from "./editor-forms";
@@ -32,11 +33,6 @@ const FORM_KINDS = new Set<AppEventSetting["type"]>(["string", "integer", "numbe
 export function fixableInput(input: AppEventSetting): boolean {
   return Boolean(input.enum?.length) || FORM_KINDS.has(input.type);
 }
-
-const TYPES: { value: StepType; label: string }[] = [
-  { value: "action", label: "App action" },
-  { value: "tex", label: "Tex instruction" },
-];
 
 const CONDITIONS: { kind: ConditionKind; title: string; line: string }[] = [
   { kind: "always", title: "Always", line: "It runs every time the step before is done." },
@@ -56,7 +52,7 @@ function useDebounced<T>(value: T, ms: number): T {
 
 function Section({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
   return (
-    <fieldset className="flex flex-col gap-2 border-t border-line pt-3.5 first:border-t-0 first:pt-0">
+    <fieldset className="flex flex-col gap-2">
       <legend className="contents">
         <Label hint={hint}>{title}</Label>
       </legend>
@@ -75,7 +71,7 @@ function InputField({ input, value, onChange, id }: { input: AppEventSetting; va
       </>
     );
     return (
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         <Label htmlFor={id} hint={input.description}>
           {label}
         </Label>
@@ -96,15 +92,29 @@ function InputField({ input, value, onChange, id }: { input: AppEventSetting; va
   return <SettingField id={id} setting={{ ...input, required: false }} value={value} onChange={onChange} />;
 }
 
-/** The action picker: the app's actions, searchable (on the server when the list is long), the ones that ask first marked. */
-function ActionPicker({ step, onPick, id }: { step: EditorStep; onPick: (action: AppAction) => void; id: string }) {
+/** Whether an action belongs in a lane: a read only reads, a write changes something. Any in the order they run. */
+export function actionFitsLane(action: Pick<AppAction, "changesSomething">, lane: Lane | null): boolean {
+  if (lane === "read") return !action.changesSomething;
+  if (lane === "write") return action.changesSomething;
+  return true;
+}
+
+/**
+ * The action picker: the app's actions of the step's lane (only the ones that read, in a read step;
+ * the ones that change something, in a write step), searchable (on the server when the list is
+ * long), the ones that ask first marked.
+ */
+function ActionPicker({ step, lane, onPick, id }: { step: EditorStep; lane: Lane | null; onPick: (action: AppAction) => void; id: string }) {
   const all = useAppActions(step.app);
   const [query, setQuery] = useState<string | null>(null);
   const typed = useDebounced(query ?? "", 300);
   // At most 200 come back at once: past that, what is typed is searched for on the server.
   const long = (all.data?.length ?? 0) >= 200;
   const searched = useAppActions(long && typed.trim() ? step.app : "", typed.trim());
-  const list = useMemo(() => (long && typed.trim() && searched.data ? searched.data : (all.data ?? [])), [long, typed, searched.data, all.data]);
+  const list = useMemo(
+    () => (long && typed.trim() && searched.data ? searched.data : (all.data ?? [])).filter((action) => actionFitsLane(action, lane) || action.slug === step.action),
+    [long, typed, searched.data, all.data, lane, step.action],
+  );
   const chosen = all.data?.find((action) => action.slug === step.action) ?? searched.data?.find((action) => action.slug === step.action);
 
   const options = useMemo(() => {
@@ -123,7 +133,7 @@ function ActionPicker({ step, onPick, id }: { step: EditorStep; onPick: (action:
   if (all.isError) {
     const down = all.error instanceof ApiError && all.error.status === 503;
     return (
-      <div className="flex flex-col gap-2 rounded-[9px] bg-danger-soft px-3 py-2.5 text-[12.5px] text-danger" role="alert">
+      <div className="flex flex-col gap-2 rounded-[10px] bg-warn-soft px-3 py-2 text-[12px] text-warn shadow-[inset_0_0_0_1px_var(--warn-line)]" role="alert">
         <span>
           {down
             ? `Couldn’t get ${app}’s actions just now: the service that connects your apps (Composio) didn’t answer. Your step is kept.`
@@ -136,7 +146,7 @@ function ActionPicker({ step, onPick, id }: { step: EditorStep; onPick: (action:
     );
   }
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <Combobox
         id={id}
         label="Action"
@@ -146,7 +156,9 @@ function ActionPicker({ step, onPick, id }: { step: EditorStep; onPick: (action:
         placeholder={all.isPending ? `Loading ${app}’s actions…` : `Search ${app}’s actions`}
         minListWidth={320}
         onQueryChange={setQuery}
-        emptyText={(text) => (searched.isFetching ? "Searching…" : `No ${app} action matches “${text}”.`)}
+        emptyText={(text) =>
+          searched.isFetching ? "Searching…" : lane === "read" ? `No ${app} action that reads matches “${text}”.` : lane === "write" ? `No ${app} action that writes matches “${text}”.` : `No ${app} action matches “${text}”.`
+        }
         onChange={(slug) => {
           const action = list.find((item) => item.slug === slug) ?? all.data?.find((item) => item.slug === slug);
           if (action) onPick(action);
@@ -168,11 +180,11 @@ function InputsForm({ step, onChange, id }: { step: EditorStep; onChange: (input
   const action = all.data?.find((item) => item.slug === step.action);
   if (!action) {
     const set = Object.keys(step.inputs);
-    return set.length ? <p className="text-[12.5px] text-fg-2">Fixed: {set.join(", ")}. The action’s inputs load with its list.</p> : null;
+    return set.length ? <p className="text-[12px] text-fg-2">Fixed: {set.join(", ")}. The action’s inputs load with its list.</p> : null;
   }
   const fixable = action.inputs.filter(fixableInput).sort((a, b) => Number(b.required) - Number(a.required));
   const others = action.inputs.filter((input) => !fixableInput(input));
-  if (action.inputs.length === 0) return <p className="text-[12.5px] text-muted">This action takes no inputs.</p>;
+  if (action.inputs.length === 0) return <p className="text-[12px] text-muted">This action takes no inputs.</p>;
   return (
     <div className="flex flex-col gap-3 rounded-[10px] bg-surface-2 p-3">
       <span className="text-[12px] leading-relaxed text-muted">
@@ -212,7 +224,7 @@ function AskFirst({ step, onChange }: { step: EditorStep; onChange: (on: boolean
 function OnlyIf({ step, index, onChange, id }: { step: EditorStep; index: number; onChange: (onlyIf: EditorStep["onlyIf"]) => void; id: string }) {
   if (index === 0)
     return (
-      <p className="text-[12.5px] text-muted">{step.onlyIf.kind === "always" ? "Step 1 always runs when the trigger fires." : FIRST_STEP_NOTE}</p>
+      <p className="text-[12px] text-muted">{step.onlyIf.kind === "always" ? "Step 1 always runs when the trigger fires." : FIRST_STEP_NOTE}</p>
     );
   const words = conditionWords(step.onlyIf.words);
   return (
@@ -227,7 +239,7 @@ function OnlyIf({ step, index, onChange, id }: { step: EditorStep; index: number
           description:
             choice.kind === "tex" ? (
               <>
-                <span className="mr-1.5 rounded bg-surface-2 px-1.5 text-[10.5px] leading-[16px] font-semibold text-nav">Tex’s judgement</span>
+                <span className="mr-2 rounded-md bg-surface-2 px-2 text-[12px] leading-4 font-semibold text-nav">Tex’s judgement</span>
                 {choice.line}
               </>
             ) : (
@@ -236,7 +248,7 @@ function OnlyIf({ step, index, onChange, id }: { step: EditorStep; index: number
         }))}
       />
       {step.onlyIf.kind === "mentions" && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           <Label htmlFor={`${id}-words`} hint="Separate them with commas. Any one of them is enough.">
             The words
           </Label>
@@ -251,7 +263,7 @@ function OnlyIf({ step, index, onChange, id }: { step: EditorStep; index: number
         </div>
       )}
       {step.onlyIf.kind === "tex" && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           <Label htmlFor={`${id}-question`} hint="A question Tex answers yes or no from what the step before found.">
             Your question
           </Label>
@@ -266,7 +278,7 @@ function OnlyIf({ step, index, onChange, id }: { step: EditorStep; index: number
         </div>
       )}
       {step.onlyIf.kind !== "always" && (
-        <p className="rounded-[9px] bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-fg-2">
+        <p className="rounded-[10px] bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-fg-2">
           If it’s false, the run stops here: the steps after it are skipped, and one short line in the Automations chat says so. That counts as a good run, not a failure.
         </p>
       )}
@@ -283,7 +295,7 @@ function ReadApps({ step, apps, onChange, id }: { step: EditorStep; apps: readon
     "options" in item || !full || step.readApps.includes(item.value) ? item : { ...item, disabled: true, hint: `At most ${MAX_READ_APPS}` },
   );
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <MultiSelect
         id={`${id}-read`}
         label="Apps Tex may read"
@@ -295,7 +307,7 @@ function ReadApps({ step, apps, onChange, id }: { step: EditorStep; apps: readon
         onChange={(next) => onChange(next.slice(0, MAX_READ_APPS))}
       />
       {choices.usable.length === 0 && (
-        <p className="text-[12.5px] text-muted">
+        <p className="text-[12px] text-muted">
           No app is connected yet.{" "}
           <Link href={INTEGRATIONS_APPS_PATH} className={LINK}>
             Connect one
@@ -311,11 +323,12 @@ export type StepFormProps = {
   step: EditorStep;
   /** Its place: 0 is step 1. */
   index: number;
-  /** How many steps there are. */
-  count: number;
+  /** Its lane on the canvas: an app step's actions are the lane's. Null when the steps are shown as they run. */
+  lane: Lane | null;
   onChange: (step: EditorStep) => void;
-  onMove: (by: -1 | 1) => void;
-  onRemove: () => void;
+  /** Move it one place, within its lane; left out where it can't go. */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
   /** What the server says is wrong with this step. */
   problems: readonly string[];
   /** "Check this: it now looks at step 2." (its "only if" follows a different step now). */
@@ -325,48 +338,30 @@ export type StepFormProps = {
   apps: readonly App[] | undefined;
 };
 
-/** Move up, Move down and Remove step, in a row. */
-export function StepControls({ index, count, onMove, onRemove, label }: Pick<StepFormProps, "index" | "count" | "onMove" | "onRemove"> & { label: string }) {
-  return (
-    <div role="group" aria-label={`${label}: move or remove`} className="flex flex-wrap items-center gap-1.5">
-      <Button size="sm" disabled={index === 0} onClick={() => onMove(-1)} aria-keyshortcuts="Alt+ArrowUp">
-        ↑ Move up
-      </Button>
-      <Button size="sm" disabled={index >= count - 1} onClick={() => onMove(1)} aria-keyshortcuts="Alt+ArrowDown">
-        ↓ Move down
-      </Button>
-      <Button size="sm" variant="danger" onClick={onRemove}>
-        Remove step
-      </Button>
-    </div>
-  );
-}
-
 /** The panel of one step. */
-export function StepForm({ step, index, count, onChange, onMove, onRemove, problems, warning, previousId, apps }: StepFormProps) {
+export function StepForm({ step, index, lane, onChange, onMoveUp, onMoveDown, problems, warning, previousId, apps }: StepFormProps) {
   const id = useId();
   const choices = appChoices(apps);
   const set = (next: Partial<EditorStep>) => onChange({ ...step, ...next });
 
   return (
     <div
-      className="flex flex-col gap-3.5"
+      className="flex flex-col gap-6"
       onKeyDown={(event) => {
         // Alt and an arrow moves the step, from anywhere in its panel.
         if (!event.altKey) return;
-        if (event.key === "ArrowUp" && index > 0) {
+        if (event.key === "ArrowUp" && onMoveUp) {
           event.preventDefault();
-          onMove(-1);
-        } else if (event.key === "ArrowDown" && index < count - 1) {
+          onMoveUp();
+        } else if (event.key === "ArrowDown" && onMoveDown) {
           event.preventDefault();
-          onMove(1);
+          onMoveDown();
         }
       }}
     >
-      <StepControls index={index} count={count} onMove={onMove} onRemove={onRemove} label={`Step ${index + 1}`} />
       <Problems problems={problems} />
       {warning && (
-        <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[9px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
+        <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-warn-soft px-4 py-3 text-[12px] text-warn shadow-[inset_0_0_0_1px_var(--warn-line)]">
           <span className="min-w-0 flex-1 basis-[200px]">{warning} Its “only if” is about the step before it, and that step changed.</span>
           <Button size="sm" onClick={() => set({ follows: previousId })}>
             It’s right
@@ -374,19 +369,9 @@ export function StepForm({ step, index, count, onChange, onMove, onRemove, probl
         </div>
       )}
 
-      <Section title="What this step does" hint={step.type === "action" ? "One action in one of your apps, such as sending an email." : "Words for Tex: read, pick, sum up or draft. It can’t change anything."}>
-        <SegmentedControl<StepType>
-          label="Kind of step"
-          options={TYPES}
-          value={step.type}
-          fill
-          onChange={(type) => set({ type, showResult: type === "tex" ? true : step.showResult })}
-        />
-      </Section>
-
       {step.type === "action" ? (
         <>
-          <Section title="App" hint="One of your connected apps.">
+          <Section title="App" hint={lane === "read" ? "The app it reads from. Reading never changes anything there." : lane === "write" ? "The app it writes or sends in." : "One of your connected apps."}>
             <Combobox
               id={`${id}-app`}
               label="App"
@@ -398,7 +383,7 @@ export function StepForm({ step, index, count, onChange, onMove, onRemove, probl
               onChange={(app) => set({ app, action: "", inputs: {}, risky: false })}
             />
             {choices.usable.length === 0 && (
-              <p className="text-[12.5px] text-muted">
+              <p className="text-[12px] text-muted">
                 No app is connected yet.{" "}
                 <Link href={INTEGRATIONS_APPS_PATH} className={LINK}>
                   Connect one
@@ -408,10 +393,14 @@ export function StepForm({ step, index, count, onChange, onMove, onRemove, probl
             )}
           </Section>
           {step.app && (
-            <Section title="Action" hint="Search by a word. The ones that send, delete or pay say “Always asks first”.">
+            <Section
+              title="Action"
+              hint={lane === "read" ? "Only the actions that read are here. Search by a word." : "Search by a word. The ones that send, delete or pay say “Always asks first”."}
+            >
               <ActionPicker
                 id={`${id}-action`}
                 step={step}
+                lane={lane}
                 onPick={(action) => {
                   const names = new Set(action.inputs.map((input) => input.name));
                   const inputs = Object.fromEntries(Object.entries(step.inputs).filter(([name]) => names.has(name)));
@@ -461,6 +450,21 @@ export function StepForm({ step, index, count, onChange, onMove, onRemove, probl
           description="Its result also goes into the run’s answer. Either way it goes on to the next step."
         />
       </Section>
+
+      {(onMoveUp || onMoveDown) && (
+        <Section title="Place" hint="Steps run one at a time, top to bottom. Alt and an arrow key move it too.">
+          <div role="group" aria-label={`Step ${index + 1}: move`} className="flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={!onMoveUp} onClick={onMoveUp} aria-keyshortcuts="Alt+ArrowUp">
+              <ChevronRightIcon size={14} className="-rotate-90" />
+              Move up
+            </Button>
+            <Button size="sm" disabled={!onMoveDown} onClick={onMoveDown} aria-keyshortcuts="Alt+ArrowDown">
+              <ChevronRightIcon size={14} className="rotate-90" />
+              Move down
+            </Button>
+          </div>
+        </Section>
+      )}
 
       <Section title="Name" hint="Optional. Left empty, the box is named after the action or the instruction.">
         <input

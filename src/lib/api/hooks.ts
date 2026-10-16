@@ -16,6 +16,7 @@ import {
   unwrap,
   type AgentRuntime,
   type AppAction,
+  type AppEvent,
   type AgentSettings,
   type AgentStatus,
   type AgentSettingsUpdate,
@@ -940,6 +941,50 @@ export function useAppActionLists(appSlugs: readonly string[]) {
         if (result.data) byApp.set(slugs[index], result.data.items);
       });
       return { byApp, pending: results.some((result) => result.isPending) };
+    },
+  });
+}
+
+/** The events of several apps (the canvas's blocks to start on), by app. An app whose list didn't load has none. */
+export function useAppEventLists(appSlugs: readonly string[]) {
+  const slugs = [...new Set(appSlugs)].filter(Boolean);
+  return useQueries({
+    queries: slugs.map((appSlug) => ({
+      queryKey: qk.appEvents(appSlug),
+      queryFn: () => unwrap(api.GET("/v1/apps/{appSlug}/events", { params: { path: { appSlug } } })),
+      staleTime: 10 * 60_000,
+      retry: false,
+    })),
+    combine: (results) => {
+      const byApp = new Map<string, AppEvent[]>();
+      results.forEach((result, index) => {
+        if (result.data) byApp.set(slugs[index], result.data.items);
+      });
+      return { byApp, pending: results.some((result) => result.isPending) };
+    },
+  });
+}
+
+/**
+ * The latest run of each of these automations with steps, by id, for the list's "Last run" (a step
+ * waiting for an OK shows there). The same cache as `useAutomationRuns`, so the live stream keeps it
+ * fresh. An automation whose runs didn't load is left out.
+ */
+export function useLatestRuns(automationIds: readonly string[]) {
+  const ids = [...new Set(automationIds)].filter(Boolean);
+  return useQueries({
+    queries: ids.map((automationId) => ({
+      queryKey: qk.automationRuns(automationId),
+      queryFn: () => unwrap(api.GET("/v1/automations/{automationId}/runs", { params: { path: { automationId } } })),
+      staleTime: 60_000,
+      retry: false,
+    })),
+    combine: (results) => {
+      const byId = new Map<string, AutomationRun | null>();
+      results.forEach((result, index) => {
+        if (result.data) byId.set(ids[index], result.data.items[0] ?? null);
+      });
+      return byId;
     },
   });
 }

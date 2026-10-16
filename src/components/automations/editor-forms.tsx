@@ -62,14 +62,14 @@ type FormProps = {
 };
 
 const LINK = "font-medium text-accent hover:text-accent-dark";
-export const textareaClass = cn(inputClass, "h-auto min-h-[120px] resize-y py-2.5 leading-relaxed");
+export const textareaClass = cn(inputClass, "h-auto min-h-[120px] resize-y py-2 leading-relaxed");
 
 /** The box's problems, for the person and for a screen reader. */
 export function Problems({ problems, className }: { problems: readonly string[]; className?: string }) {
   if (problems.length === 0) return null;
   return (
-    <div role="alert" className={cn("flex gap-2.5 rounded-xl bg-danger-soft px-3 py-2.5 text-[12.5px] text-fg", className)}>
-      <WarningIcon size={15} className="mt-px shrink-0 text-danger" />
+    <div role="alert" className={cn("flex gap-2 rounded-xl bg-warn-soft px-4 py-3 text-[12px] leading-4 text-fg shadow-[inset_0_0_0_1px_var(--warn-line)]", className)}>
+      <WarningIcon size={14} className="mt-px shrink-0 text-warn" />
       <ul className="flex min-w-0 flex-col gap-1">
         {problems.map((problem) => (
           <li key={problem}>{problem}</li>
@@ -81,24 +81,24 @@ export function Problems({ problems, className }: { problems: readonly string[];
 
 export function Label({ htmlFor, id, children, hint }: { htmlFor?: string; id?: string; children: ReactNode; hint?: ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-1">
       {htmlFor ? (
-        <label htmlFor={htmlFor} id={id} className="text-[12.5px] font-medium text-fg">
+        <label htmlFor={htmlFor} id={id} className="text-[14px] leading-5 font-medium text-fg">
           {children}
         </label>
       ) : (
-        <span id={id} className="text-[12.5px] font-medium text-fg">
+        <span id={id} className="text-[14px] leading-5 font-medium text-fg">
           {children}
         </span>
       )}
-      {hint && <span className="text-[12px] leading-snug text-muted">{hint}</span>}
+      {hint && <span className="text-[12px] leading-4 text-muted">{hint}</span>}
     </div>
   );
 }
 
 /** A label with its control under it. */
 function FieldBlock({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>{children}</div>;
+  return <div className={cn("flex min-w-0 flex-col gap-2", className)}>{children}</div>;
 }
 
 /** A group of fields that belong together, under a quiet heading (the event's settings). */
@@ -106,7 +106,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <fieldset className="flex min-w-0 flex-col gap-3 rounded-xl border border-line bg-surface-2/50 p-3">
       <legend className="sr-only">{title}</legend>
-      <span aria-hidden className="text-[11.5px] font-semibold tracking-[0.02em] text-muted uppercase">
+      <span aria-hidden className="text-[12px] font-semibold tracking-[0.02em] text-muted uppercase">
         {title}
       </span>
       {children}
@@ -117,7 +117,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 /** "Every weekday at 8:30 AM, by the clock below": what the choices make, read back. */
 function ReadBack({ children }: { children: ReactNode }) {
   return (
-    <p className="flex items-start gap-2 rounded-xl bg-accent-soft/70 px-3 py-2 text-[12.5px] text-fg-2">
+    <p className="flex items-start gap-2 rounded-xl bg-accent-soft/70 px-3 py-2 text-[12px] text-fg-2">
       <ClockIcon size={14} className="mt-px shrink-0 text-accent-dark" />
       <span className="min-w-0">{children}</span>
     </p>
@@ -190,7 +190,7 @@ function DaysField({ days, onChange, labelId }: { days: readonly number[]; onCha
               aria-pressed={on}
               onClick={() => toggle(day)}
               className={cn(
-                "h-9 min-w-0 rounded-[9px] text-[12.5px] font-medium transition-colors outline-none focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]",
+                "h-9 min-w-0 rounded-[10px] text-[12px] font-medium transition-colors outline-none focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]",
                 on ? "bg-accent text-white shadow-[0_1px_2px_rgb(21_21_21/0.15)]" : "bg-surface text-nav ring-1 ring-line-strong ring-inset hover:text-fg",
               )}
             >
@@ -199,7 +199,7 @@ function DaysField({ days, onChange, labelId }: { days: readonly number[]; onCha
           );
         })}
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-2">
         {DAY_SETS.map((set) => (
           <button
             key={set.label}
@@ -207,7 +207,7 @@ function DaysField({ days, onChange, labelId }: { days: readonly number[]; onCha
             aria-pressed={same(set.days)}
             onClick={() => onChange([...set.days].sort((a, b) => a - b))}
             className={cn(
-              "h-7 rounded-full px-2.5 text-[12px] font-medium transition-colors",
+              "h-7 rounded-full px-3 text-[12px] font-medium transition-colors",
               same(set.days) ? "bg-accent-soft text-accent-dark" : "text-nav ring-1 ring-line ring-inset hover:text-fg",
             )}
           >
@@ -295,7 +295,7 @@ export function SettingField({ setting, value, onChange, id }: { setting: AppEve
   const label = (
     <>
       {setting.title}
-      {setting.required ? <span className="text-danger"> *</span> : <span className="font-normal text-muted"> (optional)</span>}
+      {setting.required ? <span className="font-normal text-muted"> (needed)</span> : <span className="font-normal text-muted"> (optional)</span>}
     </>
   );
   if (setting.enum?.length) {
@@ -394,7 +394,7 @@ function EventFields({ editor, onChange, context, id }: { editor: EditorParts; o
           onChange={(next) => setEvent({ app: next, event: "", config: {} })}
         />
         {choices.usable.length === 0 && (
-          <p className="text-[12.5px] text-muted">
+          <p className="text-[12px] text-muted">
             No app is connected yet.{" "}
             <Link href={INTEGRATIONS_APPS_PATH} className={LINK}>
               Connect one
@@ -409,7 +409,7 @@ function EventFields({ editor, onChange, context, id }: { editor: EditorParts; o
             What happens
           </Label>
           {events.isError ? (
-            <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-fg-2">Couldn’t load {titleCase(app)}’s events just now. Try again in a moment.</p>
+            <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12px] text-fg-2">Couldn’t load {titleCase(app)}’s events just now. Try again in a moment.</p>
           ) : (
             <Combobox
               id={`${id}-event`}
@@ -423,7 +423,7 @@ function EventFields({ editor, onChange, context, id }: { editor: EditorParts; o
               onChange={(next) => setEvent({ event: next, config: {} })}
             />
           )}
-          {events.isSuccess && events.data.length === 0 && <p className="text-[12.5px] text-muted">{titleCase(app)} has no events an automation can start on.</p>}
+          {events.isSuccess && events.data.length === 0 && <p className="text-[12px] text-muted">{titleCase(app)} has no events an automation can start on.</p>}
         </FieldBlock>
       )}
       {chosen && chosen.settings.length > 0 && (
@@ -452,15 +452,13 @@ export function TriggerForm({ editor, onChange, problems, context }: FormProps) 
       <Problems problems={problems} />
       <FieldBlock>
         <Label id={`${id}-mode`}>When it runs</Label>
-        <SegmentedControl<WhenMode>
-          aria-labelledby={`${id}-mode`}
-          options={MODES}
+        {/* One under another: the settings beside the canvas are narrow. */}
+        <RadioCards<WhenMode>
+          label="When it runs"
+          options={MODES.map((mode) => ({ ...mode, description: MODE_LINE[mode.value] }))}
           value={editor.mode}
-          fill
-          wrap
           onChange={(mode) => onChange({ ...editor, mode })}
         />
-        <span className="text-[12.5px] text-muted">{editor.mode ? MODE_LINE[editor.mode] : "Once at a moment, again and again on a schedule, or each time something happens in an app."}</span>
       </FieldBlock>
       {editor.mode === "once" && (
         <>
@@ -510,7 +508,7 @@ export function InstructionForm({ editor, onChange, problems }: FormProps) {
           placeholder="List my open pull requests, oldest first, with who is waiting on whom."
           onChange={(event) => onChange({ ...editor, instruction: event.target.value })}
         />
-        <span aria-hidden className="self-end text-[11.5px] text-muted tabular-nums">
+        <span aria-hidden className="self-end text-[12px] text-muted tabular-nums">
           {editor.instruction.length} / 4000
         </span>
       </FieldBlock>
@@ -584,7 +582,7 @@ export function AppsForm({ editor, onChange, problems, context }: FormProps) {
         />
       </FieldBlock>
       {watched && (
-        <p className="flex items-center gap-2 text-[12.5px] text-fg-2">
+        <p className="flex items-center gap-2 text-[12px] text-fg-2">
           <BrandIcon name={watched} size={14} />
           {titleCase(watched)} is the trigger’s app, so Tex may always use it.
         </p>
@@ -645,7 +643,7 @@ export function ResultsForm({ editor, onChange, problems, context }: FormProps) 
   // A copy that goes to another chat app today (made there) stays offered.
   const other = editor.copyTo && editor.copyTo !== "telegram" ? editor.copyTo : null;
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-3">
       <Problems problems={problems} />
       <SwitchRow
         on
@@ -664,7 +662,7 @@ export function ResultsForm({ editor, onChange, problems, context }: FormProps) 
           description={telegram ? `To your linked chat, ${telegram.displayId}.` : "No Telegram chat is linked now."}
         />
       ) : (
-        <p className="rounded-xl border border-dashed border-line-strong px-3 py-2.5 text-[12.5px] text-muted">
+        <p className="rounded-xl border border-dashed border-line-strong px-3 py-2 text-[12px] text-muted">
           Want a copy of each answer on Telegram?{" "}
           <Link href={linkChatHref("telegram")} className={LINK}>
             Link your Telegram

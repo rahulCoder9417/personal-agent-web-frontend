@@ -26,7 +26,7 @@ export const PLACES = {
   automationsChat: { label: "the Automations chat", short: "Automations chat", href: "/?chat=automations" },
   approvals: { label: "Approvals", href: "/approvals" },
   automations: { label: "Automations", href: "/automations" },
-  prReview: { label: "Automations → Pull-request review", short: "Pull-request review", href: "/automations/reviews" },
+  prReview: { label: "Automations → Review pull requests", short: "Review pull requests", href: "/automations/new?template=pr-review" },
   activity: { label: "Activity", href: "/activity" },
   apps: { label: "Integrations → Apps", short: "Apps", href: INTEGRATIONS_APPS_PATH },
   mcp: { label: "Integrations → MCP servers", short: "MCP servers", href: INTEGRATIONS_MCP_PATH },

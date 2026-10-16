@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { ApprovalDetail } from "@/components/approvals/approval-detail";
 import { ApprovalList } from "@/components/approvals/approval-list";
 import { Page, PageHeader } from "@/components/page";
@@ -8,9 +9,25 @@ import { EmptyState, ErrorState, FilterPills, SkeletonRows, type FilterOption } 
 import { APPROVAL_EMPTY as EMPTY, APPROVAL_TABS as TABS, type ApprovalTab as Tab } from "@/lib/approval-tabs";
 import { useApprovals } from "@/lib/api/hooks";
 
+/**
+ * `?approval=apr_…` (an automation's "Waiting for your OK · Review") opens on that approval. The
+ * query needs a Suspense boundary on a page that is prerendered.
+ */
 export default function ApprovalsPage() {
+  return (
+    <Suspense fallback={<Approvals initial={null} />}>
+      <FromAddress />
+    </Suspense>
+  );
+}
+
+function FromAddress() {
+  return <Approvals initial={useSearchParams().get("approval")} />;
+}
+
+function Approvals({ initial }: { initial: string | null }) {
   const [tab, setTab] = useState<Tab>("pending");
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initial);
 
   // One query per tab: the counts in the tabs stay right, and switching tabs is instant.
   const lists: Record<Tab, ReturnType<typeof useApprovals>> = {

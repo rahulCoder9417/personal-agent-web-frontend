@@ -6,9 +6,9 @@
 //
 // This file is the steps as the canvas holds them (`EditorStep`), the list's editing (add at a place,
 // remove, move, at most 6) with the warning a condition gets when the step before it changed, what is
-// sent to be checked and saved, the server's problems by step, what the app actions can cost, the
-// last run's trail, and which shape the page takes at a width. Nothing here draws, and nothing here
-// loads the layout library (that is `step-layout.ts`, on the canvas's own chunk).
+// sent to be checked and saved, the server's problems by step, what the app actions can cost, and
+// the last run's trail. Which lane each step is drawn in (read, Tex, write) is
+// `automation-lanes.ts`. Nothing here draws.
 
 import type { AppAction, AutomationRun, AutomationRunStep, AutomationStep, AutomationStepCondition, AutomationStepInput } from "./api/client";
 import { formatAgo, listNames, titleCase } from "./format";
@@ -52,6 +52,13 @@ export type EditorStep = {
    * box says so until the person looks at it again. Never sent.
    */
   follows: string | null;
+  /**
+   * An app step put on the canvas in a lane (reading or writing) before its action is known: the
+   * lane it stays in while the person picks the app and the action, whose list then offers only
+   * the actions of that lane. Never sent; a saved step's lane comes from its action
+   * (`automation-lanes.ts`).
+   */
+  lane?: "read" | "write";
 };
 
 // ---------------------------------------------------------------- ids and new steps
@@ -284,9 +291,6 @@ export function conditionLabel(onlyIf: Pick<AutomationStepCondition, "kind" | "w
   }
 }
 
-/** The grey exit beside a condition: a false one stops the run there. */
-export const EXIT_LABEL = "otherwise: stop";
-
 /** The same condition in a sentence, for a panel: what it checks and what a false one does. */
 export function conditionSentence(onlyIf: Pick<AutomationStepCondition, "kind" | "words" | "question">, index: number): string {
   if (index === 0 || onlyIf.kind === "always") return "Always runs.";
@@ -441,21 +445,4 @@ export function runSummary(run: AutomationRun, now = new Date()): { line: string
 export function withRun(runs: readonly AutomationRun[] | undefined, run: AutomationRun): AutomationRun[] {
   const others = (runs ?? []).filter((item) => item.id !== run.id);
   return [run, ...others].sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt)).slice(0, 10);
-}
-
-// ---------------------------------------------------------------- the page's shape at a width
-
-/** How steps are shown: a form on a phone, the canvas top to bottom below 1,280 px, left to right above. */
-export type StepsShape = "form" | "down" | "across";
-
-/** Below this the page is a form (and the canvas libraries are never fetched). */
-export const CANVAS_FROM_PX = 768;
-/** From this the canvas runs left to right. */
-export const ACROSS_FROM_PX = 1280;
-/** The same, as a media query. */
-export const ACROSS_QUERY = `(min-width: ${ACROSS_FROM_PX}px)`;
-
-export function stepsShape(width: number): StepsShape {
-  if (width < CANVAS_FROM_PX) return "form";
-  return width < ACROSS_FROM_PX ? "down" : "across";
 }
