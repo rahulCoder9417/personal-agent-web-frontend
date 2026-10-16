@@ -441,6 +441,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{appSlug}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The events an app can start an automation on, with their settings
+         * @description For the canvas's event picker: Composio's list of the app's events (its trigger types),
+         *     each with the settings it takes, for example the label to watch in Gmail or the repository
+         *     in GitHub. Kept for 10 minutes. Any app of the catalogue can be listed; to use one, it must
+         *     be connected and on the plan (the checks say so).
+         */
+        get: operations["listAppEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connections/{connectionId}": {
         parameters: {
             query?: never;
@@ -578,8 +601,10 @@ export interface paths {
          * The user's automations and reminders
          * @description Automations are made by chatting with the agent: it proposes a draft, and the user saves it
          *     (`/v1/automation-drafts`). A plain one-time reminder is the exception: the agent saves it at
-         *     once. The web app can list, pause and delete them. A repo with pull-request review on is an
-         *     automation too (`preset: pr_review`); it is turned on and off with `/v1/pr-reviews`.
+         *     once. The user can also build one by hand in the web app (`POST /v1/automations`), change
+         *     one (`PUT /v1/automations/{automationId}`), pause, resume and delete them, and run one once
+         *     as a test. A repo with pull-request review on is an automation too (`preset: pr_review`);
+         *     it is turned on and off with `/v1/pr-reviews`.
          *
          *     Every run answers in the Automations chat (`GET /v1/conversations?kind=automations`), never
          *     in the user's other conversations. An automation made in a Telegram chat also sends a copy
@@ -589,7 +614,58 @@ export interface paths {
          */
         get: operations["listAutomations"];
         put?: never;
-        post?: never;
+        /**
+         * Make an automation by hand (the canvas's Save)
+         * @description Makes the automation from its parts, with the same checks as `POST /v1/automations/check`,
+         *     then sets its timer, or makes its watch at the app for an app event. `enabled: false`
+         *     ("Save paused") makes it switched off (`pausedReason: user`), to try with "Run once now"
+         *     and turn on later.
+         *
+         *     One `clientRequestId`, one automation: sending it again (a double click, a retry) answers
+         *     200 with the automation it made, and makes nothing more.
+         *
+         *     `draftId`: the draft open on the canvas when the user saved (Tex's, or their own), changed
+         *     or not. It must be open and not a change of another automation (a change is saved with
+         *     `PUT /v1/automations/{changeOf}`); it is marked saved together with the automation.
+         *
+         *     400 when a check fails: `details.problems` lists each problem with the box it belongs to.
+         *     403 `plan_limit` when the plan's automations are used. 409 when the draft is not open. 503
+         *     when the app could not be asked to watch for the event just now; nothing was saved.
+         */
+        post: operations["createAutomation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/automations/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check an automation's parts without saving anything
+         * @description For the canvas while the user types: the same checks a save makes, with every problem found
+         *     at once, each with the box it belongs to (`step`), and when it would run next. Nothing is
+         *     saved, scheduled or watched. Parts may be missing or empty; each gap is a problem.
+         *
+         *     `automationId`: the parts are a change of that automation, so it does not count against
+         *     the plan's limit.
+         *
+         *     The checks: exactly one of a moment, a schedule or an app event; a real time zone; a moment
+         *     not past; a schedule at most every 15 minutes; an app event's app known, on the plan and
+         *     connected, an event that app offers (`GET /v1/apps/{appSlug}/events`) and its required
+         *     settings filled; the apps known, on the plan and connected (at most 10); a title and an
+         *     instruction; a linked chat for the copy (`copyTo`); the plan's number of automations.
+         *     An event list Composio can't give just now is not held against the parts: the save then
+         *     asks Composio itself.
+         */
+        post: operations["checkAutomation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -610,7 +686,25 @@ export interface paths {
          *     was deleted, is 404.
          */
         get: operations["getAutomation"];
-        put?: never;
+        /**
+         * Change an automation (the canvas's Save on a saved one)
+         * @description Replaces the automation's parts with these, after the same checks as a new one (it does not
+         *     count against the plan's limit itself). Its id, its page and its runs so far stay.
+         *
+         *     - A new schedule or moment replaces the timer.
+         *     - A changed app event (another app, event or settings) gets its new watch at Composio
+         *       first; then the automation points at it; then the old watch is removed. Exactly one
+         *       watch is left, and there is no moment without one. If the new watch can't be made,
+         *       nothing changes (503).
+         *     - `enabled` left out keeps it on or paused as it is; `true` turns it on, `false` pauses it.
+         *       The count of failures in a row starts again from zero.
+         *     - `draftId`: the draft of this change open on the canvas (`changeOf` is this automation).
+         *       It must be open; it is marked saved together with the change.
+         *
+         *     Pull-request review is changed on its own screen (409), and a one-time reminder that has
+         *     run is finished (409).
+         */
+        put: operations["changeAutomation"];
         post?: never;
         /** Delete (timer or trigger is removed too) */
         delete: operations["deleteAutomation"];
@@ -618,6 +712,34 @@ export interface paths {
         head?: never;
         /** Pause or resume */
         patch: operations["updateAutomation"];
+        trace?: never;
+    };
+    "/v1/automations/{automationId}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run once now, as a test
+         * @description Runs the saved automation once, now, on or paused: a normal run in the Automations chat, at
+         *     a normal run's cost, with approvals as usual. A line before it says it is a test run, and
+         *     Tex is told so; the copy to a chat app (`copyTo`) is marked "Test run" too. An app event's
+         *     test has no real event: Tex is told to work without one.
+         *
+         *     It does not move the schedule, does not finish a one-time reminder and does not count as a
+         *     failure. At most 10 test runs an hour per user (429). One `clientRequestId`, one run.
+         *     402 at zero credits. Pull-request review and a finished one-time reminder can't be run so
+         *     (409).
+         */
+        post: operations["runAutomationNow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/automation-drafts": {
@@ -639,7 +761,19 @@ export interface paths {
          */
         get: operations["listAutomationDrafts"];
         put?: never;
-        post?: never;
+        /**
+         * Keep the user's version from the canvas as a draft of their own
+         * @description For "Ask Tex to change this": the parts as they stand on the canvas are kept as a draft
+         *     made by the user (`madeBy: user`), and the web app opens the chat with a request naming the
+         *     draft. Tex reads it (`get_automation_draft`) and proposes its change, which replaces it.
+         *     Nothing runs, nothing is posted in a chat, and the parts are only checked for their shape
+         *     (one of a moment, a schedule or an app event), since the point is for Tex to fix them.
+         *
+         *     `replacesDraftId`: the open draft the user started from (Tex's), which then reads
+         *     "replaced". `changeOf`: the saved automation these parts would change. It counts towards
+         *     the 20 open drafts (409 past them).
+         */
+        post: operations["createAutomationDraft"];
         delete?: never;
         options?: never;
         head?: never;
@@ -684,8 +818,9 @@ export interface paths {
          *     yet past, the app connected. Then its timer is set or its watch made. `enabled: false`
          *     ("Save paused") makes it switched off (`pausedReason: user`), to try or turn on later.
          *
-         *     A draft that changes an automation (`changeOf`) makes the new automation and then removes
-         *     the old one, with its timer or watch.
+         *     A draft that changes an automation (`changeOf`) changes that automation in place, as
+         *     `PUT /v1/automations/{automationId}` does: its id and page stay, and a changed app event
+         *     gets its new watch before the old one is removed. `automation` is that automation.
          *
          *     One draft makes one automation: a second save, also at the same moment (a double click),
          *     answers 409 with `details.status: saved` and the automation's id. A replaced, expired or
@@ -2823,12 +2958,13 @@ export interface components {
              */
             copyTo: "telegram" | "whatsapp" | "imessage" | null;
             /**
-             * @description The apps Tex said it will use, by app slug (`App.slug`), as it named them in the draft
-             *     the automation was saved from. Empty for an older automation, or when none were named:
-             *     Tex then uses the user's connected apps as needed. For now only shown; the trigger's
-             *     app (`trigger.app`) is not repeated here.
+             * @description The apps its runs may use, by app slug (`App.slug`): named by Tex in the draft it was
+             *     saved from, or by the user on the canvas. A limit: during a run Tex may use only these
+             *     and the trigger's app (`trigger.app`, not repeated here). Empty for an older
+             *     automation, or when none were named: Tex then uses the user's connected apps as needed.
              */
             apps: string[];
+            askFirst: components["schemas"]["AutomationAskFirst"];
             /**
              * @description `pr_review`: this automation is pull-request review for one repo (see `/v1/pr-reviews`).
              * @enum {string|null}
@@ -2893,7 +3029,7 @@ export interface components {
             id: string;
             status: components["schemas"]["AutomationDraftStatus"];
             /**
-             * @description `agent`: Tex proposed it. (`user`: made on the canvas, from phase 3.)
+             * @description `agent`: Tex proposed it. `user`: the user's own version from the canvas, kept for Tex to change (`POST /v1/automation-drafts`).
              * @enum {string}
              */
             madeBy: "agent" | "user";
@@ -2923,8 +3059,9 @@ export interface components {
                     [key: string]: unknown;
                 };
             } | null;
-            /** @description The apps Tex said it will use, by app slug (see `Automation.apps`). */
+            /** @description The apps its runs may use, by app slug (see `Automation.apps`). */
             apps: string[];
+            askFirst: components["schemas"]["AutomationAskFirst"];
             /**
              * @description The chat app it was proposed in, which gets a copy of each answer once saved.
              * @enum {string|null}
@@ -2949,6 +3086,143 @@ export interface components {
              * @description When it was saved, discarded, replaced or expired.
              */
             decidedAt: string | null;
+        };
+        /**
+         * @description When a run stops for the user's yes. `risky`: before sending, deleting or paying (the
+         *     platform's rule for every run). `changes`: stricter, before any app action that changes
+         *     something. Never looser than `risky`.
+         * @default risky
+         * @enum {string}
+         */
+        AutomationAskFirst: "risky" | "changes";
+        /**
+         * @description The parts of an automation as the canvas holds them. Exactly one of `runAt`, `cron` and
+         *     `trigger` says when it runs.
+         */
+        AutomationParts: {
+            title?: string;
+            instruction?: string;
+            /**
+             * Format: date-time
+             * @description Once, at this moment
+             */
+            runAt?: string | null;
+            /** @description On this schedule (5 fields), in `timezone`. At most every 15 minutes. */
+            cron?: string | null;
+            /** @description An IANA time zone such as `Asia/Kolkata`. Left out, the user's own. */
+            timezone?: string | null;
+            /** @description On this app event (`GET /v1/apps/{appSlug}/events`) */
+            trigger?: {
+                /** @example gmail */
+                app: string;
+                /** @example GMAIL_NEW_GMAIL_MESSAGE */
+                event: string;
+                config?: {
+                    [key: string]: unknown;
+                };
+            } | null;
+            /** @description The apps its runs may use, by app slug. Empty, any connected app. */
+            apps?: string[];
+            askFirst?: components["schemas"]["AutomationAskFirst"];
+            /**
+             * @description A copy of each answer to this chat app, besides the Automations chat: the user's
+             *     linked chat there (the one it was made in, when that is the same app). Null: none.
+             * @enum {string|null}
+             */
+            copyTo?: "telegram" | "whatsapp" | "imessage" | null;
+        };
+        /** @description A new automation made by hand. */
+        AutomationInput: components["schemas"]["AutomationParts"] & {
+            /**
+             * @description False saves it paused.
+             * @default true
+             */
+            enabled: boolean;
+            /** @description The draft open on the canvas, marked saved with it. */
+            draftId?: string | null;
+            /**
+             * Format: uuid
+             * @description Idempotency key; sending it again returns the same automation.
+             */
+            clientRequestId: string;
+        };
+        /** @description An automation's new parts. */
+        AutomationChange: components["schemas"]["AutomationParts"] & {
+            /** @description Left out, it stays on or paused as it is. */
+            enabled?: boolean;
+            /** @description The draft of this change open on the canvas, marked saved with it. */
+            draftId?: string | null;
+        };
+        /** @description The user's version from the canvas, kept as a draft for Tex to change. */
+        AutomationDraftInput: components["schemas"]["AutomationParts"] & {
+            /** @description The saved automation these parts would change. */
+            changeOf?: string | null;
+            /** @description The open draft the user started from; it reads "replaced". */
+            replacesDraftId?: string | null;
+        };
+        AutomationProblem: {
+            /**
+             * @description The box it belongs to. Null for the automation as a whole (the plan's limit).
+             * @enum {string|null}
+             */
+            step: "trigger" | "instruction" | "apps" | "asks" | "results" | null;
+            /**
+             * @description `plan_limit`: the plan's automations are used. `past`: the moment has passed.
+             * @enum {string}
+             */
+            code: "invalid" | "plan_limit" | "past";
+            /** @description What is wrong, in words for the user. */
+            message: string;
+        };
+        AutomationCheck: {
+            /** @description No problems. A save now would pass the same checks. */
+            ok: boolean;
+            problems: components["schemas"]["AutomationProblem"][];
+            /**
+             * @description What the parts make. Null when it can't be told (none or several of the three).
+             * @enum {string|null}
+             */
+            kind: "once" | "repeat" | "event" | null;
+            /**
+             * @description When it would run: the moment (once), or the schedule's next three times. Empty for an
+             *     app event, or when the schedule can't be read.
+             */
+            nextRuns: string[];
+        };
+        AutomationTestRun: {
+            automationId: string;
+            /** @description The run's event; the same for the same `clientRequestId`. */
+            eventId: string;
+            /** Format: date-time */
+            queuedAt: string;
+        };
+        AppEventSetting: {
+            /**
+             * @description The setting's name, as `trigger.config` takes it
+             * @example labelIds
+             */
+            name: string;
+            /** @example Label ids */
+            title: string;
+            description: string;
+            /** @enum {string} */
+            type: "string" | "number" | "integer" | "boolean" | "array" | "object";
+            required: boolean;
+            /** @description The values it may take, when the app names them. */
+            enum?: unknown[];
+            /** @description Its value when left out, when the app says. */
+            default?: unknown;
+        };
+        AppEvent: {
+            /**
+             * @description For `trigger.event`
+             * @example GMAIL_NEW_GMAIL_MESSAGE
+             */
+            slug: string;
+            /** @example New Gmail message */
+            name: string;
+            description: string;
+            settings: components["schemas"]["AppEventSetting"][];
         };
         AutomationDraftSaved: {
             draft: components["schemas"]["AutomationDraft"];
@@ -4119,6 +4393,18 @@ export interface components {
         };
     };
     responses: {
+        /**
+         * @description A check failed. `details.problems` is a list of `AutomationProblem`: each says what is
+         *     wrong, in words for the user, and which box of the canvas it belongs to.
+         */
+        AutomationProblems: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Invalid input */
         BadRequest: {
             headers: {
@@ -4857,6 +5143,41 @@ export interface operations {
             };
         };
     };
+    listAppEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AppEvent"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Composio could not give the list just now. Retry later */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     disconnectApp: {
         parameters: {
             query?: never;
@@ -5123,6 +5444,91 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    createAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationInput"];
+            };
+        };
+        responses: {
+            /** @description This `clientRequestId` made an automation before; that automation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Automation"];
+                };
+            };
+            /** @description Made, and its timer or watch set (none while paused) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Automation"];
+                };
+            };
+            400: components["responses"]["AutomationProblems"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlanLimit"];
+            /** @description The draft is not open (`details.status` says what it is), or it is a change of an automation */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description The app could not be asked to watch for the event just now. Nothing was saved; try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    checkAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationParts"] & {
+                    /** @description The automation these parts would change. */
+                    automationId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The result (also when there are problems) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationCheck"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     getAutomation: {
         parameters: {
             query?: never;
@@ -5145,6 +5551,58 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    changeAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                automationId: components["parameters"]["AutomationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationChange"];
+            };
+        };
+        responses: {
+            /** @description Changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Automation"];
+                };
+            };
+            400: components["responses"]["AutomationProblems"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlanLimit"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Pull-request review, a finished one-time reminder, or a draft that is not open or is not
+             *     a change of this automation (`details.status` for the draft)
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description The app could not be asked to watch for the new event just now. Nothing changed; try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     deleteAutomation: {
@@ -5200,6 +5658,51 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    runAutomationNow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                automationId: components["parameters"]["AutomationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description Idempotency key; sending it again starts no second run.
+                     */
+                    clientRequestId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Queued. Its answer arrives in the Automations chat */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationTestRun"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["OutOfCredits"];
+            404: components["responses"]["NotFound"];
+            /** @description Pull-request review, or a one-time reminder that has run */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
     listAutomationDrafts: {
         parameters: {
             query?: never;
@@ -5221,6 +5724,42 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    createAutomationDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationDraftInput"];
+            };
+        };
+        responses: {
+            /** @description Kept */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationDraft"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description 20 drafts are open already */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
         };
     };
     getAutomationDraft: {

@@ -24,6 +24,10 @@ import {
   type Automation,
   type AutomationDraft,
   type AutomationDraftSaved,
+  type AutomationChange,
+  type AutomationDraftInput,
+  type AutomationInput,
+  type AutomationParts,
   type ByokProvider,
   type ChannelType,
   type Conversation,
@@ -71,6 +75,10 @@ export const qk = {
   automationDrafts: ["automation-drafts"] as const,
   /** One draft, in any state, for its card in the chat and its page. */
   automationDraft: (draftId: string) => ["automation-drafts", "one", draftId] as const,
+  /** What the server says of the parts on the canvas (`POST /v1/automations/check`), by the parts. */
+  automationCheck: (key: string, automationId: string | null) => ["automation-check", automationId ?? "", key] as const,
+  /** The events one app can start an automation on. */
+  appEvents: (appSlug: string) => ["apps", "events", appSlug] as const,
   prReviews: ["pr-reviews"] as const,
   agentStatus: ["agent", "status"] as const,
   agentSettings: ["agent", "settings"] as const,
@@ -800,6 +808,101 @@ export function useDeleteAutomation() {
     mutationFn: (automationId: string) =>
       unwrap(api.DELETE("/v1/automations/{automationId}", { params: { path: { automationId } } })),
     onSuccess: () => invalidateAutomations(qc),
+  });
+}
+
+/**
+ * What the server says of the parts on the canvas, without saving anything: each problem with its
+ * box, and the next three runs. `key` is the parts as they stand (`partsKey`), already debounced by
+ * the caller, so a check goes out once the person stops typing. The answer for the previous parts
+ * stays on screen while the next one is on its way.
+ */
+export function useAutomationCheck(parts: AutomationParts | null, key: string, automationId: string | null) {
+  return useQuery({
+    queryKey: qk.automationCheck(key, automationId),
+    queryFn: () => unwrap(api.POST("/v1/automations/check", { body: { ...parts!, automationId } })),
+    enabled: parts !== null,
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+/** A saved automation is put where its page and the list read it, and the lists are asked for again. */
+function noteAutomation(qc: QueryClient, automation: Automation) {
+  qc.setQueryData(qk.automation(automation.id), automation);
+  void invalidateAutomations(qc);
+}
+
+/** A draft that was saved with the canvas's parts is asked for again, so its card says "Saved". */
+function refreshDraft(qc: QueryClient, draftId: string | null | undefined) {
+  if (!draftId) return;
+  void qc.invalidateQueries({ queryKey: qk.automationDraft(draftId) });
+  void qc.invalidateQueries({ queryKey: qk.automationDrafts, exact: true });
+}
+
+/**
+ * Makes an automation from the canvas (Save, or Save paused with `enabled: false`). The caller keeps
+ * one `clientRequestId` per attempt, so a double click or a retry makes one automation.
+ */
+export function useCreateAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AutomationInput) => unwrap(api.POST("/v1/automations", { body: input })),
+    onSuccess: (automation, input) => {
+      noteAutomation(qc, automation);
+      refreshDraft(qc, input.draftId);
+    },
+  });
+}
+
+/** Saves a changed automation: same id and page. `enabled` left out keeps it on or paused. */
+export function useChangeAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ automationId, ...body }: AutomationChange & { automationId: string }) =>
+      unwrap(api.PUT("/v1/automations/{automationId}", { params: { path: { automationId } }, body })),
+    onSuccess: (automation, input) => {
+      noteAutomation(qc, automation);
+      refreshDraft(qc, input.draftId);
+    },
+  });
+}
+
+/** "Run once now": a test run of a saved automation, on or paused. Its answer arrives in the Automations chat. */
+export function useRunAutomationNow() {
+  return useMutation({
+    mutationFn: (input: { automationId: string; clientRequestId: string }) =>
+      unwrap(
+        api.POST("/v1/automations/{automationId}/run", {
+          params: { path: { automationId: input.automationId } },
+          body: { clientRequestId: input.clientRequestId },
+        }),
+      ),
+  });
+}
+
+/** The events an app can start an automation on, with their settings. Empty slug asks for nothing. */
+export function useAppEvents(appSlug: string) {
+  return useQuery({
+    queryKey: qk.appEvents(appSlug),
+    queryFn: () => unwrap(api.GET("/v1/apps/{appSlug}/events", { params: { path: { appSlug } } })),
+    select: (data) => data.items,
+    enabled: appSlug !== "",
+    staleTime: 10 * 60_000,
+    retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 1,
+  });
+}
+
+/** Keeps the canvas's parts as the person's own draft, for "Ask Tex to change this". */
+export function useCreateAutomationDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AutomationDraftInput) => unwrap(api.POST("/v1/automation-drafts", { body: input })),
+    onSuccess: (draft, input) => {
+      noteDraft(qc, draft);
+      refreshDraft(qc, input.replacesDraftId);
+    },
   });
 }
 

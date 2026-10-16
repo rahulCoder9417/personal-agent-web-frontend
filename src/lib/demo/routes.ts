@@ -6,6 +6,7 @@ import * as chat from "./handlers-chat";
 import * as conversations from "./handlers-conversations";
 import * as crew from "./handlers-crew";
 import * as drafts from "./handlers-drafts";
+import * as editor from "./handlers-editor";
 import * as memory from "./handlers-memory";
 import * as setup from "./handlers-setup";
 
@@ -37,6 +38,7 @@ const ROUTES: Route[] = [
 
   route("GET", "apps", setup.listApps),
   route("POST", "apps/:appSlug/connect", setup.connectApp),
+  route("GET", "apps/:appSlug/events", editor.listAppEvents),
   route("DELETE", "connections/:connectionId", setup.disconnectApp),
 
   route("GET", "mcp-servers", setup.listMcpServers),
@@ -49,11 +51,16 @@ const ROUTES: Route[] = [
   route("DELETE", "byok/:provider", setup.deleteByokKey),
 
   route("GET", "automations", setup.listAutomations),
+  route("POST", "automations", editor.createAutomation),
+  route("POST", "automations/check", editor.checkAutomation),
+  route("PUT", "automations/:automationId", editor.changeAutomation),
+  route("POST", "automations/:automationId/run", editor.runAutomationNow),
   route("GET", "automations/:automationId", setup.getAutomation),
   route("PATCH", "automations/:automationId", setup.updateAutomation),
   route("DELETE", "automations/:automationId", setup.deleteAutomation),
 
   route("GET", "automation-drafts", drafts.listDrafts),
+  route("POST", "automation-drafts", editor.createDraft),
   route("GET", "automation-drafts/:draftId", drafts.getDraft),
   route("POST", "automation-drafts/:draftId/save", drafts.saveDraft),
   route("POST", "automation-drafts/:draftId/discard", drafts.discardDraft),

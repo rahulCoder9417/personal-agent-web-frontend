@@ -490,11 +490,13 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         id: "automations-make",
         title: "Make one",
         blocks: [
-          p("Ask Tex in chat, in plain words. There is no form. Tex shows it back as a **draft** first: in the web chat a card with its steps drawn small and **Save**; on Telegram an outline with a link and a **Save** button. Nothing runs until you save it."),
+          p("Two ways. **Ask Tex** in chat, in plain words: Tex shows it back as a **draft** first, in the web chat a card with its steps drawn small and **Save**, on Telegram an outline with a link and a **Save** button. Or **build it by hand**: **New automation** on {automations} opens an empty canvas (or a template), and a click on each box sets it. Nothing runs until you save it."),
           ask("Every weekday at 10am, list the pull requests waiting for my review."),
           list(
-            "**Open in Automations** shows the draft on a canvas, step by step, before you save it.",
-            "**Save paused** saves it switched off, to turn on when you’re ready.",
+            "**Open in Automations** shows the draft on a canvas, step by step, before you save it. **Edit** there changes any box first.",
+            "By hand, each box is checked as you fill it in: a box with a problem turns red and says what to fix, and the next runs are listed.",
+            "**Save paused** saves it switched off, to turn on when you’re ready. **Run once now** tries a saved one, on or paused: a normal run, marked as a test in {automationsChat}, at a normal run’s cost, up to 10 an hour.",
+            "**Ask Tex to change this**, on the canvas, hands what you built to Tex in chat: say what to change and Tex proposes a new version.",
             "A draft is kept for 7 days. Ask Tex to change it and it proposes a new version; the old one says it was replaced.",
             "A plain one-time reminder (“Remind me Friday at 10 to call the bank”) is set at once, without a draft.",
           ),
@@ -532,7 +534,9 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         blocks: [
           list(
             "On {automations}, the switch on each card pauses or resumes it. Its name, or its strip of steps, opens its own page, where it is drawn as a flow.",
-            "**Change** opens the chat with “Change my automation …” typed in. Tell Tex what to change: it shows the change as a draft, with the steps that change marked, and saving it replaces the old one.",
+            "**Change** opens its page with the boxes ready to change: click one, set it, and **Save changes**. It keeps its page and its runs so far. Or ask Tex in chat: it shows the change as a draft, with the steps that change marked.",
+            "**Apps Tex may use** is a limit: during a run Tex may use only the apps ticked there, and the app the trigger watches. With none ticked, any connected app. Your plan decides which apps can be ticked.",
+            "**Asks you first** can be made stricter, so anything that changes something waits for your OK. It can never be looser than the platform’s rule.",
             "**Delete** removes it, after asking once more.",
           ),
           p("Textcrew pauses an automation by itself at zero credits (it comes back when credits are added) and after 3 failures in a row (turn it back on yourself)."),
