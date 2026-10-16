@@ -3978,7 +3978,10 @@ export interface components {
             /** @enum {string} */
             actor: "user" | "agent" | "admin" | "system";
             /**
+             * @description What happened. `app_action_failed`: an app action that failed or was refused (the summary says why in plain words; never its inputs). `approval_request_refused`: a request for approval that was refused before the user saw it.
              * @example run_app_action
+             * @example app_action_failed
+             * @example approval_request_refused
              * @example send_message
              * @example approval_requested
              * @example approval_decided

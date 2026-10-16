@@ -76,6 +76,9 @@ const ACTOR_NAME: Record<ActivityEntry["actor"], string> = {
 // Actions whose name alone doesn't say what happened. Everything else reads fine as it is.
 const ACTION_LABEL: Record<string, string> = {
   read_page_refused: "Blocked a page Scout wasn’t given",
+  // An app action or an approval request that didn't go through; the summary says why.
+  app_action_failed: "app action didn’t run",
+  approval_request_refused: "approval request refused",
   crew_progress: "progress",
   pr_review_requested: "pull-request review asked for",
   pr_review_skipped: "pull-request review skipped",
