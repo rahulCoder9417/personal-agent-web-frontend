@@ -109,6 +109,14 @@ describe("the help, as written", () => {
     const commands = topicText(telegram, telegram.topics.find((topic) => topic.id === "telegram-commands")!);
     for (const said of ["/new", "/clear", "/reset", "/start", "link 7kq2 m9xp", "agt 7kq2", "yes", "no", "/help"]) expect(commands).toContain(said);
   });
+
+  it("says /help is a command of its own, and that /new and /help are in the bot's menu", () => {
+    const telegram = HELP_SECTIONS.find((section) => section.id === "telegram")!;
+    const commands = topicText(telegram, telegram.topics.find((topic) => topic.id === "telegram-commands")!);
+    expect(commands).toContain("menu");
+    expect(commands).toContain("a link to this page");
+    expect(commands).not.toContain("`/help` included, is a normal message");
+  });
 });
 
 describe("searching the help", () => {
