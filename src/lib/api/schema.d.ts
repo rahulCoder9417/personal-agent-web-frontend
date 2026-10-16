@@ -320,8 +320,13 @@ export interface paths {
          * @description One long-lived SSE connection per browser tab. Event types:
          *     `message.created`, `message.status`, `message.draft`, `approval.created`, `approval.resolved`,
          *     `agent.status`, `agent.progress`, `credits.updated`, `automation.updated`,
-         *     `automation_draft.updated`, `conversation.updated`, `conversation.deleted`.
+         *     `automation_draft.updated`, `automation_run.updated`, `conversation.updated`,
+         *     `conversation.deleted`.
          *     Each event's `data` is JSON matching the `StreamEvent` schema.
+         *
+         *     `automation_run.updated` carries the whole run of an automation with steps
+         *     (`AutomationRun`): sent when it starts, when a step is done, skipped, failed or waits for
+         *     the user's OK, and when it ends. The canvas draws the last run's trail from it.
          *
          *     `automation_draft.updated` carries the whole draft (`AutomationDraft`): sent when Tex
          *     proposes one, and when one is saved, discarded, replaced or expires.
@@ -456,6 +461,32 @@ export interface paths {
          *     be connected and on the plan (the checks say so).
          */
         get: operations["listAppEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{appSlug}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The actions an automation's step can run in an app, with their inputs
+         * @description For the step panel's action picker: Composio's list of the app's actions, each with the
+         *     inputs it takes (name, kind, required or not), whether it always asks the user first
+         *     (`requiresApproval`: sending, deleting, paying…; a step with it can't turn "ask me first"
+         *     off) and whether it changes something (1 credit when it runs). Kept for 10 minutes, the
+         *     same for every user. At most 200; `search` narrows the list by a word in the name or the
+         *     description. Any app of the catalogue can be listed; to use one in a step, it must be
+         *     connected and on the plan (the checks say so).
+         */
+        get: operations["listAppActions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -664,6 +695,14 @@ export interface paths {
          *     instruction; a linked chat for the copy (`copyTo`); the plan's number of automations.
          *     An event list Composio can't give just now is not held against the parts: the save then
          *     asks Composio itself.
+         *
+         *     With steps (`steps`, box `steps`, each problem with its `stepId`): at most 6; each id
+         *     unique; an action step's app known, on the plan and connected, its action one that app
+         *     has, and its fixed inputs named and of the kind the action takes ("Step 4: Gmail's
+         *     GMAIL_SEND_EMAIL has no input `to`. Its inputs: recipient_email, …"); a Tex step's
+         *     instruction, and the apps it reads connected; a "mentions" condition's words and a "Tex
+         *     decides" condition's question; step 1 without a condition. An action that sends, deletes
+         *     or pays always asks first. Pull-request review has no steps.
          */
         post: operations["checkAutomation"];
         delete?: never;
@@ -743,6 +782,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/automations/{automationId}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The last runs of an automation with steps, each with its trail
+         * @description For the canvas after a run: each step's state (done, skipped, failed, waiting for the
+         *     user's OK), its short result and why it stopped. Only an automation with steps has runs
+         *     here (a one-instruction automation's runs are its answers in the Automations chat). Newest
+         *     first, at most 10. A step's result is removed 2 days after its run ended (`result` is then
+         *     null and `resultsRemoved` true); the trail itself is kept 30 days. Another user's
+         *     automation, or a deleted one, is 404.
+         */
+        get: operations["listAutomationRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/automation-drafts": {
         parameters: {
             query?: never;
@@ -816,8 +880,10 @@ export interface paths {
          * Save a draft, which makes the automation
          * @description The automation is made from the draft, with the same checks as when Tex proposed it, run
          *     again now: the plan's limit (a draft did not count), 15 minutes between runs, a moment not
-         *     yet past, the app connected. Then its timer is set or its watch made. `enabled: false`
-         *     ("Save paused") makes it switched off (`pausedReason: user`), to try or turn on later.
+         *     yet past, the app connected, and each step's app and action. Then its timer is set or its
+         *     watch made. `enabled: false` ("Save paused") makes it switched off (`pausedReason: user`),
+         *     to try or turn on later. A change keeps its automation on or paused as it is, unless
+         *     `enabled` says otherwise (the Save button on Telegram never says).
          *
          *     A draft that changes an automation (`changeOf`) changes that automation in place, as
          *     `PUT /v1/automations/{automationId}` does: its id and page stay, and a changed app event
@@ -3005,7 +3071,17 @@ export interface components {
             /** @enum {string} */
             kind: "once" | "repeat" | "event";
             title: string;
+            /**
+             * @description What Tex does each time it runs. With steps, the automation's purpose in one line
+             *     ("Reply fast to urgent mail from my boss"), and the steps say what to do.
+             */
             instruction: string;
+            /**
+             * @description Up to 6 steps a run follows one at a time, in order (`AutomationStep`). Empty: a
+             *     one-instruction automation, as every automation made before steps. With steps, `apps`
+             *     holds every app the steps name.
+             */
+            steps: components["schemas"]["AutomationStep"][];
             /**
              * Format: date-time
              * @description kind=once
@@ -3100,10 +3176,13 @@ export interface components {
         AutomationDraftStatus: "open" | "saved" | "discarded" | "replaced" | "expired";
         /**
          * @description An automation Tex proposed and the user has not saved (or has, see `status`). It holds the
-         *     same parts as an `Automation`, and never runs. Drawn as the same five steps: the trigger,
-         *     Tex's instruction, the apps, "asks you first" and the results.
+         *     same parts as an `Automation`, and never runs. Drawn as the same five boxes: the trigger,
+         *     Tex's instruction, the apps, "asks you first" and the results; with steps, the trigger,
+         *     each step and the results.
          */
         AutomationDraft: {
+            /** @description Its steps, as an automation's (`Automation.steps`). Empty for one instruction. */
+            steps: components["schemas"]["AutomationStep"][];
             /** @example drf_01jz3m8q4kd2v7x9w0t5b6c8ya */
             id: string;
             status: components["schemas"]["AutomationDraftStatus"];
@@ -3200,7 +3279,10 @@ export interface components {
                     [key: string]: unknown;
                 };
             } | null;
-            /** @description The apps its runs may use, by app slug. Empty, any connected app. */
+            /**
+             * @description The apps its runs may use, by app slug. Empty, any connected app. With steps it is
+             *     worked out from the steps, and what is sent here is ignored.
+             */
             apps?: string[];
             askFirst?: components["schemas"]["AutomationAskFirst"];
             /**
@@ -3209,6 +3291,11 @@ export interface components {
              * @enum {string|null}
              */
             copyTo?: "telegram" | "whatsapp" | "imessage" | null;
+            /**
+             * @description Up to 6 steps (more is a problem of the box `steps`, so the canvas can say so).
+             *     Left out or empty: one instruction, as before steps.
+             */
+            steps?: components["schemas"]["AutomationStepInput"][];
         };
         /** @description A new automation made by hand. */
         AutomationInput: components["schemas"]["AutomationParts"] & {
@@ -3241,10 +3328,13 @@ export interface components {
         };
         AutomationProblem: {
             /**
-             * @description The box it belongs to. Null for the automation as a whole (the plan's limit).
+             * @description The box it belongs to. Null for the automation as a whole (the plan's limit). `steps`:
+             *     one of its steps (`stepId`), or the list of steps itself (`stepId` null: more than 6).
              * @enum {string|null}
              */
-            step: "trigger" | "instruction" | "apps" | "asks" | "results" | null;
+            step: "trigger" | "instruction" | "apps" | "asks" | "results" | "steps" | null;
+            /** @description With `step` = `steps`, the step it belongs to (`AutomationStep.id`). Else null. */
+            stepId: string | null;
             /**
              * @description `plan_limit`: the plan's automations are used. `past`: the moment has passed.
              * @enum {string}
@@ -3302,6 +3392,129 @@ export interface components {
             name: string;
             description: string;
             settings: components["schemas"]["AppEventSetting"][];
+        };
+        /**
+         * @description When a step runs ("only if"), checked on the result of the step before it. A false one
+         *     stops the run there, as a success: the steps after it are skipped, one line says so in the
+         *     Automations chat, and no copy goes to Telegram. Step 1 has none (`always`).
+         *     - `always`: it always runs.
+         *     - `found`: the step before found something (not an empty list, no emails, no text).
+         *     - `mentions`: the step before's result mentions any of `words`, ignoring capitals.
+         *     - `tex`: Tex decides, answering `question` yes or no with one line why. It is Tex's
+         *       judgement, so less certain than the others; the trail keeps Tex's line.
+         */
+        AutomationStepCondition: {
+            /** @enum {string} */
+            kind: "always" | "found" | "mentions" | "tex";
+            /** @description `mentions`: at least one word. */
+            words?: string[];
+            /** @description `tex`: the question Tex answers yes or no. */
+            question?: string;
+        };
+        /**
+         * @description One step as the canvas or Tex gives it. Only `type` is needed to check it: each missing
+         *     part is a problem of that step. `id` left out gets a new one.
+         */
+        AutomationStepInput: {
+            /** @description Short and unique in the automation; it names the step's results, so reordering never mixes them up. */
+            id?: string;
+            /** @enum {string} */
+            type: "action" | "tex";
+            /** @description Left out: made from the action or the instruction. */
+            title?: string;
+            /** @description `action`: the app it runs in, by slug. */
+            app?: string | null;
+            /** @description `action`: one action of that app (`GET /v1/apps/{appSlug}/actions`), e.g. GMAIL_SEND_EMAIL. */
+            action?: string | null;
+            /** @description `action`: the inputs the user fixes, by the action's input names. Tex fills the others from earlier results. */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /** @description `tex`: what Tex does in this step, in words. A Tex step only reads and writes words: a change in an app is always an action step. */
+            instruction?: string | null;
+            /** @description `tex`: apps Tex may read in this step (free actions only), by slug. */
+            readApps?: string[];
+            /**
+             * @description `action`: wait for the user's yes before it runs. Always on for an action that sends,
+             *     deletes or pays (`AppAction.requiresApproval`): false is then ignored.
+             */
+            askFirst?: boolean;
+            onlyIf?: components["schemas"]["AutomationStepCondition"];
+            /** @description "Show me this": its result also goes into the run's answer. */
+            showResult?: boolean;
+        };
+        /** @description One step of an automation (`AutomationStepInput`), as it was saved: every part filled. */
+        AutomationStep: {
+            id: string;
+            /** @enum {string} */
+            type: "action" | "tex";
+            title: string;
+            app: string | null;
+            action: string | null;
+            inputs: {
+                [key: string]: unknown;
+            };
+            instruction: string | null;
+            readApps: string[];
+            askFirst: boolean;
+            onlyIf: components["schemas"]["AutomationStepCondition"];
+            showResult: boolean;
+            /** @description Its action sends, deletes or pays, so "ask me first" is on and locked. */
+            risky: boolean;
+        };
+        AutomationRunStep: {
+            stepId: string;
+            number: number;
+            title: string;
+            /**
+             * @description `waiting`: for the user's OK (`approvalId`). `skipped`: the run stopped before it.
+             * @enum {string}
+             */
+            state: "pending" | "running" | "done" | "skipped" | "failed" | "waiting";
+            /** @description Its short result. Null when it has none yet, or 2 days after the run ended. */
+            result: string | null;
+            /** @description Why it failed or was skipped, or Tex's line for a "Tex decides" condition. */
+            reason: string | null;
+            /** @description How many times its action was tried. */
+            tries: number;
+            approvalId: string | null;
+        };
+        /** @description One run of an automation with steps, and its trail. */
+        AutomationRun: {
+            id: string;
+            automationId: string;
+            /**
+             * @description `waiting`: for the user's OK on a step. `stopped`: a condition was false, the user said
+             *     no, or no answer came in 24 hours. `failed`: a step failed, or Tex ended early.
+             *     `superseded`: a newer run of the same automation started while this one waited.
+             * @enum {string}
+             */
+            state: "running" | "waiting" | "done" | "stopped" | "failed" | "superseded";
+            /** @description "Run once now". */
+            test: boolean;
+            currentStepId: string | null;
+            /** @description Why it stopped or failed, in words for the user. */
+            stopReason: string | null;
+            steps: components["schemas"]["AutomationRunStep"][];
+            /** @description The step results were removed (2 days after the end). */
+            resultsRemoved: boolean;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            endedAt: string | null;
+        };
+        AppAction: {
+            /** @example GMAIL_SEND_EMAIL */
+            slug: string;
+            /** @example Send email */
+            name: string;
+            description: string;
+            /** @description It sends, deletes or pays, so a step with it always asks the user first. */
+            requiresApproval: boolean;
+            /** @description It changes something in the app, so it costs 1 credit when it runs. Reading is free. */
+            changesSomething: boolean;
+            /** @description Its inputs, as a form needs them (the same shape as an event's settings). */
+            inputs: components["schemas"]["AppEventSetting"][];
         };
         AutomationDraftSaved: {
             draft: components["schemas"]["AutomationDraft"];
@@ -4531,8 +4744,8 @@ export interface components {
         };
         StreamEvent: {
             /** @enum {string} */
-            type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated" | "automation_draft.updated" | "conversation.updated" | "conversation.deleted" | "message.draft";
-            data: components["schemas"]["Message"] | components["schemas"]["MessageDraft"] | components["schemas"]["Conversation"] | components["schemas"]["ConversationDeleted"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"] | components["schemas"]["AutomationDraft"];
+            type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated" | "automation_draft.updated" | "automation_run.updated" | "conversation.updated" | "conversation.deleted" | "message.draft";
+            data: components["schemas"]["AutomationRun"] | components["schemas"]["Message"] | components["schemas"]["MessageDraft"] | components["schemas"]["Conversation"] | components["schemas"]["ConversationDeleted"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"] | components["schemas"]["AutomationDraft"];
         };
     };
     responses: {
@@ -5321,6 +5534,43 @@ export interface operations {
             };
         };
     };
+    listAppActions: {
+        parameters: {
+            query?: {
+                search?: string;
+            };
+            header?: never;
+            path: {
+                appSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AppAction"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Composio could not give the list just now. Retry later */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     disconnectApp: {
         parameters: {
             query?: never;
@@ -5846,6 +6096,32 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    listAutomationRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                automationId: components["parameters"]["AutomationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AutomationRun"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listAutomationDrafts: {
         parameters: {
             query?: never;
@@ -5942,8 +6218,9 @@ export interface operations {
             content: {
                 "application/json": {
                     /**
-                     * @description False saves it paused.
-                     * @default true
+                     * @description False saves it paused, true switched on. Left out: a new automation is
+                     *     switched on, and a change keeps its automation on or paused as it is (the same
+                     *     as the canvas's Save of a change).
                      */
                     enabled?: boolean;
                 };
