@@ -1,6 +1,6 @@
 import { focusManager, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { allConversations, type ConversationList } from "../conversations";
+import { allConversations, showsUnread, type ConversationList } from "../conversations";
 import { DRAFTS_KEY, type Drafts, NO_DRAFTS, SHOW_AFTER_MS, turnOnScreen } from "../drafts";
 import type { Conversation, Message, MessageDraft, StreamEvent } from "./client";
 import { qk } from "./hooks";
@@ -148,6 +148,58 @@ describe("applyStreamEvent, for the chat", () => {
     expect(chat.history().map((item) => item.id)).toEqual(["cnv_now", "cnv_tg"]);
     expect(chat.threadIds("cnv_old")).toBeUndefined();
     expect(chat.threadIds("cnv_now")).toEqual(["m2", "m1"]);
+  });
+});
+
+describe("applyStreamEvent, for the unread mark", () => {
+  /** The history from a backend that says `unread`: everything read so far, `cnv_now` open. */
+  function withUnread() {
+    const chat = chatCache();
+    chat.qc.setQueryData<ConversationList>(qk.conversations, (list) => list && { ...list, pages: list.pages.map((page) => ({ ...page, items: page.items.map((item) => ({ ...item, unread: false })) })) });
+    const marked = (openId: string | null) => chat.history().filter((item) => showsUnread(item, openId)).map((item) => item.id);
+    return { ...chat, marked };
+  }
+
+  it("puts the dot on a conversation that isn't open when a reply from Tex arrives, before the backend's own word", () => {
+    const chat = withUnread();
+    chat.send("message.created", message("m9", "cnv_tg", "12:40", { channel: "telegram", direction: "out", text: "Moved it." }));
+    expect(chat.marked("cnv_now")).toEqual(["cnv_tg"]);
+    expect(chat.history()[0]).toMatchObject({ id: "cnv_tg", unread: true });
+    // The backend's conversation.updated says the same, and the dot stays.
+    chat.send("conversation.updated", conversation("cnv_tg", "12:40", { channel: "telegram", active: true, unread: true }));
+    expect(chat.marked("cnv_now")).toEqual(["cnv_tg"]);
+  });
+
+  it("never shows it on the open conversation, and takes it away when the backend says it was read", () => {
+    const chat = withUnread();
+    chat.send("message.created", message("m3", "cnv_now", "12:30", { direction: "out" }));
+    expect(chat.history()[0]).toMatchObject({ id: "cnv_now", unread: true });
+    expect(chat.marked("cnv_now")).toEqual([]);
+    // Read on another device: the event clears it here too.
+    chat.send("conversation.updated", conversation("cnv_now", "12:30", { active: true, unread: false }));
+    expect(chat.marked(null)).toEqual([]);
+  });
+
+  it("is cleared by the person's own message in that conversation", () => {
+    const chat = withUnread();
+    chat.send("message.created", message("m9", "cnv_old", "12:40", { direction: "out" }));
+    expect(chat.marked("cnv_now")).toEqual(["cnv_old"]);
+    chat.send("message.created", message("m10", "cnv_old", "12:41", { direction: "in" }));
+    expect(chat.marked("cnv_now")).toEqual([]);
+  });
+
+  it("makes up nothing for an older backend, which never says unread", () => {
+    const chat = chatCache();
+    chat.send("message.created", message("m9", "cnv_tg", "12:40", { channel: "telegram", direction: "out" }));
+    expect(chat.history()[0].unread).toBeUndefined();
+    expect(chat.history().filter((item) => showsUnread(item, "cnv_now"))).toEqual([]);
+  });
+
+  it("marks the Automations chat when a run arrives, from a backend that says unread", () => {
+    const chat = withUnread();
+    chat.qc.setQueryData(qk.automationsChat, conversation("cnv_auto", "07:00", { kind: "automations", title: "Automations", unread: false }));
+    chat.send("message.created", message("r1", "cnv_auto", "12:50", { direction: "out" }));
+    expect(chat.qc.getQueryData<Conversation | null>(qk.automationsChat)).toMatchObject({ unread: true, lastMessageAt: at("12:50") });
   });
 });
 

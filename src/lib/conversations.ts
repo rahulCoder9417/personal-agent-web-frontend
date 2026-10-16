@@ -209,9 +209,10 @@ export function placeConversation(list: ConversationList, conversation: Conversa
 /**
  * A message was saved in a conversation: it now has the newest message, so it moves to the top,
  * and an incoming web message makes its conversation the active one (writing in an earlier
- * conversation does that). The backend says the same with `conversation.updated`; this keeps the
- * list right until that arrives. Null when the conversation isn't in the list, so it has to be
- * asked for. A message that isn't newer than what the list knows changes nothing.
+ * conversation does that). One from Tex makes it unread, and one the person wrote makes it read
+ * (`unreadAfter`). The backend says the same with `conversation.updated`; this keeps the list right
+ * until that arrives. Null when the conversation isn't in the list, so it has to be asked for. A
+ * message that isn't newer than what the list knows changes nothing.
  */
 export function conversationSpoke(
   list: ConversationList,
@@ -221,19 +222,76 @@ export function conversationSpoke(
   if (!conversation) return null;
   if (Date.parse(message.createdAt) <= time(conversation)) return list;
   const writtenIn = message.channel === "web" && message.direction === "in";
-  return placeConversation(list, { ...conversation, lastMessageAt: message.createdAt, active: conversation.active || writtenIn });
+  return placeConversation(list, { ...unreadAfter(conversation, message), lastMessageAt: message.createdAt, active: conversation.active || writtenIn });
+}
+
+// ---------------------------------------------------------------- unread
+
+/**
+ * Whether a conversation's row carries the unread mark: Tex said something in it that wasn't seen
+ * yet, and it isn't the one open (what arrives there is being seen, and is marked read). An older
+ * backend says nothing about it: never.
+ */
+export function showsUnread(conversation: Pick<Conversation, "id" | "unread">, openId: string | null): boolean {
+  return conversation.unread === true && conversation.id !== openId;
+}
+
+/** Whether any of these carries the mark: the button that shows the list of chats says so while it is put away. */
+export function anyUnread(conversations: readonly Pick<Conversation, "id" | "unread">[], openId: string | null): boolean {
+  return conversations.some((conversation) => showsUnread(conversation, openId));
+}
+
+/**
+ * A conversation after its newest message, as the backend counts it: one from Tex is unread until
+ * it is read, and one the person wrote (here or on another chat app) means they saw what came
+ * before. Unchanged when the backend doesn't say `unread` at all (an older one).
+ */
+export function unreadAfter<C extends Pick<Conversation, "unread">>(conversation: C, message: Pick<Message, "direction">): C {
+  if (conversation.unread === undefined) return conversation;
+  const unread = message.direction === "out";
+  return conversation.unread === unread ? conversation : { ...conversation, unread };
+}
+
+/**
+ * A conversation after it was marked read. `answer` is what the backend said back; the copy here
+ * keeps everything else. When something newer arrived in the meantime (the copy here is later than
+ * the answer), the copy here stands: that message's own event says whether it is unread. Without
+ * an answer yet, it is read at once, so the mark doesn't come back while the request is on its way.
+ */
+export function readMarked(conversation: Conversation, answer?: Pick<Conversation, "lastMessageAt" | "startedAt" | "unread">): Conversation {
+  if (conversation.unread === undefined) return conversation;
+  if (answer && time(answer) < time(conversation)) return conversation;
+  const unread = answer?.unread ?? false;
+  return conversation.unread === unread ? conversation : { ...conversation, unread };
+}
+
+/** The list with one conversation changed by `change`, in its place. The same list when nothing changed. */
+export function changeConversation(list: ConversationList, id: string, change: (conversation: Conversation) => Conversation): ConversationList {
+  let changed = false;
+  const pages = list.pages.map((page) => {
+    const at = page.items.findIndex((item) => item.id === id);
+    if (at === -1) return page;
+    const next = change(page.items[at]);
+    if (next === page.items[at]) return page;
+    changed = true;
+    const items = page.items.slice();
+    items[at] = next;
+    return { ...page, items };
+  });
+  return changed ? { ...list, pages } : list;
 }
 
 // ---------------------------------------------------------------- the Automations chat
 
 /**
- * The Automations chat after a message was saved in it: its newest message is now later. It
- * stays where it is (pinned) and never becomes the active one, even when the person writes in it.
- * Unchanged when the message isn't newer, or isn't its.
+ * The Automations chat after a message was saved in it: its newest message is now later, and a
+ * run's answer makes it unread (`unreadAfter`). It stays where it is (pinned) and never becomes
+ * the active one, even when the person writes in it. Unchanged when the message isn't newer, or
+ * isn't its.
  */
-export function automationsChatSpoke(chat: Conversation, message: Pick<Message, "conversationId" | "createdAt">): Conversation {
+export function automationsChatSpoke(chat: Conversation, message: Pick<Message, "conversationId" | "createdAt" | "direction">): Conversation {
   if (message.conversationId !== chat.id || Date.parse(message.createdAt) <= time(chat)) return chat;
-  return { ...chat, lastMessageAt: message.createdAt };
+  return { ...unreadAfter(chat, message), lastMessageAt: message.createdAt };
 }
 
 /** What this browser remembers of the Automations chat: which one, and up to when its runs were seen. */
@@ -253,9 +311,13 @@ export function seenToRemember(chat: Conversation, seen: AutomationsSeen | null)
 
 /**
  * Whether the Automations chat shows its unread mark: something arrived in it after it was last
- * seen, and it isn't the one open (while it is open, what arrives is being seen).
+ * seen, and it isn't the one open (while it is open, what arrives is being seen). The backend says
+ * so itself (`unread`), the same on every device; an older one doesn't, and then what this browser
+ * remembers decides.
  */
 export function automationsUnread(chat: Conversation | null, seen: AutomationsSeen | null, open: boolean): boolean {
-  if (!chat || open || seen === null || seen.id !== chat.id) return false;
+  if (!chat || open) return false;
+  if (chat.unread !== undefined) return chat.unread;
+  if (seen === null || seen.id !== chat.id) return false;
   return time(chat) > Date.parse(seen.at);
 }
