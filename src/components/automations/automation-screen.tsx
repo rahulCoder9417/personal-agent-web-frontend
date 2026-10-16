@@ -2,22 +2,24 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { Automation } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
-import { useAutomation, useDeleteAutomation, useMe, usePrReviews, useUpdateAutomation } from "@/lib/api/hooks";
+import { useAutomation, useDeleteAutomation, useMe, usePrReviews, useRunAutomationNow, useUpdateAutomation } from "@/lib/api/hooks";
+import { editorFrom } from "@/lib/automation-editor";
 import { automationFlow } from "@/lib/automation-flow";
-import { changeRequest, describeAutomationStatus } from "@/lib/automations";
-import { chatDraftHref } from "@/lib/chat-link";
+import { describeAutomationStatus } from "@/lib/automations";
 import { AUTOMATIONS_CHAT_HREF } from "@/lib/conversations";
+import { PRICING_PATH } from "@/lib/pricing";
 import { AUTOMATION_KIND_LABEL, cn, PR_REVIEW_LABEL } from "@/lib/format";
 import { repoName } from "@/lib/pr-review";
 import { BrandIcon } from "../brand-icon";
 import { ConfirmButton } from "../confirm-button";
-import { ChatIcon, PencilIcon } from "../icons";
+import { ChatIcon, ClockIcon, PencilIcon } from "../icons";
 import { PageBody, READING } from "../page";
 import { toast, toastError } from "../toast";
-import { ButtonLink, EmptyState, ErrorState, Pill, Switch } from "../ui";
+import { Button, ButtonLink, EmptyState, ErrorState, Pill, Switch } from "../ui";
+import { AutomationEditor } from "./automation-editor";
 import { FlowView } from "./flow-view";
 import { KIND_TINT, KindIcon } from "./kind-icon";
 
@@ -59,6 +61,55 @@ export function AutomationHeading({
       </div>
       {control && <div className="flex shrink-0 items-center gap-2">{control}</div>}
     </div>
+  );
+}
+
+const ACTION = "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium text-nav transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-50";
+
+/** A one-time reminder that has run: it is finished, and can't be changed or run again. */
+export function isFinished(automation: Pick<Automation, "kind" | "lastRunAt" | "nextRunAt">): boolean {
+  return automation.kind === "once" && Boolean(automation.lastRunAt) && !automation.nextRunAt;
+}
+
+/**
+ * "Run once now": a test run of the saved automation, on or paused, at a normal run's cost. The
+ * answer arrives in the Automations chat. One key per click, so a double click is one run.
+ */
+export function RunOnceButton({ automation }: { automation: Pick<Automation, "id" | "title"> }) {
+  const run = useRunAutomationNow();
+  const busy = useRef(false);
+  return (
+    <button
+      type="button"
+      className={ACTION}
+      disabled={run.isPending}
+      onClick={() => {
+        if (busy.current) return;
+        busy.current = true;
+        run.mutate(
+          { automationId: automation.id, clientRequestId: crypto.randomUUID() },
+          {
+            onSettled: () => (busy.current = false),
+            onSuccess: () =>
+              toast({
+                title: "Test run started: the answer arrives in your Automations chat",
+                body: "It runs once now, as a real run would, and costs what a run costs. The schedule doesn’t move.",
+                action: { label: "Open the chat", href: AUTOMATIONS_CHAT_HREF },
+              }),
+            onError: (error) => {
+              if (error instanceof ApiError && error.status === 429)
+                toastError("No more test runs for now", "You can run 10 tests an hour. Try again a little later.");
+              else if (error instanceof ApiError && error.outOfCredits)
+                toastError("Out of credits", "A test run costs what a run costs. Top up or upgrade, then try again.", { label: "See plans", href: PRICING_PATH });
+              else toastError(`Couldn’t run “${automation.title}”`, error);
+            },
+          },
+        );
+      }}
+    >
+      <ClockIcon size={15} />
+      {run.isPending ? "Starting…" : "Run once now"}
+    </button>
   );
 }
 
@@ -108,7 +159,7 @@ export function AutomationNotFound() {
 }
 
 /** One saved automation: its heading and controls, a line on what the page is, and its flow. */
-function Saved({ automation }: { automation: Automation }) {
+function Saved({ automation, editing: editingAtFirst = false }: { automation: Automation; editing?: boolean }) {
   const router = useRouter();
   const me = useMe();
   const update = useUpdateAutomation();
@@ -119,6 +170,11 @@ function Saved({ automation }: { automation: Automation }) {
   const steps = useMemo(() => automationFlow(automation, me.data?.timezone), [automation, me.data?.timezone]);
   const status = describeAutomationStatus(automation);
   const on = automation.enabled;
+  const [editing, setEditing] = useState(editingAtFirst);
+  const finished = isFinished(automation);
+  const zone = me.data?.timezone ?? "UTC";
+  const canEdit = !review && !finished;
+  const start = useMemo(() => (editing && canEdit ? editorFrom(automation, zone) : null), [editing, canEdit, automation, zone]);
 
   const control = review ? (
     <ButtonLink href="/automations/reviews" size="sm" aria-label={`Manage review for ${title}`}>
@@ -155,18 +211,37 @@ function Saved({ automation }: { automation: Automation }) {
       <p className={cn("-mt-2 text-[13.5px] text-muted", READING)}>
         {review
           ? "How Patch reviews this repo, step by step. Turn it on or off on the review screen."
-          : "This is how Tex runs it, step by step. Nothing can be changed here yet: to change it, ask Tex in chat."}
+          : start
+            ? "Change any box: click it (on a phone, scroll down the form). The server checks each change as you go; nothing changes until you save."
+            : finished
+              ? "This reminder has run its one time, so it is finished. It shows how Tex ran it."
+              : "This is how Tex runs it, step by step. Edit changes any box; Run once now tries it, on or paused."}
       </p>
-      <div className="-mt-3 flex flex-wrap items-center gap-x-1 gap-y-1">
-        <Action href={AUTOMATIONS_CHAT_HREF} icon={<ChatIcon size={15} />}>
-          {review ? "See verdicts" : "See runs"}
-        </Action>
-        {!review && (
-          <>
-            <Action href={chatDraftHref(changeRequest(automation))} icon={<PencilIcon size={15} />}>
-              Change in chat
+      {start ? (
+        <AutomationEditor
+          target={{ kind: "change", automation }}
+          start={start}
+          accountZone={zone}
+          onCancel={() => setEditing(false)}
+          onSaved={() => setEditing(false)}
+        />
+      ) : (
+        <>
+          <div className="-mt-3 flex flex-wrap items-center gap-x-1 gap-y-1">
+            {!review && !finished && (
+              <>
+                <Button variant="primary" size="sm" className="mr-1" onClick={() => setEditing(true)}>
+                  <PencilIcon size={14} />
+                  Edit
+                </Button>
+                <RunOnceButton automation={automation} />
+              </>
+            )}
+            <Action href={AUTOMATIONS_CHAT_HREF} icon={<ChatIcon size={15} />}>
+              {review ? "See verdicts" : "See runs"}
             </Action>
-            <ConfirmButton
+            {!review && (
+              <ConfirmButton
               className="ml-1"
               label="Delete"
               confirmLabel="Delete for good"
@@ -182,23 +257,24 @@ function Saved({ automation }: { automation: Automation }) {
                 })
               }
             />
-          </>
-        )}
-      </div>
-      <FlowView steps={steps} kind={automation.kind} label={`${title}, step by step`} />
+            )}
+          </div>
+          <FlowView steps={steps} kind={automation.kind} label={`${title}, step by step`} />
+        </>
+      )}
     </>
   );
 }
 
 /** An automation's own page, by its id: loading, not found, failed, or the automation. */
-export function AutomationScreen({ automationId }: { automationId: string }) {
+export function AutomationScreen({ automationId, editing = false }: { automationId: string; editing?: boolean }) {
   const automation = useAutomation(automationId);
   const missing = automation.error instanceof ApiError && automation.error.status === 404;
   return (
     <PageBody className="gap-6">
       <BackToAutomations />
       {automation.data ? (
-        <Saved automation={automation.data} />
+        <Saved automation={automation.data} editing={editing} />
       ) : missing ? (
         <AutomationNotFound />
       ) : automation.isError ? (

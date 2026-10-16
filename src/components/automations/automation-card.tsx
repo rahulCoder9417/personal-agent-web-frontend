@@ -4,9 +4,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Automation } from "@/lib/api/client";
 import { useDeleteAutomation, usePrReviews, useUpdateAutomation } from "@/lib/api/hooks";
-import { automationFlow, automationHref } from "@/lib/automation-flow";
-import { changeRequest, describeAutomationStatus, describeAutomationTimes, describeAutomationWhen } from "@/lib/automations";
-import { chatDraftHref } from "@/lib/chat-link";
+import { automationEditHref, automationFlow, automationHref } from "@/lib/automation-flow";
+import { describeAutomationStatus, describeAutomationTimes, describeAutomationWhen } from "@/lib/automations";
 import { AUTOMATIONS_CHAT_HREF } from "@/lib/conversations";
 import { AUTOMATION_KIND_LABEL, cn, PR_REVIEW_LABEL, titleCase } from "@/lib/format";
 import { repoName } from "@/lib/pr-review";
@@ -240,7 +239,7 @@ function PlainCard({ automation, timezone }: { automation: Automation; timezone:
           <Action href={AUTOMATIONS_CHAT_HREF} icon={<ChatIcon size={14} />} label={`See the runs of ${automation.title} in the Automations chat`}>
             See runs
           </Action>
-          <Action href={chatDraftHref(changeRequest(automation))} icon={<PencilIcon size={14} />} label={`Ask Tex to change ${automation.title}`}>
+          <Action href={automationEditHref(automation.id)} icon={<PencilIcon size={14} />} label={`Change ${automation.title}`}>
             Change
           </Action>
           <ConfirmButton
@@ -259,7 +258,7 @@ function PlainCard({ automation, timezone }: { automation: Automation; timezone:
 
 /**
  * One automation: what it does and when, in words, and what the app is allowed to do with it
- * (pause, resume, delete, ask Tex to change it, see its runs). `timezone` is the person's own, so
+ * (pause, resume, delete, change it on its page, see its runs). `timezone` is the person's own, so
  * a schedule in it reads "your time".
  */
 export function AutomationCard({ automation, timezone }: { automation: Automation; timezone?: string | null }) {

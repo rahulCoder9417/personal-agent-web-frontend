@@ -163,17 +163,35 @@ describe("the Automations page", () => {
     const qc = client();
     qc.setQueryData(qk.automations, { items: [] });
     const words = text(draw(qc, createElement(AutomationsPage)));
-    expect(words).toContain("There is no form: you ask, Tex shows you a draft, and you save it. Nothing runs before you do.");
+    expect(words).toContain("Ask Tex and it shows you a draft to save, or build one yourself, box by box, with New automation. Nothing runs before you save it.");
+    expect(words).toContain("New automation");
     expect(words).toContain("Tex drafts it");
     expect(words).toContain("You save it");
   });
 });
 
 describe("/automations/new without a draft", () => {
-  it("says a new one starts in the chat, for now", () => {
-    const words = text(draw(client(), createElement(NewAutomation)));
-    expect(words).toContain("A new automation starts in the chat");
-    expect(words).toContain("Building one here, box by box, comes later.");
-    expect(words).toContain("Ask Tex in chat");
+  it("is an empty canvas to build one by hand, with templates, and the way to ask Tex instead", async () => {
+    const qc = client();
+    qc.setQueryData(qk.me, await demo("me"));
+    qc.setQueryData(qk.apps, await demo("apps"));
+    qc.setQueryData(qk.channels, await demo("channels"));
+    qc.setQueryData(qk.automations, await demo("automations"));
+    const html = draw(qc, createElement(NewAutomation));
+    const words = text(html);
+    expect(words).toContain("A new automation");
+    expect(words).toContain("Build it box by box");
+    expect(words).toContain("Start from a template");
+    expect(words).toContain("Daily briefing at 8");
+    expect(words).toContain("Pull requests on Monday at 9");
+    // On the server (and a phone's first paint) the five parts are a form, one under another.
+    for (const label of ["Trigger", "Tex’s instruction", "Apps Tex may use", "Asks you first", "Results"]) expect(words).toContain(label);
+    expect(words).toContain("Pick when it runs");
+    expect(words).toContain("Your Automations chat");
+    expect(words).toContain("Save paused");
+    expect(words).toContain("Ask Tex to change this");
+    expect(words).toContain("Rather say it in words?");
+    // An empty canvas shows no red before a box was worked on.
+    expect(html).not.toContain('role="alert"');
   });
 });

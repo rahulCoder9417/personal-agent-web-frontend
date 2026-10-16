@@ -67,7 +67,7 @@ describe("an automation's page", () => {
     const words = text(html);
     expect(words).toContain("All automations");
     expect(words).toContain("Today’s meetings");
-    expect(words).toContain("This is how Tex runs it, step by step. Nothing can be changed here yet: to change it, ask Tex in chat.");
+    expect(words).toContain("This is how Tex runs it, step by step. Edit changes any box; Run once now tries it, on or paused.");
     // The steps, in order, with what each says.
     const order = ["Trigger", "Tex’s instruction", "Apps Tex may use", "Asks you first", "Results"].map((label) => words.indexOf(`${label} `));
     expect(order.every((at) => at > 0)).toBe(true);
@@ -78,10 +78,11 @@ describe("an automation's page", () => {
     expect(words).toContain("Sending, deleting or paying waits for your OK");
     expect(words).toContain("Automations chat");
     expect(words).toContain("Copy to Telegram");
-    // Its controls: the switch, the runs, a change asked of Tex, delete.
+    // Its controls: the switch, edit, a test run, the runs, delete.
     expect(html).toContain('role="switch"');
     expect(words).toContain("See runs");
-    expect(words).toContain("Change in chat");
+    expect(words).toContain("Edit");
+    expect(words).toContain("Run once now");
     expect(words).toContain("Delete");
     // The choice of canvas or list.
     expect(words).toContain("Canvas");

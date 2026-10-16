@@ -487,3 +487,50 @@ export const EDITOR_TEMPLATES: readonly EditorTemplate[] = [
     }),
   },
 ];
+
+// ---------------------------------------------------------------- the apps on offer
+
+type AppLike = { slug: string; name: string; availableOnPlan: boolean; connections: readonly { status: string }[] };
+
+/**
+ * The apps the canvas offers, for the trigger and for the Apps box: the ones that can be used now
+ * (connected, with a working account, and on the plan), then the connected ones the plan doesn't
+ * include, then the ones not connected. Only the first can be picked.
+ */
+export function appChoices<T extends AppLike>(apps: readonly T[] | undefined): { usable: T[]; notOnPlan: T[]; notConnected: T[] } {
+  const working = (app: T) => app.connections.some((connection) => connection.status === "active");
+  const all = apps ?? [];
+  return {
+    usable: all.filter((app) => working(app) && app.availableOnPlan),
+    notOnPlan: all.filter((app) => working(app) && !app.availableOnPlan),
+    notConnected: all.filter((app) => !working(app)),
+  };
+}
+
+/** A setting's value as the field shows it. */
+export function settingText(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+/** What a setting's field holds, as the value the app takes: a number, a list, true or false, or text. */
+export function settingValue(type: string, text: string): unknown {
+  const trimmed = text.trim();
+  if (trimmed === "") return "";
+  if (type === "integer" || type === "number") {
+    const n = Number(trimmed);
+    return Number.isFinite(n) && (type === "number" || Number.isInteger(n)) ? n : trimmed;
+  }
+  if (type === "boolean") return trimmed === "true";
+  if (type === "array") return trimmed.split(",").map((item) => item.trim()).filter(Boolean);
+  if (type === "object") {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      return trimmed;
+    }
+  }
+  return text;
+}

@@ -14,7 +14,7 @@ import { KIND_TINT, KindIcon } from "./kind-icon";
 /**
  * The top of the Automations screen, for someone who has never made one: what an automation is,
  * how one is made (by asking Tex: the box opens the chat with the request typed in, nothing is
- * sent until Send), and the three kinds, each with a request that makes it. `compact` (someone who
+ * sent until Send; or by hand, with New automation), and the three kinds, each with a request that makes it. `compact` (someone who
  * has automations already) leaves the kinds out on a phone, so their list comes sooner.
  */
 export function AutomationsIntro({ compact = false }: { compact?: boolean }) {
@@ -36,8 +36,8 @@ export function AutomationsIntro({ compact = false }: { compact?: boolean }) {
             </h2>
             <p className={cn("text-[14px] text-muted", READING)}>
               An automation is a job you hand Tex once, in plain words. Tex then does it at the time you named, on a schedule, or the moment
-              something happens in one of your apps, and posts each result in your Automations chat. There is no form: you ask, Tex shows you a draft, and you
-              save it. Nothing runs before you do.
+              something happens in one of your apps, and posts each result in your Automations chat. Ask Tex and it shows you a draft to save, or build one
+              yourself, box by box, with New automation. Nothing runs before you save it.
             </p>
           </div>
 
@@ -57,7 +57,13 @@ export function AutomationsIntro({ compact = false }: { compact?: boolean }) {
               Ask Tex in chat
             </Button>
           </form>
-          <p className="-mt-2 text-[12.5px] text-muted">The chat opens with your words typed in. Nothing is sent until you press Send.</p>
+          <p className="-mt-2 text-[12.5px] text-muted">
+            The chat opens with your words typed in. Nothing is sent until you press Send. Or{" "}
+            <Link href="/automations/new" className="font-medium text-accent hover:text-accent-dark">
+              build one yourself, box by box
+            </Link>
+            .
+          </p>
 
           <ul
             aria-label="The three kinds of automation"

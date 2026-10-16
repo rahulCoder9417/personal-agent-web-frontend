@@ -13,7 +13,7 @@ function NewOrDraft() {
 
 /**
  * `/automations/new?draft=drf_…`: a draft Tex proposed, on the canvas, to check and save. Without a
- * draft: how a new automation is made (by asking Tex: building one by hand comes later).
+ * draft: an empty canvas to build one by hand, with templates, or the way to ask Tex instead.
  */
 export default function NewAutomationPage() {
   return (

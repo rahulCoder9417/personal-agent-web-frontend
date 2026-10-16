@@ -9,7 +9,7 @@ import { AutomationsOverview } from "@/components/automations/overview";
 import { usePlanAutomations } from "@/components/automations/plan-meter";
 import { AutomationTemplates } from "@/components/automations/templates";
 import { PageBody, READING } from "@/components/page";
-import { ErrorState, FilterPills, Meta, SectionLabel, type FilterOption } from "@/components/ui";
+import { ButtonLink, ErrorState, FilterPills, Meta, SectionLabel, type FilterOption } from "@/components/ui";
 import type { Automation } from "@/lib/api/client";
 import { useAutomations, useMe } from "@/lib/api/hooks";
 import { AUTOMATION_CREDITS } from "@/lib/automations";
@@ -106,7 +106,12 @@ export default function AutomationsPage() {
               </Meta>
             )}
           </div>
-          {all.length > 1 && <FilterPills label="Filter by kind" options={filters} value={kind} onChange={setKind} />}
+          <div className="flex flex-wrap items-center gap-2">
+            {all.length > 1 && <FilterPills label="Filter by kind" options={filters} value={kind} onChange={setKind} />}
+            <ButtonLink href="/automations/new" variant="primary" size="sm">
+              New automation
+            </ButtonLink>
+          </div>
         </div>
 
         {automations.isError ? (

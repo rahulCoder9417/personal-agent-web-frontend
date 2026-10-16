@@ -189,3 +189,26 @@ describe("problems, box by box", () => {
     expect(problemsOfError(undefined)).toBeNull();
   });
 });
+
+describe("the apps on offer and event settings", () => {
+  it("only connected apps on the plan can be picked", async () => {
+    const { appChoices } = await import("./automation-editor");
+    const app = (slug: string, availableOnPlan: boolean, status: string | null) => ({ slug, name: slug, availableOnPlan, connections: status ? [{ status }] : [] });
+    const choices = appChoices([app("gmail", true, "active"), app("hubspot", false, "active"), app("drive", true, "expired"), app("linear", true, null)]);
+    expect(choices.usable.map((a) => a.slug)).toEqual(["gmail"]);
+    expect(choices.notOnPlan.map((a) => a.slug)).toEqual(["hubspot"]);
+    expect(choices.notConnected.map((a) => a.slug)).toEqual(["drive", "linear"]);
+    expect(appChoices(undefined).usable).toEqual([]);
+  });
+
+  it("a setting's field becomes the value the app takes, and back", async () => {
+    const { settingText, settingValue } = await import("./automation-editor");
+    expect(settingValue("integer", "15")).toBe(15);
+    expect(settingValue("integer", "1.5")).toBe("1.5");
+    expect(settingValue("array", "INBOX, IMPORTANT")).toEqual(["INBOX", "IMPORTANT"]);
+    expect(settingValue("boolean", "true")).toBe(true);
+    expect(settingValue("string", "  ")).toBe("");
+    expect(settingText(["INBOX", "IMPORTANT"])).toBe("INBOX, IMPORTANT");
+    expect(settingText(undefined)).toBe("");
+  });
+});

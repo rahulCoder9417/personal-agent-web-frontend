@@ -358,8 +358,8 @@ export function summarizeAutomations(automations: readonly Pick<Automation, "ena
 }
 
 /**
- * The request that opens the chat to change an automation. The API can only pause, resume and
- * delete one, so a change is asked of Tex, who knows the automation by its title.
+ * The request that opens the chat to have Tex change an automation, who knows it by its title. (It
+ * can also be changed by hand, on its page.)
  */
 export function changeRequest(automation: Pick<Automation, "title">): string {
   return `Change my automation “${automation.title}”: `;

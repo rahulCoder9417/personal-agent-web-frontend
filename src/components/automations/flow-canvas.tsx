@@ -4,10 +4,11 @@
 // (@xyflow/react, MIT, pinned at 12.12.0). Loaded only on an automation's own page, and only on a
 // wide screen (flow-view.tsx), so no other page and no phone downloads it.
 //
-// Read-only: the boxes sit where this file puts them (today's shape is always the same line of
-// five, so no layout library is needed), can't be dragged or joined, and the canvas only pans and
-// zooms. Each box is a real button: Tab reaches it, Enter or a click opens its details beside the
-// canvas. The small "React Flow" link in the corner stays (the founder's decision).
+// The boxes sit where this file puts them (today's shape is always the same line of five, so no
+// layout library is needed), can't be dragged or joined, and the canvas only pans and zooms. Each
+// box is a real button: Tab reaches it, Enter or a click opens its details, or, while the
+// automation is being edited, its settings, beside the canvas. A box with a problem is red, with the
+// problem under its title. The small "React Flow" link in the corner stays (the founder's decision).
 
 import { Background, Controls, Handle, MarkerType, Position, ReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -28,13 +29,18 @@ type StepData = {
   index: number;
   selected: boolean;
   changed: boolean;
+  /** What is wrong with this box, in the server's words (while editing). */
+  problems: readonly string[];
+  /** Editing: a click opens the box's settings rather than its details. */
+  editing: boolean;
   panelId: string;
   onSelect: (id: FlowStepId) => void;
 };
 type StepNode = Node<StepData, "step">;
 
 function StepBox({ data }: NodeProps<StepNode>) {
-  const { step, kind, index, selected, changed, panelId, onSelect } = data;
+  const { step, kind, index, selected, changed, problems, editing, panelId, onSelect } = data;
+  const wrong = problems.length > 0;
   return (
     <>
       <Handle type="target" position={Position.Left} isConnectable={false} className="!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent" />
@@ -43,13 +49,14 @@ function StepBox({ data }: NodeProps<StepNode>) {
         onClick={() => onSelect(step.id)}
         aria-pressed={selected}
         aria-controls={panelId}
-        aria-label={`Step ${index + 1}, ${step.label}: ${step.title}. Show its details`}
+        aria-label={`Step ${index + 1}, ${step.label}: ${step.title}.${wrong ? ` Problem: ${problems.join(" ")}` : ""} ${editing ? "Edit it" : "Show its details"}`}
         style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
         className={cn(
           "flex flex-col gap-2 overflow-hidden rounded-xl border bg-surface p-3 text-left transition-shadow outline-none",
           "focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]",
           selected ? "border-accent shadow-[0_0_0_1px_var(--accent),0_10px_30px_-16px_rgb(51_85_245/0.5)]" : "border-line hover:border-line-strong",
           step.tone === "danger" && !selected && "border-danger/40",
+          wrong && (selected ? "border-danger shadow-[0_0_0_1px_var(--danger)]" : "border-danger bg-danger-soft/40"),
         )}
       >
         <span className="flex items-center gap-2">
@@ -60,7 +67,9 @@ function StepBox({ data }: NodeProps<StepNode>) {
         <span className={cn("line-clamp-2 text-[13.5px] leading-snug font-semibold break-words", step.tone === "paused" ? "text-nav" : "text-fg")}>
           {step.title}
         </span>
-        {step.lines.length > 0 && (
+        {wrong ? (
+          <span className="line-clamp-2 text-[12px] leading-snug font-medium break-words text-danger">{problems[0]}</span>
+        ) : step.lines.length > 0 && (
           <span className="flex flex-col gap-0.5">
             {step.lines.slice(-2).map((line) => (
               <span
@@ -89,7 +98,14 @@ const ARROW = "#b8b3a8";
 export function canvasElements(
   steps: readonly FlowStep[],
   kind: AutomationKind,
-  options: { selected: FlowStepId | null; changed?: ReadonlySet<FlowStepId>; panelId: string; onSelect: (id: FlowStepId) => void },
+  options: {
+    selected: FlowStepId | null;
+    changed?: ReadonlySet<FlowStepId>;
+    problems?: ReadonlyMap<FlowStepId, readonly string[]>;
+    editing?: boolean;
+    panelId: string;
+    onSelect: (id: FlowStepId) => void;
+  },
 ): { nodes: StepNode[]; edges: Edge[] } {
   const nodes: StepNode[] = steps.map((step, index) => ({
     id: step.id,
@@ -101,6 +117,8 @@ export function canvasElements(
       index,
       selected: options.selected === step.id,
       changed: options.changed?.has(step.id) ?? false,
+      problems: options.problems?.get(step.id) ?? [],
+      editing: options.editing ?? false,
       panelId: options.panelId,
       onSelect: options.onSelect,
     },
@@ -127,6 +145,8 @@ export default function FlowCanvas({
   kind,
   selected,
   changed,
+  problems,
+  editing,
   panelId,
   onSelect,
 }: {
@@ -134,12 +154,14 @@ export default function FlowCanvas({
   kind: AutomationKind;
   selected: FlowStepId | null;
   changed?: ReadonlySet<FlowStepId>;
+  problems?: ReadonlyMap<FlowStepId, readonly string[]>;
+  editing?: boolean;
   panelId: string;
   onSelect: (id: FlowStepId) => void;
 }) {
   const { nodes, edges } = useMemo(
-    () => canvasElements(steps, kind, { selected, changed, panelId, onSelect }),
-    [steps, kind, selected, changed, panelId, onSelect],
+    () => canvasElements(steps, kind, { selected, changed, problems, editing, panelId, onSelect }),
+    [steps, kind, selected, changed, problems, editing, panelId, onSelect],
   );
   return (
     <div className="automation-canvas h-[260px] w-full min-w-0 overflow-hidden rounded-xl border border-line bg-surface-2/60">
