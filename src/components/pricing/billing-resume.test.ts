@@ -122,7 +122,7 @@ describe("Keep my plan", () => {
     await press("Keep my plan");
     expect(dialog()?.open).toBe(true);
     expect(text(dialog())).toContain("Keep your Pro plan?");
-    expect(text(dialog())).toContain(`Pro renews on ${end} instead of ending. Polar charges your card $12 then, as before. Nothing is charged today.`);
+    expect(text(dialog())).toContain(`Pro renews on ${end} instead of ending. Polar charges your card $19 then, as before. Nothing is charged today.`);
     // "Not now" changes nothing.
     await press("Not now", "dialog");
     expect(net.calls).not.toContain("POST /api/v1/billing/subscription/resume");
@@ -131,9 +131,9 @@ describe("Keep my plan", () => {
     await press("Keep my plan", "dialog");
     await settle();
     expect(net.calls.filter((c) => c === "POST /api/v1/billing/subscription/resume")).toHaveLength(1);
-    expect(toasts.done).toEqual([{ title: "You’re keeping Pro", body: `It renews on ${end} for $12.` }]);
+    expect(toasts.done).toEqual([{ title: "You’re keeping Pro", body: `It renews on ${end} for $19.` }]);
     expect(dialog()).toBeNull();
-    expect(text(yourPlan())).toContain(`Renews on ${end} for $12.`);
+    expect(text(yourPlan())).toContain(`Renews on ${end} for $19.`);
     expect(button("Cancel plan")).toBeDefined();
     expect(button("Keep my plan")).toBeUndefined();
   });

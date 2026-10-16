@@ -3798,11 +3798,20 @@ export interface components {
             id: components["schemas"]["PlanId"];
             name: string;
             /**
+             * @description What a checkout charges now (the launch price while there is one).
              * @example 0
-             * @example 1200
+             * @example 1900
              * @example 3000
              */
             priceCents: number;
+            /**
+             * @description The plan's regular price, shown as plain text beside the launch price ("launch price,
+             *     regular $30"), never struck out. `null` when the plan has no launch price (Free).
+             * @example null
+             * @example 3000
+             * @example 5000
+             */
+            regularPriceCents: number | null;
             /** @enum {string|null} */
             interval: "month" | null;
             /**
