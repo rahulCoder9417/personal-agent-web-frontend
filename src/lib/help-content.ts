@@ -663,7 +663,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         title: "Delete your account",
         blocks: [
           steps("Open {account}.", "Press **Delete my account and data**, then type DELETE to confirm."),
-          p("This removes your agent and its workspace, your conversations, files, memories, approvals, activity log, connected apps, keys and automations. A paid plan stops renewing. Records of payments and credits are kept."),
+          p("This removes your agent and its workspace, your conversations, files, memories, approvals, activity log, connected apps, keys and automations, and the backups of your workspace files. The rest of your data leaves our database backups within 7 days. A paid plan stops renewing. Records of payments and credits are kept; your name and email are removed from them."),
           note("It can’t be undone."),
         ],
       },

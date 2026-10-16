@@ -67,6 +67,14 @@ describe("Settings → General", () => {
     expect(html).toMatch(/<button type="submit"[^>]*disabled=""[^>]*>Save changes/);
   });
 
+  it("says what deleting the account really clears: workspace backups at once, database backups within 7 days", async () => {
+    const words = text(draw(await seededClient(), createElement(GeneralSettingsPage)));
+    expect(words).toContain(
+      "Removes your agent’s workspace, memory, messages and connected apps, and the backups of your workspace files. The rest leaves our database backups within 7 days.",
+    );
+    expect(words).not.toContain("30 days");
+  });
+
   it("names each control by its row's label, and the time zone is a searching field", async () => {
     const html = draw(await seededClient(), createElement(GeneralSettingsPage));
     const nameFor = html.match(/<label for="([^"]+)"[^>]*>Name<\/label>/)?.[1];
@@ -89,6 +97,12 @@ describe("Settings → Agent & AI", () => {
     expect(html).toContain('role="radiogroup" aria-label="Agent"');
     for (const choice of ["Your own API key", "Your Claude plan", "Textcrew AI"]) expect(html).toContain(`>${choice}</h3>`);
     for (const provider of ["Anthropic", "OpenAI", "OpenRouter"]) expect(words).toContain(provider);
+  });
+
+  it("marks no way to get AI as recommended; the Claude plan keeps its Beta", async () => {
+    const html = draw(await seededClient(), createElement(AgentSettingsPage));
+    expect(text(html)).not.toMatch(/recommended/i);
+    expect(html).toMatch(/>Your Claude plan<\/h3>\s*<span[^>]*>Beta</);
   });
 
   it("before a Claude plan is connected, points to it instead of offering the model and effort", async () => {

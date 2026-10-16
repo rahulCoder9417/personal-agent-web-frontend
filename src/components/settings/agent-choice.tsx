@@ -9,9 +9,12 @@ import { ApiError, errorMessage, type AgentSettings } from "@/lib/api/client";
 import { useUpdateAgentSettings } from "@/lib/api/hooks";
 import { textcrewAiOffer, type AiChoiceState } from "./agent-summary";
 
-/** "Recommended" and "Beta" sit next to a choice's name wherever the three are listed. */
+/**
+ * "Beta" sits next to the Claude plan's name wherever the three are listed. None is marked
+ * "Recommended": only the Claude plan has been tried end to end, and it is still in beta.
+ */
 export const CHOICE_TAG = {
-  own_key: <Pill tone="waiting">Recommended</Pill>,
+  own_key: null,
   claude_plan: <Pill>Beta</Pill>,
   textcrew: null,
 } as const;
