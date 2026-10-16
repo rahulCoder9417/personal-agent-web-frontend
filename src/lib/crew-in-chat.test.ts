@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // The crew has no screen of its own: what it is lives in Help (the "crew" section), and Byte and
 // Patch are asked for in the chat. Checked in the code (no address to /crew or to the crew jobs is
 // left, and no page), at the old address (it leads to Help's crew section), and on the screens
-// that used to lead there (More, the phone's tabs, Pull-request review).
+// that used to lead there (More, the phone's tabs, pull-request review's canvas).
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/more",
@@ -19,7 +19,7 @@ vi.mock("@/components/shell/providers", () => ({ useAppConfig: () => ({ mode: "d
 
 import nextConfig from "../../next.config";
 import MorePage from "@/app/(app)/more/page";
-import PrReviewsPage from "@/app/(app)/automations/reviews/page";
+import { ReviewBuilder } from "@/components/automations/review-builder";
 import { MobileTabBar } from "@/components/shell/mobile-nav";
 import type { CrewMember } from "@/lib/api/client";
 import { qk } from "@/lib/api/hooks";
@@ -119,12 +119,12 @@ describe("on the screens", () => {
   });
 
   it("Pull-request review offers one review from the chat, and leads to Help when Patch isn't on the crew here", async () => {
-    const on = draw(await seeded(), createElement(PrReviewsPage));
+    const on = draw(await seeded(), createElement(ReviewBuilder, { automation: null }));
     expect(on).toContain("Just one pull request?");
     expect(hrefs(on)).toContain(`/?draft=${encodeURIComponent(CREW_EXAMPLES.patch)}`);
     expect(hrefs(on).filter((href) => href.startsWith("/crew"))).toEqual([]);
 
-    const asleep = draw(await seeded((members) => members.map((m) => (m.id === "patch" ? { ...m, available: false } : m))), createElement(PrReviewsPage));
+    const asleep = draw(await seeded((members) => members.map((m) => (m.id === "patch" ? { ...m, available: false } : m))), createElement(ReviewBuilder, { automation: null }));
     expect(asleep).toContain("Patch isn’t on the crew here yet");
     expect(hrefs(asleep)).toContain(CREW_HELP_PATH);
     expect(hrefs(asleep).filter((href) => href.startsWith("/crew"))).toEqual([]);

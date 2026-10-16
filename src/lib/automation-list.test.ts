@@ -79,7 +79,7 @@ describe("the stack of logos", () => {
   it("is the trigger, then each step's app in order, then Tex; review is GitHub and Patch", () => {
     expect(rowApps(base)).toEqual(["schedule", "gmail", "tex"]);
     expect(rowApps({ ...base, kind: "once" })).toEqual(["once", "gmail", "tex"]);
-    expect(rowApps({ ...base, kind: "event", trigger: { app: "gmail", event: "GMAIL_NEW_GMAIL_MESSAGE", config: {} }, apps: [] })).toEqual(["gmail", "tex"]);
+    expect(rowApps({ ...base, kind: "event", trigger: { app: "gmail" }, apps: [] })).toEqual(["gmail", "tex"]);
     const steps = [step({ id: "a" }), step({ id: "b", type: "tex", app: null, action: null, readApps: ["googlecalendar"] }), step({ id: "c", app: "notion" })];
     expect(rowApps({ ...base, steps })).toEqual(["schedule", "gmail", "googlecalendar", "tex", "notion"]);
     expect(rowApps({ ...base, kind: "event", preset: "pr_review" })).toEqual(["github", "patch"]);

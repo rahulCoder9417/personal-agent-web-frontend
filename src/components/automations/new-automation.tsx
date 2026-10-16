@@ -1,140 +1,179 @@
 "use client";
 
+// `/automations/new`: the two ways to make one. Ask Tex in words (the chat opens with them typed in,
+// and Tex answers with a draft to check and save), or pick how it works (read, decide, then act;
+// read and tell me; write without reading; just Tex) and build it on the canvas. Below, every
+// template. `?shape=` and `?template=` open the canvas with one filled in.
+
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { useApps, useMe } from "@/lib/api/hooks";
-import { appChoices, EDITOR_TEMPLATES, emptyEditor, type EditorParts } from "@/lib/automation-editor";
-import { AUTOMATION_KINDS } from "@/lib/automations";
+import { useRouter } from "next/navigation";
+import { useId, useMemo, useState } from "react";
+import { useMe } from "@/lib/api/hooks";
+import { EDITOR_TEMPLATES, emptyEditor } from "@/lib/automation-editor";
+import { findShape, SHAPES, shapeSteps, type Shape } from "@/lib/automation-lanes";
 import { chatDraftHref } from "@/lib/chat-link";
 import { cn } from "@/lib/format";
-import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
-import { ChatIcon } from "../icons";
-import { PageBody, READING } from "../page";
-import { ButtonLink, SectionLabel } from "../ui";
-import { AutomationEditor } from "./automation-editor";
-import { BackToAutomations } from "./automation-screen";
-import { KindBadge } from "./kind-icon";
-import { EditorTemplateCards } from "./templates";
+import { CanvasFrame } from "./automation-screen";
+import { Builder } from "./builder";
+import { AppLogo, Btn, Crumbs, T1, T2, T3 } from "./parts";
+import { TemplateCards } from "./templates";
 
-/** The five boxes, in a line each, for someone who has never built one. */
-const HOW = [
-  { title: "When it runs", body: "Once, on a schedule, or when something happens in an app." },
-  { title: "What Tex does", body: "In your own words, as you would ask in chat." },
-  { title: "Apps Tex may use", body: "Any connected app, or only the ones you pick." },
-  { title: "Asks you first", body: "Sending, deleting or paying always waits for your OK." },
-  { title: "Results", body: "Every run answers in your Automations chat." },
+/** Ideas under the box: a click puts the whole request in it. */
+const IDEAS = [
+  { label: "Sum up my email every morning", ask: "Every morning at 9, sum up my unread email." },
+  { label: "Review my pull requests", ask: "When a pull request opens in my repo, review it and comment on it." },
+  { label: "Remind me every Friday", ask: "Remind me every Friday at 5pm to send the weekly report." },
 ];
 
-/**
- * `/automations/new` without a draft: an empty canvas to build one by hand, box by box, with a few
- * templates that fill it (`?template=` opens with one filled in, from the list's empty state), and
- * the other way in, asking Tex in chat.
- */
-export function NewAutomation({ templateId = null }: { templateId?: string | null }) {
-  const me = useMe();
-  const apps = useApps();
-  const zone = me.data?.timezone;
-  const empty = useMemo(() => (zone ? emptyEditor(zone) : null), [zone]);
-  const asked = EDITOR_TEMPLATES.find((item) => item.id === templateId) ?? null;
-  const [picked, setPicked] = useState<string | null | undefined>(undefined);
-  const chosenId = picked === undefined ? (asked?.id ?? null) : picked;
-  const template = useMemo<{ id: string; start: EditorParts } | null>(() => {
-    const item = EDITOR_TEMPLATES.find((entry) => entry.id === chosenId);
-    return item && empty ? { id: item.id, start: item.fill(empty) } : null;
-  }, [chosenId, empty]);
-  const usable = new Set(appChoices(apps.data).usable.map((app) => app.slug));
+/** A shape in small: the trigger, reading (or "No reading"), Tex, writing (or "No writing"). */
+function Mini({ shape }: { shape: Shape }) {
+  const gap = <span aria-hidden className="h-0.5 min-w-2 flex-1 rounded-sm bg-line-strong" />;
+  const skipped = (text: string) => (
+    <span className={cn(T3, "inline-flex h-7 items-center rounded-lg border-[1.5px] border-dashed border-line-strong px-2 font-medium whitespace-nowrap text-faint")}>{text}</span>
+  );
+  return (
+    <span aria-hidden className="flex min-h-14 items-center gap-2 rounded-xl bg-bg p-3">
+      <AppLogo slug="schedule" size={28} />
+      {gap}
+      {shape.read ? <AppLogo slug="gmail" size={28} /> : skipped("No reading")}
+      {gap}
+      <AppLogo slug="tex" size={28} />
+      {gap}
+      {shape.write ? <AppLogo slug="gmail" size={28} /> : skipped("No writing")}
+    </span>
+  );
+}
+
+export function NewAutomation() {
+  const router = useRouter();
+  const [ask, setAsk] = useState("");
+  const id = useId();
+  const draft = () => {
+    if (ask.trim()) router.push(chatDraftHref(ask));
+  };
 
   return (
-    <PageBody className="gap-6">
-      <BackToAutomations />
-      <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4 sm:p-5">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <h2 className="text-[20px] leading-tight font-semibold tracking-[-0.015em]">A new automation</h2>
-          <p className={cn("text-[14px] text-muted", READING)}>
-            Build it box by box: when it runs, what Tex does, the apps it may use, when it asks you first, and where the results go. Each box is checked as you
-            fill it in. Nothing runs until you save; Save paused lets you try it first with Run once now.
-          </p>
-        </div>
-        <ol aria-label="The five boxes" className="grid grid-cols-[repeat(auto-fit,minmax(min(180px,100%),1fr))] gap-2 border-t border-line pt-4">
-          {HOW.map((item, index) => (
-            <li key={item.title} className="flex min-w-0 gap-2.5">
-              <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-[11.5px] font-semibold text-nav tabular-nums ring-1 ring-line ring-inset">
-                {index + 1}
-              </span>
-              <span className="flex min-w-0 flex-col">
-                <span className="text-[13px] font-semibold">{item.title}</span>
-                <span className="text-[12px] text-muted">{item.body}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      </div>
-
-      <section aria-labelledby="editor-templates" className="flex flex-col gap-2.5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <SectionLabel className="text-[15px]">
-            <span id="editor-templates">Start from a template</span>
-          </SectionLabel>
-          <p className="text-[12.5px] text-muted">
-            A template fills the boxes; change anything after.{" "}
-            {template && (
-              <button type="button" className="font-medium text-accent hover:text-accent-dark" onClick={() => setPicked(null)}>
-                Start empty instead
-              </button>
-            )}
-            {apps.isSuccess && usable.size === 0 && (
-              <>
-                {" "}
-                <Link href={INTEGRATIONS_APPS_PATH} className="font-medium text-accent hover:text-accent-dark">
-                  Connect an app
-                </Link>{" "}
-                to use app events.
-              </>
-            )}
-          </p>
-        </div>
-        <EditorTemplateCards selected={template?.id ?? null} onPick={(item) => setPicked(item.id)} />
-      </section>
-
-      {empty && zone ? (
-        <AutomationEditor key={template?.id ?? "empty"} target={{ kind: "new" }} start={template?.start ?? empty} accountZone={zone} revealProblems={Boolean(template)} />
-      ) : (
-        <span aria-hidden className="h-[320px] animate-pulse rounded-2xl bg-surface-2" />
-      )}
-
-      <section aria-labelledby="ask-tex-instead" className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <h3 id="ask-tex-instead" className="text-[14.5px] font-semibold">
-              Rather say it in words?
-            </h3>
-            <p className="text-[13px] text-muted">Tell Tex what to do and when. Tex shows it back as a draft to check and save.</p>
+    <div className="type-scale scroll-pane min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-[960px] flex-col gap-8 px-4 pt-6 pb-12 md:px-8 md:pt-12">
+        <header className="flex flex-col gap-3">
+          <Crumbs className={T3} parts={[{ href: "/automations", label: "Automations" }]} current="New automation" />
+          <div className="flex flex-col gap-1">
+            <h1 className={T1}>New automation</h1>
+            <p className={cn(T2, "text-muted")}>Say it in words, or pick how it should work and build it on the canvas.</p>
           </div>
-          <ButtonLink href="/">
-            <ChatIcon size={15} />
-            Ask Tex in chat
-          </ButtonLink>
-        </div>
-        <ul aria-label="Requests to start from" className="grid grid-cols-[repeat(auto-fit,minmax(min(240px,100%),1fr))] gap-2">
-          {AUTOMATION_KINDS.map((guide) => (
-            <li key={guide.kind}>
-              <Link
-                href={chatDraftHref(guide.example)}
-                className="flex h-full gap-3 rounded-xl border border-line bg-surface-2/50 p-3 transition-colors hover:border-line-strong hover:bg-surface-2"
-                aria-label={`Try it in chat: ${guide.example}`}
-              >
-                <KindBadge kind={guide.kind} size={32} />
-                <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-[13.5px] font-semibold">{guide.name}</span>
-                  <span className="text-[12.5px] text-fg-2">
-                    “{guide.example}” <span className="font-medium whitespace-nowrap text-accent">Try it →</span>
+        </header>
+
+        <section aria-labelledby={`${id}-ask`} className="flex flex-col gap-4 rounded-2xl bg-surface p-6 shadow-[0_0_0_1px_var(--line)]">
+          <div className="flex items-center gap-3">
+            <AppLogo slug="tex" size={36} />
+            <span className="flex flex-col gap-1">
+              <label id={`${id}-ask`} htmlFor={`${id}-text`} className={cn(T2, "font-semibold")}>
+                Ask Tex to set it up
+              </label>
+              <span className={cn(T3, "text-muted")}>Tex drafts it on the canvas. Nothing runs until you save.</span>
+            </span>
+          </div>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              draft();
+            }}
+            className="flex flex-col gap-3 rounded-xl bg-surface p-4 shadow-[inset_0_0_0_1px_var(--line-strong)] focus-within:shadow-[inset_0_0_0_2px_var(--accent)]"
+          >
+            <textarea
+              id={`${id}-text`}
+              rows={3}
+              value={ask}
+              onChange={(event) => setAsk(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  draft();
+                }
+              }}
+              placeholder="Every weekday at 10, list the pull requests waiting for my review and email them to me."
+              className={cn(T2, "min-h-[60px] resize-none bg-transparent outline-none placeholder:text-muted")}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div aria-label="Ideas" role="group" className="flex flex-wrap gap-2">
+                {IDEAS.map((idea) => (
+                  <button
+                    key={idea.label}
+                    type="button"
+                    onClick={() => setAsk(idea.ask)}
+                    className={cn(T3, "h-8 rounded-full bg-bg px-3 font-medium text-fg-2 transition-colors hover:bg-surface-2 hover:text-fg")}
+                  >
+                    {idea.label}
+                  </button>
+                ))}
+              </div>
+              <Btn type="submit" variant="primary" disabled={!ask.trim()}>
+                Draft it
+              </Btn>
+            </div>
+          </form>
+        </section>
+
+        <section aria-labelledby={`${id}-shapes`} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 id={`${id}-shapes`} className={cn(T2, "font-semibold")}>
+              Or pick how it works
+            </h2>
+            <p className={cn(T3, "text-muted")}>Every automation starts on a trigger and ends with Tex. Reading from an app first and writing to an app after are both optional.</p>
+          </div>
+          <ul className="grid gap-4 sm:grid-cols-2">
+            {SHAPES.map((shape) => (
+              <li key={shape.id}>
+                <Link
+                  href={`/automations/new?shape=${shape.id}`}
+                  className="flex h-full flex-col gap-4 rounded-2xl bg-surface p-6 text-fg shadow-[0_0_0_1px_var(--line)] transition-shadow hover:shadow-[0_0_0_2px_var(--accent)]"
+                >
+                  <Mini shape={shape} />
+                  <span className="flex flex-col gap-1">
+                    <span className={cn(T2, "font-semibold")}>{shape.title}</span>
+                    <span className={cn(T3, "text-fg-2")}>{shape.blurb}</span>
                   </span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </PageBody>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section id="templates" aria-labelledby={`${id}-templates`} className="flex scroll-mt-6 flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 id={`${id}-templates`} className={cn(T2, "font-semibold")}>
+              Start from a template
+            </h2>
+            <p className={cn(T3, "text-muted")}>A template fills the canvas; change anything after.</p>
+          </div>
+          <TemplateCards />
+        </section>
+      </div>
+    </div>
   );
+}
+
+/** A new automation on the canvas: from a shape, from a template, or empty. */
+export function NewBuilder({ templateId, shapeId }: { templateId?: string | null; shapeId?: string | null }) {
+  const zone = useMe().data?.timezone;
+  const template = EDITOR_TEMPLATES.find((item) => item.id === templateId) ?? null;
+  const shape = findShape(shapeId);
+  const start = useMemo(() => {
+    if (!zone) return null;
+    const empty = emptyEditor(zone);
+    if (template) return template.fill(empty);
+    if (shape) return { ...empty, steps: shapeSteps(shape) };
+    return empty;
+  }, [zone, template, shape]);
+  if (!start || !zone)
+    return (
+      <CanvasFrame current="New automation">
+        <div aria-hidden className="mx-auto flex max-w-[340px] flex-col gap-12">
+          {[0, 1, 2].map((row) => (
+            <span key={row} className="h-[100px] animate-pulse rounded-[14px] bg-surface-2" />
+          ))}
+        </div>
+      </CanvasFrame>
+    );
+  return <Builder key={template?.id ?? shape?.id ?? "empty"} target={{ kind: "new" }} start={start} accountZone={zone} revealProblems={Boolean(template)} />;
 }

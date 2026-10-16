@@ -1,150 +1,115 @@
 "use client";
 
+// "Start from a template": ready-made automations that open on the canvas filled in (pull-request
+// review opens its own canvas, to pick the repo). Each card shows the logos of what it uses, in
+// order, and says when an app it needs isn't connected yet.
+
 import Link from "next/link";
-import { isConnectable } from "@/components/apps/apps-logic";
 import { useApps } from "@/lib/api/hooks";
-import { appChoices, EDITOR_TEMPLATES, emptyEditor, kindOf, type EditorTemplate } from "@/lib/automation-editor";
-import { AUTOMATION_TEMPLATES, templateHref, templatesToOffer, type AutomationTemplate } from "@/lib/automations";
-import { AUTOMATION_KIND_LABEL, cn, titleCase } from "@/lib/format";
-import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
+import { PR_REVIEW_NEW_PATH } from "@/lib/automation-address";
+import { appChoices, EDITOR_TEMPLATES, emptyEditor, previewSource } from "@/lib/automation-editor";
+import { rowApps } from "@/lib/automation-list";
+import { titleCase } from "@/lib/format";
 import { PRICING_PATH } from "@/lib/pricing";
-import { CheckIcon } from "../icons";
-import { SectionLabel } from "../ui";
-import { KindBadge } from "./kind-icon";
-import type { PlanAutomations } from "./plan-meter";
+import { ChevronRightIcon } from "../icons";
+import { Chip, LogoStack, T2, T3, type PlanAutomations } from "./parts";
 
-/** One ready-made request. The whole card opens it; an app that still needs connecting gets its own link. */
-function TemplateCard({ template, needsApp }: { template: AutomationTemplate; needsApp: boolean }) {
-  const app = template.app ? titleCase(template.app) : null;
-  return (
-    <li className="relative flex flex-col gap-2.5 rounded-2xl border border-line bg-surface p-3.5 transition-colors focus-within:border-fg/40 hover:border-fg/40">
-      <div className="flex items-center gap-2.5">
-        <KindBadge kind={template.kind} app={template.app} size={30} />
-        <h3 className="min-w-0 flex-1 text-[13.5px] leading-snug font-semibold">{template.title}</h3>
-      </div>
-      <p className="text-[13px] text-fg-2">“{template.ask}”</p>
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line pt-2">
-        {/* The link is stretched over the card, so a click anywhere on it follows the link. */}
-        <Link
-          href={templateHref(template)}
-          aria-label={`${template.href ? "Set up" : "Ask Tex"}: ${template.ask}`}
-          className="text-[12.5px] font-medium text-accent after:absolute after:inset-0 after:rounded-2xl hover:text-accent-dark"
-        >
-          {template.href ? "Set it up →" : "Use this →"}
-        </Link>
-        {needsApp && app ? (
-          <Link href={INTEGRATIONS_APPS_PATH} className="relative z-10 text-[12px] text-nav underline underline-offset-2 hover:text-fg">
-            Connect {app} first
-          </Link>
-        ) : (
-          <span className="text-[12px] text-muted">{AUTOMATION_KIND_LABEL[template.kind]}</span>
-        )}
-      </div>
-    </li>
-  );
+export type TemplateCard = {
+  id: string;
+  title: string;
+  blurb: string;
+  /** What it uses, in order, for its logos. */
+  marks: string[];
+  href: string;
+  /** The app it needs connected. */
+  app?: string;
+};
+
+export const PR_REVIEW_TEMPLATE: TemplateCard = {
+  id: "pr-review",
+  title: "Review pull requests",
+  blurb: "Patch reviews each new pull request on a repo and comments on it. It never merges.",
+  marks: ["github", "patch"],
+  href: PR_REVIEW_NEW_PATH,
+  app: "github",
+};
+
+/** Where a canvas template opens: the new automation's canvas, filled in from it. */
+export function editorTemplateHref(id: string): string {
+  return `/automations/new?template=${encodeURIComponent(id)}`;
 }
 
-/**
- * Requests people often want, ready to send: a click opens the chat with the request typed in
- * (pull-request review opens its own tab instead). `full` is set when the plan has no room for
- * another automation, so that is said before anyone tries.
- */
-export function AutomationTemplates({ full, first = false }: { full: PlanAutomations | null; first?: boolean }) {
-  const apps = useApps();
-  // Apps that are connected, or that can be: a template for any other app would lead nowhere.
-  const usable = apps.data ? new Set(apps.data.filter((app) => app.connections.length > 0 || isConnectable(app)).map((app) => app.slug)) : undefined;
-  const working = new Set((apps.data ?? []).filter((app) => app.connections.some((c) => c.status === "active")).map((app) => app.slug));
-  const templates = templatesToOffer(AUTOMATION_TEMPLATES, usable);
-
-  return (
-    <section aria-labelledby="automation-templates" className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <SectionLabel className="text-[15px]">
-          <span id="automation-templates">{first ? "Or ask Tex with one of these" : "Add another from a template"}</span>
-        </SectionLabel>
-        <p className="text-[12.5px] text-muted">Pick one and the chat opens with the request typed in. Change the words to fit, then send.</p>
-      </div>
-
-      {full && (
-        <p role="status" className="rounded-xl bg-surface-2 px-3.5 py-2.5 text-[13px] text-nav">
-          Your {full.planName} plan’s {full.limit} {full.limit === 1 ? "automation is" : "automations are all"} in use. Delete one
-          {full.canUpgrade ? " or upgrade" : ""} before you add another.
-          {full.canUpgrade && (
-            <>
-              {" "}
-              <Link href={PRICING_PATH} className="font-medium text-accent hover:text-accent-dark">
-                See plans
-              </Link>
-            </>
-          )}
-        </p>
-      )}
-
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(250px,100%),1fr))] gap-2.5">
-        {templates.map((template) => (
-          <TemplateCard key={template.id} template={template} needsApp={Boolean(template.app) && apps.isSuccess && !working.has(template.app as string)} />
-        ))}
-      </ul>
-    </section>
-  );
+/** Every template, pull-request review first, then the canvas's own. */
+export function allTemplates(): TemplateCard[] {
+  return [
+    PR_REVIEW_TEMPLATE,
+    ...EDITOR_TEMPLATES.map((template) => ({
+      id: template.id,
+      title: template.name,
+      blurb: template.blurb,
+      marks: rowApps(previewSource(template.fill(emptyEditor("UTC")))),
+      href: editorTemplateHref(template.id),
+      ...(template.app ? { app: template.app } : {}),
+    })),
+  ];
 }
 
-/** Where an editor template opens: the new-automation canvas, filled from it. */
-export function editorTemplateHref(template: Pick<EditorTemplate, "id">): string {
-  return `/automations/new?template=${encodeURIComponent(template.id)}`;
-}
+/** The four on the Automations list. */
+export const LIST_TEMPLATES = ["pr-review", "morning-email", "meeting-prep", "weekly-reminder"] as const;
 
-/**
- * The templates that fill the canvas of a new automation (a daily briefing at 8, pull
- * requests on Monday at 9, an email from someone, a check every 4 hours, urgent mail in steps). On the new-automation
- * page a click fills the canvas (`onPick`, the chosen one ticked); elsewhere each card opens that
- * page with the template filled in. One whose app isn't connected says so.
- */
-export function EditorTemplateCards({ selected, onPick, className }: { selected?: string | null; onPick?: (template: EditorTemplate) => void; className?: string }) {
+/** The template cards, each opening its canvas. `ids` picks some, in that order. */
+export function TemplateCards({ ids }: { ids?: readonly string[] }) {
   const apps = useApps();
   const usable = new Set(appChoices(apps.data).usable.map((app) => app.slug));
+  const all = allTemplates();
+  const cards = ids ? ids.map((id) => all.find((card) => card.id === id)).filter((card): card is TemplateCard => Boolean(card)) : all;
   return (
-    <ul className={cn("grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-2.5", className)}>
-      {EDITOR_TEMPLATES.map((item) => {
-        const on = selected === item.id;
-        const needs = item.app && apps.isSuccess && !usable.has(item.app) ? titleCase(item.app) : null;
-        const kind = kindOf(item.fill(emptyEditor("UTC"))) ?? "repeat";
-        const body = (
-          <>
-            <span className="flex items-center gap-2.5">
-              <KindBadge kind={kind} app={item.app} size={30} />
-              <span className="min-w-0 flex-1 text-[13.5px] leading-snug font-semibold">{item.name}</span>
-              {on && (
-                <span aria-hidden className="grid size-5 place-items-center rounded-full bg-accent text-white">
-                  <CheckIcon size={12} />
-                </span>
-              )}
-            </span>
-            <span className="text-[12.5px] text-fg-2">{item.blurb}</span>
-            <span className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-2 text-[12px]">
-              <span className="font-medium text-accent">{onPick ? (on ? "Filled in below" : "Fill the boxes →") : "Build from this →"}</span>
-              {needs ? <span className="text-muted">Needs {needs} connected</span> : <span className="text-muted">{AUTOMATION_KIND_LABEL[kind]}</span>}
-            </span>
-          </>
-        );
-        const look = cn(
-          "flex h-full w-full flex-col gap-2 rounded-2xl border bg-surface p-3.5 text-left transition-colors",
-          on ? "border-accent shadow-[0_0_0_1px_var(--accent)]" : "border-line hover:border-fg/40",
-        );
+    <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(248px,100%),1fr))] gap-4">
+      {cards.map((card) => {
+        const needs = card.app && apps.isSuccess && !usable.has(card.app) ? titleCase(card.app) : null;
         return (
-          <li key={item.id}>
-            {onPick ? (
-              <button type="button" aria-pressed={on} onClick={() => onPick(item)} className={look}>
-                {body}
-              </button>
-            ) : (
-              <Link href={editorTemplateHref(item)} className={look} aria-label={`Build from the template “${item.name}”: ${item.blurb}`}>
-                {body}
-              </Link>
-            )}
+          <li
+            key={card.id}
+            className="relative flex flex-col gap-3 rounded-2xl bg-surface p-6 shadow-[0_0_0_1px_var(--line)] transition-shadow hover:shadow-[0_0_0_1px_var(--line-strong),0_8px_24px_-12px_rgb(21_21_21/0.18)]"
+          >
+            <span className="flex items-center gap-2">
+              <LogoStack marks={card.marks} size={32} />
+              {needs && <Chip tone="warn">Connect {needs}</Chip>}
+            </span>
+            <span className="flex flex-col gap-1">
+              <span className={`${T2} font-semibold`}>{card.title}</span>
+              <span className={`${T3} text-fg-2`}>{card.blurb}</span>
+            </span>
+            {/* The link is stretched over the card, so a click anywhere on it opens the template. */}
+            <Link
+              href={card.href}
+              aria-label={`Use the template “${card.title}”`}
+              className={`${T3} mt-auto inline-flex w-fit items-center gap-1 font-medium text-fg transition-colors after:absolute after:inset-0 after:rounded-2xl hover:text-accent-dark`}
+            >
+              Use template
+              <ChevronRightIcon size={12} strokeWidth={2.4} />
+            </Link>
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/** The plan has no room for another: said before anyone tries. */
+export function PlanFullNote({ full }: { full: PlanAutomations }) {
+  return (
+    <p role="status" className={`${T3} rounded-xl bg-surface-2 px-4 py-3 text-fg-2`}>
+      Your {full.planName} plan’s {full.limit} {full.limit === 1 ? "automation is" : "automations are all"} in use. Delete one
+      {full.canUpgrade ? " or upgrade" : ""} before you add another.
+      {full.canUpgrade && (
+        <>
+          {" "}
+          <Link href={PRICING_PATH} className="font-medium text-accent-dark hover:text-fg">
+            See plans
+          </Link>
+        </>
+      )}
+    </p>
   );
 }

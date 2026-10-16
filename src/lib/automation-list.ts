@@ -25,7 +25,13 @@ export function markName(slug: string, names?: ReadonlyMap<string, string>): str
  * reads), or for one instruction the apps it may use and then Tex. Pull-request review is GitHub
  * and Patch. Each mark once.
  */
-export function rowApps(automation: Pick<Automation, "kind" | "trigger" | "preset" | "apps" | "steps">): string[] {
+export function rowApps(automation: {
+  kind: Automation["kind"];
+  trigger?: { app?: string | null } | null;
+  preset?: Automation["preset"];
+  apps?: readonly string[] | null;
+  steps?: readonly Pick<NonNullable<Automation["steps"]>[number], "type" | "app" | "readApps">[] | null;
+}): string[] {
   if (automation.preset === "pr_review") return ["github", "patch"];
   const trigger = automation.kind === "repeat" ? "schedule" : automation.kind === "once" ? "once" : automation.trigger?.app;
   const steps = automation.steps ?? [];

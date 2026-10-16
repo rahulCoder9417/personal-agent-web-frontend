@@ -17,14 +17,14 @@ import {
   runSummary,
   runTrail,
   stepsCostLine,
-  stepsShape,
   toStepInputs,
   type EditorStep,
 } from "./automation-steps";
-import { layoutGraph, lineLayout, stepGraph } from "./step-layout";
+import { laneDiagram, stepLanes } from "./automation-lanes";
+import { laneLayout } from "./lane-layout";
 
 // Automations with steps (phase 4): the list's editing and its warning, what is sent, the server's
-// problems by step, the flow and its layout with dagre, the cost line and the last run's trail.
+// problems by step, the flow and its lanes on the canvas, the cost line and the last run's trail.
 
 const NOW = new Date("2026-10-01T14:30:00");
 const priya = () => EDITOR_TEMPLATES.find((template) => template.id === "urgent-boss-mail")!.fill(emptyEditor("Asia/Kolkata", NOW));
@@ -136,23 +136,17 @@ describe("the flow of an automation with steps", () => {
     expect(changedSteps(previewSource(moved), saved).has(stepKey("draft"))).toBe(false);
   });
 
-  it("dagre lays it out across or down, each exit beside its step; a failing dagre falls back to a line", () => {
-    const flow = automationFlow(saved, "Asia/Kolkata", NOW);
-    const graph = stepGraph(flow);
-    expect(graph.nodes.filter((node) => node.kind === "exit").map((node) => node.id)).toEqual(["exit:step:pick", "exit:step:draft"]);
-    expect(graph.edges.filter((edge) => edge.kind === "next").map((edge) => edge.insertAt)).toEqual([0, 1, 2, 3, 4]);
-    const across = layoutGraph(graph, "across");
-    expect(across.by).toBe("dagre");
-    const xs = flow.map((box) => across.positions.get(box.key)!.x);
-    expect([...xs].sort((a, b) => a - b)).toEqual(xs);
-    const down = layoutGraph(graph, "down");
-    const ys = flow.map((box) => down.positions.get(box.key)!.y);
+  it("lays it out top to bottom in its lanes (read, Tex, write), with room on the line into each step with an “only if”", () => {
+    const editor = editorFrom(saved, "Asia/Kolkata", NOW);
+    const lanes = stepLanes(editor.steps, (_app, action) => (action === "GMAIL_SEND_EMAIL" ? true : action === "GMAIL_FETCH_EMAILS" ? false : undefined));
+    expect(lanes).toEqual(["read", "tex", "tex", "write"]);
+    const diagram = laneDiagram(editor.steps, lanes);
+    expect(diagram.mode).toBe("lanes");
+    const placed = laneLayout(diagram, new Map(), new Set(["step:pick", "step:draft"]));
+    const ys = diagram.items.map((item) => placed.boxes.get(item.key)!.y);
     expect([...ys].sort((a, b) => a - b)).toEqual(ys);
-    const failed = layoutGraph(graph, "across", () => {
-      throw new Error("no");
-    });
-    expect(failed).toEqual(lineLayout(graph, "across"));
-    expect(failed.by).toBe("line");
+    expect(placed.gaps.get("step:fetch->step:pick")!.conditionY).not.toBeNull();
+    expect(placed.gaps.get("step:draft->step:send")!.conditionY).toBeNull();
   });
 
   it("says what the app actions can cost", () => {
@@ -189,12 +183,6 @@ describe("the last run's trail", () => {
     const waiting = { ...run, state: "waiting" as const, currentStepId: "send", steps: run.steps.map((step) => (step.stepId === "send" ? { ...step, state: "waiting" as const } : step)) };
     expect(runTrail(waiting).get("send")).toEqual({ label: "Waiting for your OK", tone: "waiting" });
     expect(runSummary(waiting, NOW).line).toMatch(/waiting for your OK on step 3/);
-  });
-
-  it("a form on a phone, the canvas down below 1,280 px and across above", () => {
-    expect(stepsShape(500)).toBe("form");
-    expect(stepsShape(1000)).toBe("down");
-    expect(stepsShape(1440)).toBe("across");
   });
 
   it("an automation's saved steps start the editor with each condition looked at", () => {

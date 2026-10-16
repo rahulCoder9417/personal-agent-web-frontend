@@ -413,11 +413,6 @@ export function automationHref(automationId: string): string {
   return `/automations/${encodeURIComponent(automationId)}`;
 }
 
-/** Its page, opened with the boxes ready to change (`?edit=1`). */
-export function automationEditHref(automationId: string): string {
-  return `${automationHref(automationId)}?edit=1`;
-}
-
 // ---------------------------------------------------------------- drafts
 
 /** A draft as the flow needs it: the parts of an automation, and whether it changes one. */

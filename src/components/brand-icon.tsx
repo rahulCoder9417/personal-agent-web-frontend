@@ -70,6 +70,12 @@ function resolve(name: string): string {
   return ALIASES[key] ?? key;
 }
 
+/** Whether an app has a mark of its own here (a simple-icons logo, or Slack's glyph). */
+export function hasBrandIcon(name: string): boolean {
+  const key = resolve(name);
+  return key in ICONS || key === "slack";
+}
+
 /**
  * The logo for an app or chat app, looked up by slug.
  * Falls back to the API's own icon URL, then to the slug's first letter.

@@ -1,127 +1,114 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
-import { ApiError, type AutomationDraft } from "@/lib/api/client";
-import { useAutomation, useAutomationDraft, useDiscardAutomationDraft, useMe } from "@/lib/api/hooks";
-import { automationFlow, automationHref, changedSteps, draftExpiry, draftFirstRun, draftHref, draftState } from "@/lib/automation-flow";
-import { editorFrom } from "@/lib/automation-editor";
-import { chatDraftHref } from "@/lib/chat-link";
-import { AUTOMATION_KIND_LABEL, cn } from "@/lib/format";
-import { ConfirmButton } from "../confirm-button";
-import { CheckIcon, PencilIcon } from "../icons";
-import { PageBody, READING } from "../page";
-import { toast, toastError } from "../toast";
-import { Button, ButtonLink, EmptyState, ErrorState, Pill } from "../ui";
-import { AutomationEditor } from "./automation-editor";
-import { AutomationHeading, BackToAutomations } from "./automation-screen";
-import { FlowView } from "./flow-view";
-import { useDraftSave } from "./use-draft-save";
-
 // A draft Tex proposed (or the person's own version, kept for Tex), on the canvas:
 // `/automations/new?draft=…`, or for a change of an automation `/automations/<it>?draft=…`, where
-// the steps it changes are marked. The person saves it here (or saves it paused, to turn on later),
-// changes any box first with Edit, or discards it. Nothing runs until it is saved.
+// the boxes it changes are marked. An open draft can be saved as it is, saved paused, changed on the
+// canvas first, or discarded. Nothing runs until it is saved. A draft that is no longer open is shown
+// as it was, with what became of it.
 
-const LINK = "font-medium text-accent hover:text-accent-dark";
+import { useMemo } from "react";
+import { ApiError, type AutomationDraft } from "@/lib/api/client";
+import { useAutomation, useAutomationDraft, useDiscardAutomationDraft, useMe } from "@/lib/api/hooks";
+import { editorFrom } from "@/lib/automation-editor";
+import { automationHref, changedSteps, draftExpiry, draftFirstRun, draftHref, draftState } from "@/lib/automation-flow";
+import { chatDraftHref } from "@/lib/chat-link";
+import { cn } from "@/lib/format";
+import { CheckIcon } from "../icons";
+import { toast, toastError } from "../toast";
+import { EmptyState, ErrorState } from "../ui";
+import { CanvasFrame } from "./automation-screen";
+import { Builder } from "./builder";
+import { BtnLink, Dot, T2 } from "./parts";
 
-function Banner({ tone, children }: { tone: "waiting" | "done" | "muted"; children: ReactNode }) {
-  return (
-    <div
-      role="status"
-      className={cn(
-        "flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl px-4 py-3 text-[13.5px]",
-        tone === "waiting" && "bg-accent-soft text-fg",
-        tone === "done" && "bg-success-soft text-fg",
-        tone === "muted" && "bg-surface-2 text-fg-2",
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-/** What the draft is and what can be done with it, by its state. */
-function DraftBanner({ draft, changing, onEdit }: { draft: AutomationDraft; changing?: string | null; onEdit?: () => void }) {
+/** What the draft is, and what became of it: under the canvas's top bar. */
+function DraftBanner({ draft, changing }: { draft: AutomationDraft; changing: string | null }) {
   const state = draftState(draft);
-  const { save, pending, paused } = useDraftSave();
-  const discard = useDiscardAutomationDraft();
-
   if (state.tone === "waiting") {
     const firstRun = draftFirstRun(draft);
     return (
-      <Banner tone="waiting">
-        <p className="min-w-0 flex-1 basis-[320px]">
-          <span className="font-semibold">Not saved yet.</span> {draft.madeBy === "user" ? "Your own version, kept for Tex to change." : "Tex proposed this in the chat."} Nothing runs until you save it.
-          {changing && <> Saving replaces “{changing}” with this version.</>}{" "}
-          <span className="text-muted">{[firstRun, draftExpiry(draft)].filter(Boolean).join(" · ")}.</span>
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="primary" pending={pending && !paused} disabled={pending} onClick={() => save(draft)}>
-            Save
-          </Button>
-          <Button pending={paused} disabled={pending} onClick={() => save(draft, { paused: true })}>
-            Save paused
-          </Button>
-          {onEdit && (
-            <Button disabled={pending} onClick={onEdit}>
-              <PencilIcon size={14} />
-              Edit
-            </Button>
-          )}
-          <ConfirmButton
-            label="Discard"
-            confirmLabel="Discard draft"
-            ariaLabel={`Discard the draft ${draft.title}`}
-            pending={discard.isPending}
-            onConfirm={() =>
-              discard.mutate(draft.id, {
-                onSuccess: () => toast({ title: `Discarded “${draft.title}”`, body: "Nothing was set up." }),
-                onError: (error) => toastError(`Couldn’t discard “${draft.title}”`, error),
-              })
-            }
-          />
-        </div>
-      </Banner>
+      <p role="status" className={cn(T2, "flex items-start gap-2 text-fg-2")}>
+        <span className="flex h-5 shrink-0 items-center">
+          <Dot tone="warn" />
+        </span>
+        <span>
+          <span className="font-semibold text-fg">Not saved yet.</span> {draft.madeBy === "user" ? "Your own version, kept for Tex to change." : "Tex proposed this in the chat."} Nothing runs until you
+          save it; change any box first if you like.
+          {changing && <> Saving replaces “{changing}” with this version.</>} <span className="text-muted">{[firstRun, draftExpiry(draft)].filter(Boolean).join(" · ")}.</span>
+        </span>
+      </p>
     );
   }
   if (draft.status === "saved")
     return (
-      <Banner tone="done">
+      <div role="status" className={cn(T2, "flex flex-wrap items-center gap-x-4 gap-y-2")}>
         <p className="flex min-w-0 flex-1 items-center gap-2">
-          <CheckIcon size={15} className="shrink-0 text-success" />
+          <CheckIcon size={16} className="shrink-0 text-success" />
           <span>
             <span className="font-semibold">Saved.</span> It runs from now on, and each result lands in your Automations chat.
           </span>
         </p>
         {draft.automationId && (
-          <ButtonLink href={automationHref(draft.automationId)} variant="primary">
+          <BtnLink href={automationHref(draft.automationId)} size="sm" variant="primary">
             Open the automation
-          </ButtonLink>
+          </BtnLink>
         )}
-      </Banner>
+      </div>
     );
   if (draft.status === "replaced")
     return (
-      <Banner tone="muted">
+      <div role="status" className={cn(T2, "flex flex-wrap items-center gap-x-4 gap-y-2")}>
         <p className="min-w-0 flex-1">
           <span className="font-semibold">Tex made a newer version</span> of this draft, so this one can no longer be saved.
         </p>
         {draft.replacedBy && (
-          <ButtonLink href={draftHref({ id: draft.replacedBy, changeOf: draft.changeOf })} variant="primary">
+          <BtnLink href={draftHref({ id: draft.replacedBy, changeOf: draft.changeOf })} size="sm" variant="primary">
             Open it
-          </ButtonLink>
+          </BtnLink>
         )}
-      </Banner>
+      </div>
     );
   return (
-    <Banner tone="muted">
+    <div role="status" className={cn(T2, "flex flex-wrap items-center gap-x-4 gap-y-2")}>
       <p className="min-w-0 flex-1">
-        {state.line}{" "}
-        {state.label === "Expired" && <span className="text-muted">A draft is kept for 7 days.</span>}
+        {state.line} {state.label === "Expired" && <span className="text-muted">A draft is kept for 7 days.</span>}
       </p>
-      <ButtonLink href={chatDraftHref(`Set up again: ${draft.title}`)}>Ask Tex in chat</ButtonLink>
-    </Banner>
+      <BtnLink href={chatDraftHref(`Set up again: ${draft.title}`)} size="sm">
+        Ask Tex in chat
+      </BtnLink>
+    </div>
+  );
+}
+
+function DraftBody({ draft }: { draft: AutomationDraft }) {
+  const zone = useMe().data?.timezone ?? "UTC";
+  // A change: the automation it changes, to mark the boxes that differ, and to save it in place.
+  const current = useAutomation(draft.changeOf ?? "", { enabled: draft.changeOf !== null });
+  const before = draft.changeOf ? current.data : undefined;
+  const state = draftState(draft);
+  const discard = useDiscardAutomationDraft();
+  const changed = useMemo(() => (before ? changedSteps(draft, before) : undefined), [draft, before]);
+  const start = useMemo(() => editorFrom(draft, zone), [draft, zone]);
+  const open = state.tone === "waiting";
+  // A change is saved against the automation it changes, so that has to be there.
+  const waitingForIt = open && draft.changeOf !== null && !before;
+  const readOnly = open ? (waitingForIt ? (current.isError ? "The automation this changes isn’t here any more, so this change can’t be saved." : "Loading the automation this changes…") : null) : "This draft can’t be changed now.";
+
+  return (
+    <Builder
+      key={`${draft.id}:${before ? "change" : "new"}`}
+      target={before ? { kind: "change", automation: before, draft } : { kind: "new", draft }}
+      start={start}
+      accountZone={zone}
+      readOnly={readOnly}
+      banner={<DraftBanner draft={draft} changing={before?.title ?? null} />}
+      changed={changed}
+      onDiscard={() =>
+        discard.mutate(draft.id, {
+          onSuccess: () => toast({ title: `Discarded “${draft.title}”`, body: "Nothing was set up." }),
+          onError: (error) => toastError(`Couldn’t discard “${draft.title}”`, error),
+        })
+      }
+    />
   );
 }
 
@@ -129,19 +116,17 @@ function DraftBanner({ draft, changing, onEdit }: { draft: AutomationDraft; chan
 export function DraftScreen({ draftId }: { draftId: string }) {
   const draft = useAutomationDraft(draftId);
   const missing = draft.error instanceof ApiError && draft.error.status === 404;
+  if (draft.data) return <DraftBody draft={draft.data} />;
   return (
-    <PageBody className="gap-6">
-      <BackToAutomations />
-      {draft.data ? (
-        <DraftBody draft={draft.data} />
-      ) : missing ? (
+    <CanvasFrame current={missing ? "Not here" : "A draft"}>
+      {missing ? (
         <EmptyState
           mood="paused"
           title="This draft isn’t here"
           action={
-            <ButtonLink href="/" variant="primary">
+            <BtnLink href="/" variant="primary">
               Ask Tex in chat
-            </ButtonLink>
+            </BtnLink>
           }
         >
           A draft is removed 30 days after Tex proposed it, and a link from another account doesn’t open here. Ask Tex again.
@@ -149,71 +134,12 @@ export function DraftScreen({ draftId }: { draftId: string }) {
       ) : draft.isError ? (
         <ErrorState error={draft.error} onRetry={() => void draft.refetch()} />
       ) : (
-        <div aria-hidden className="flex flex-col gap-5">
-          <span className="h-12 w-1/3 animate-pulse rounded-xl bg-surface-2" />
-          <span className="h-[260px] animate-pulse rounded-xl bg-surface-2" />
+        <div aria-hidden className="mx-auto flex max-w-[340px] flex-col gap-12">
+          {[0, 1, 2].map((row) => (
+            <span key={row} className="h-[100px] animate-pulse rounded-[14px] bg-surface-2" />
+          ))}
         </div>
       )}
-    </PageBody>
-  );
-}
-
-function DraftBody({ draft }: { draft: AutomationDraft }) {
-  const timezone = useMe().data?.timezone;
-  // A change: the automation it changes, to mark the steps that differ. Gone since: drawn as new.
-  const current = useAutomation(draft.changeOf ?? "", { enabled: draft.changeOf !== null });
-  const before = draft.changeOf ? current.data : undefined;
-  const state = draftState(draft);
-  const settled = state.tone === "waiting" ? undefined : state;
-  const steps = useMemo(() => automationFlow({ ...draft, settled }, timezone), [draft, settled, timezone]);
-  const changed = useMemo(() => (before ? changedSteps(draft, before) : undefined), [draft, before]);
-  const [editing, setEditing] = useState(false);
-  const zone = timezone ?? "UTC";
-  // A change is edited against the automation it changes, so that has to be there.
-  const canEdit = state.tone === "waiting" && (!draft.changeOf || Boolean(before));
-  const start = useMemo(() => (editing && canEdit ? editorFrom(draft, zone) : null), [editing, canEdit, draft, zone]);
-
-  return (
-    <>
-      <AutomationHeading
-        automation={draft}
-        title={draft.title}
-        kindLabel={draft.changeOf ? `A change · ${AUTOMATION_KIND_LABEL[draft.kind]}` : `A draft · ${AUTOMATION_KIND_LABEL[draft.kind]}`}
-        status={<Pill tone={state.tone}>{state.label}</Pill>}
-      />
-      <p className={cn("-mt-2 text-[13.5px] text-muted", READING)}>
-        {draft.changeOf ? (
-          <>
-            How the automation would run after this change, step by step. The steps marked “Changed” are different from{" "}
-            {before ? (
-              <Link href={automationHref(before.id)} className={LINK}>
-                “{before.title}”
-              </Link>
-            ) : (
-              "the automation it changes"
-            )}{" "}
-            as it runs now.
-          </>
-        ) : start ? (
-          "Change any box, then save. The server checks each change as you go. Nothing runs until you save."
-        ) : (
-          "How Tex would run it, step by step. Check each step; Edit changes any box here, or tell Tex in chat and it proposes a new version."
-        )}
-      </p>
-      {start ? (
-        <AutomationEditor
-          target={before ? { kind: "change", automation: before, draft } : { kind: "new", draft }}
-          start={start}
-          accountZone={zone}
-          onCancel={() => setEditing(false)}
-          onSaved={() => setEditing(false)}
-        />
-      ) : (
-        <>
-          <DraftBanner draft={draft} changing={before?.title ?? null} onEdit={canEdit ? () => setEditing(true) : undefined} />
-          <FlowView steps={steps} kind={draft.kind} changed={changed} label={`The draft “${draft.title}”, step by step`} />
-        </>
-      )}
-    </>
+    </CanvasFrame>
   );
 }

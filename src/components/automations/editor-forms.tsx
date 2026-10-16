@@ -62,14 +62,14 @@ type FormProps = {
 };
 
 const LINK = "font-medium text-accent hover:text-accent-dark";
-export const textareaClass = cn(inputClass, "h-auto min-h-[120px] resize-y py-2.5 leading-relaxed");
+export const textareaClass = cn(inputClass, "h-auto min-h-[120px] resize-y py-2 leading-relaxed");
 
 /** The box's problems, for the person and for a screen reader. */
 export function Problems({ problems, className }: { problems: readonly string[]; className?: string }) {
   if (problems.length === 0) return null;
   return (
-    <div role="alert" className={cn("flex gap-2.5 rounded-xl bg-danger-soft px-3 py-2.5 text-[12.5px] text-fg", className)}>
-      <WarningIcon size={15} className="mt-px shrink-0 text-danger" />
+    <div role="alert" className={cn("flex gap-2 rounded-xl bg-warn-soft px-4 py-3 text-[12px] leading-4 text-fg shadow-[inset_0_0_0_1px_var(--warn-line)]", className)}>
+      <WarningIcon size={14} className="mt-px shrink-0 text-warn" />
       <ul className="flex min-w-0 flex-col gap-1">
         {problems.map((problem) => (
           <li key={problem}>{problem}</li>
@@ -81,24 +81,24 @@ export function Problems({ problems, className }: { problems: readonly string[];
 
 export function Label({ htmlFor, id, children, hint }: { htmlFor?: string; id?: string; children: ReactNode; hint?: ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-1">
       {htmlFor ? (
-        <label htmlFor={htmlFor} id={id} className="text-[12.5px] font-medium text-fg">
+        <label htmlFor={htmlFor} id={id} className="text-[14px] leading-5 font-medium text-fg">
           {children}
         </label>
       ) : (
-        <span id={id} className="text-[12.5px] font-medium text-fg">
+        <span id={id} className="text-[14px] leading-5 font-medium text-fg">
           {children}
         </span>
       )}
-      {hint && <span className="text-[12px] leading-snug text-muted">{hint}</span>}
+      {hint && <span className="text-[12px] leading-4 text-muted">{hint}</span>}
     </div>
   );
 }
 
 /** A label with its control under it. */
 function FieldBlock({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>{children}</div>;
+  return <div className={cn("flex min-w-0 flex-col gap-2", className)}>{children}</div>;
 }
 
 /** A group of fields that belong together, under a quiet heading (the event's settings). */
@@ -190,7 +190,7 @@ function DaysField({ days, onChange, labelId }: { days: readonly number[]; onCha
               aria-pressed={on}
               onClick={() => toggle(day)}
               className={cn(
-                "h-9 min-w-0 rounded-[9px] text-[12.5px] font-medium transition-colors outline-none focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]",
+                "h-9 min-w-0 rounded-[10px] text-[12.5px] font-medium transition-colors outline-none focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]",
                 on ? "bg-accent text-white shadow-[0_1px_2px_rgb(21_21_21/0.15)]" : "bg-surface text-nav ring-1 ring-line-strong ring-inset hover:text-fg",
               )}
             >
@@ -199,7 +199,7 @@ function DaysField({ days, onChange, labelId }: { days: readonly number[]; onCha
           );
         })}
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-2">
         {DAY_SETS.map((set) => (
           <button
             key={set.label}
@@ -207,7 +207,7 @@ function DaysField({ days, onChange, labelId }: { days: readonly number[]; onCha
             aria-pressed={same(set.days)}
             onClick={() => onChange([...set.days].sort((a, b) => a - b))}
             className={cn(
-              "h-7 rounded-full px-2.5 text-[12px] font-medium transition-colors",
+              "h-7 rounded-full px-3 text-[12px] font-medium transition-colors",
               same(set.days) ? "bg-accent-soft text-accent-dark" : "text-nav ring-1 ring-line ring-inset hover:text-fg",
             )}
           >
@@ -295,7 +295,7 @@ export function SettingField({ setting, value, onChange, id }: { setting: AppEve
   const label = (
     <>
       {setting.title}
-      {setting.required ? <span className="text-danger"> *</span> : <span className="font-normal text-muted"> (optional)</span>}
+      {setting.required ? <span className="font-normal text-muted"> (needed)</span> : <span className="font-normal text-muted"> (optional)</span>}
     </>
   );
   if (setting.enum?.length) {
@@ -645,7 +645,7 @@ export function ResultsForm({ editor, onChange, problems, context }: FormProps) 
   // A copy that goes to another chat app today (made there) stays offered.
   const other = editor.copyTo && editor.copyTo !== "telegram" ? editor.copyTo : null;
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-3">
       <Problems problems={problems} />
       <SwitchRow
         on
@@ -664,7 +664,7 @@ export function ResultsForm({ editor, onChange, problems, context }: FormProps) 
           description={telegram ? `To your linked chat, ${telegram.displayId}.` : "No Telegram chat is linked now."}
         />
       ) : (
-        <p className="rounded-xl border border-dashed border-line-strong px-3 py-2.5 text-[12.5px] text-muted">
+        <p className="rounded-xl border border-dashed border-line-strong px-3 py-2 text-[12.5px] text-muted">
           Want a copy of each answer on Telegram?{" "}
           <Link href={linkChatHref("telegram")} className={LINK}>
             Link your Telegram

@@ -14,7 +14,7 @@ import { PRICING_PATH } from "@/lib/pricing";
 import { isConnectable } from "../apps/apps-logic";
 import { useConnectDialog } from "../apps/connect-dialog";
 import { BrandIcon } from "../brand-icon";
-import { PauseIcon, RefreshIcon, WarningIcon } from "../icons";
+import { RefreshIcon, WarningIcon } from "../icons";
 import { Button, ButtonLink } from "../ui";
 
 export type AutomationState = { label: string; tone: "on" | "paused" | "danger" | "done" };
@@ -33,29 +33,6 @@ export function automationState(automation: Pick<Automation, "enabled" | "paused
   return { label: "Paused", tone: "paused" };
 }
 
-const PILL: Record<AutomationState["tone"], string> = {
-  on: "bg-success-soft text-success",
-  paused: "bg-surface-2 text-nav ring-1 ring-line ring-inset",
-  danger: "bg-danger-soft text-danger",
-  done: "bg-surface-2 text-muted",
-};
-
-/** The state as a pill, with a dot for On and two bars for Paused. */
-export function StatusPill({ state, className }: { state: AutomationState; className?: string }) {
-  return (
-    <span className={cn("inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-full px-2 text-[12px] font-medium whitespace-nowrap", PILL[state.tone], className)}>
-      {state.tone === "on" ? (
-        <span aria-hidden className="size-1.5 rounded-full bg-online" />
-      ) : state.tone === "danger" ? (
-        <WarningIcon size={12} />
-      ) : state.tone === "paused" ? (
-        <PauseIcon size={11} />
-      ) : null}
-      {state.label}
-    </span>
-  );
-}
-
 /** The apps an automation is connected to, how each stands, and the ones that need the person. */
 export function useAutomationApps(automation: Pick<Automation, "trigger" | "apps" | "preset" | "steps">) {
   const apps = useApps();
@@ -72,16 +49,17 @@ export function Notice({ tone = "danger", icon, children, actions, className }: 
     <div
       role="status"
       className={cn(
-        "flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl px-3 py-2.5 text-[12.5px] leading-snug",
-        tone === "danger" ? "bg-danger-soft text-fg" : "bg-surface-2 text-fg-2",
+        "flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl px-4 py-3 text-[14px] leading-5",
+        // Amber: it needs the person. Red is kept for a run that failed.
+        tone === "danger" ? "bg-warn-soft text-fg shadow-[inset_0_0_0_1px_var(--warn-line)]" : "bg-surface-2 text-fg-2",
         className,
       )}
     >
-      <span aria-hidden className={cn("mt-px shrink-0", tone === "danger" ? "text-danger" : "text-muted")}>
+      <span aria-hidden className={cn("shrink-0", tone === "danger" ? "text-warn" : "text-muted")}>
         {icon ?? <WarningIcon size={15} />}
       </span>
       <p className="min-w-0 flex-1 basis-[180px]">{children}</p>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-1.5">{actions}</div>}
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }

@@ -3,48 +3,59 @@
 import Link from "next/link";
 import type { AutomationDraft } from "@/lib/api/client";
 import { useAutomationDrafts, useDiscardAutomationDraft } from "@/lib/api/hooks";
-import { automationFlow, draftExpiry, draftHref } from "@/lib/automation-flow";
-import { AUTOMATION_KIND_LABEL } from "@/lib/format";
-import { ConfirmButton } from "../confirm-button";
+import { draftExpiry, draftHref } from "@/lib/automation-flow";
+import { rowApps, shortWhen } from "@/lib/automation-list";
+import { useArmed } from "../confirm-button";
 import { toast, toastError } from "../toast";
-import { ButtonLink, Meta, SectionLabel } from "../ui";
-import { FlowChain } from "./flow-chain";
+import { Btn, BtnLink, LogoStack, T2, T3 } from "./parts";
 
-/** One open draft: its name and kind, its five steps, how long it is kept, and the ways on. */
-function DraftRow({ draft, timezone }: { draft: AutomationDraft; timezone: string | null | undefined }) {
+/** Discard, asking once more ("Discard draft") before it does. */
+function DiscardButton({ draft }: { draft: AutomationDraft }) {
   const discard = useDiscardAutomationDraft();
+  const [armed, setArmed] = useArmed(discard.isPending);
+  const go = () =>
+    discard.mutate(draft.id, {
+      onSuccess: () => toast({ title: `Discarded “${draft.title}”`, body: "Nothing was set up." }),
+      onError: (error) => toastError(`Couldn’t discard “${draft.title}”`, error),
+    });
+  if (!armed && !discard.isPending)
+    return (
+      <Btn size="sm" variant="ghost" aria-label={`Discard the draft ${draft.title}`} onClick={() => setArmed(true)}>
+        Discard
+      </Btn>
+    );
   return (
-    <li className="flex min-w-0 flex-col gap-3.5 rounded-2xl border border-dashed border-accent/45 bg-surface p-4">
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <h3 className="text-[14.5px] leading-snug font-semibold break-words">
-            <Link href={draftHref(draft)} className="hover:text-accent-dark hover:underline">
-              {draft.title}
-            </Link>
-          </h3>
-          <span className="text-[12px] text-muted">
-            {draft.changeOf ? "A change" : "New"} · {AUTOMATION_KIND_LABEL[draft.kind]} · {draftExpiry(draft)}
-          </span>
-        </div>
+    <span className="flex items-center gap-1">
+      <Btn size="sm" variant="remove" className="bg-danger-soft text-danger" pending={discard.isPending} onClick={go}>
+        Discard draft
+      </Btn>
+      {!discard.isPending && (
+        <Btn size="sm" variant="ghost" onClick={() => setArmed(false)}>
+          Keep it
+        </Btn>
+      )}
+    </span>
+  );
+}
+
+/** One open draft, as a row: what it uses, its name, what it is and how long it is kept, and the ways on. */
+function DraftRow({ draft, timezone }: { draft: AutomationDraft; timezone: string | null | undefined }) {
+  return (
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-line px-4 py-4 first:border-t-0 md:px-6">
+      <LogoStack marks={rowApps({ ...draft, preset: null })} />
+      <div className="flex min-w-0 flex-[1_1_240px] flex-col gap-1">
+        <Link href={draftHref(draft)} className={`${T2} font-semibold break-words text-fg hover:text-accent-dark`}>
+          {draft.title}
+        </Link>
+        <span className={`${T3} text-muted`}>
+          {draft.changeOf ? "A change" : "New"} · {shortWhen({ ...draft, preset: null }, timezone)} · {draftExpiry(draft)}
+        </span>
       </div>
-      <FlowChain steps={automationFlow(draft, timezone)} kind={draft.kind} />
-      <div className="flex flex-wrap items-center gap-2">
-        <ButtonLink href={draftHref(draft)} size="sm" variant="primary" aria-label={`Open the draft ${draft.title} to check and save it`}>
+      <div className="flex items-center gap-2">
+        <BtnLink href={draftHref(draft)} size="sm" variant="primary" aria-label={`Open the draft ${draft.title} to check and save it`}>
           Open and save
-        </ButtonLink>
-        <ConfirmButton
-          className="ml-auto"
-          label="Discard"
-          confirmLabel="Discard draft"
-          ariaLabel={`Discard the draft ${draft.title}`}
-          pending={discard.isPending}
-          onConfirm={() =>
-            discard.mutate(draft.id, {
-              onSuccess: () => toast({ title: `Discarded “${draft.title}”`, body: "Nothing was set up." }),
-              onError: (error) => toastError(`Couldn’t discard “${draft.title}”`, error),
-            })
-          }
-        />
+        </BtnLink>
+        <DiscardButton draft={draft} />
       </div>
     </li>
   );
@@ -59,17 +70,14 @@ export function DraftsWaiting({ timezone }: { timezone: string | null | undefine
   const list = drafts.data ?? [];
   if (list.length === 0) return null;
   return (
-    <section aria-labelledby="drafts-waiting" className="flex min-w-0 flex-col gap-3">
+    <section aria-labelledby="drafts-waiting" className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <div className="flex items-baseline gap-2">
-          <SectionLabel className="text-[15px]">
-            <span id="drafts-waiting">Waiting for you to save</span>
-          </SectionLabel>
-          <Meta className="text-[12px]">{list.length}</Meta>
-        </div>
-        <p className="text-[13px] text-muted">Drafts Tex proposed in the chat. None of them runs until you save it; each is kept for 7 days.</p>
+        <h2 id="drafts-waiting" className={`${T2} font-semibold`}>
+          Waiting for you to save <span className="font-medium text-muted">{list.length}</span>
+        </h2>
+        <p className={`${T3} text-muted`}>Drafts Tex proposed in the chat. None of them runs until you save it; each is kept for 7 days.</p>
       </div>
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(340px,100%),1fr))] gap-3">
+      <ul className="rounded-2xl bg-surface shadow-[0_0_0_1px_var(--line)]">
         {list.map((draft) => (
           <DraftRow key={draft.id} draft={draft} timezone={timezone} />
         ))}
