@@ -52,9 +52,10 @@ describe("the markup in a sentence of help", () => {
 });
 
 describe("the help, as written", () => {
-  it("has the nine topics, in order", () => {
+  it("has the ten topics, in order", () => {
     expect(HELP_SECTIONS.map((section) => section.title)).toEqual([
       "Getting started",
+      "The crew",
       "Telegram",
       "Your AI",
       "Apps and integrations",
@@ -104,7 +105,8 @@ describe("the help, as written", () => {
   });
 
   it("explains every Telegram command the bot knows", () => {
-    const commands = topicText(HELP_SECTIONS[1], HELP_SECTIONS[1].topics.find((topic) => topic.id === "telegram-commands")!);
+    const telegram = HELP_SECTIONS.find((section) => section.id === "telegram")!;
+    const commands = topicText(telegram, telegram.topics.find((topic) => topic.id === "telegram-commands")!);
     for (const said of ["/new", "/clear", "/reset", "/start", "link 7kq2 m9xp", "agt 7kq2", "yes", "no", "/help"]) expect(commands).toContain(said);
   });
 });

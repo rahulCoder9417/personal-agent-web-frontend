@@ -1,17 +1,13 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import type { CrewMember } from "@/lib/api/client";
 import { useCrew } from "@/lib/api/hooks";
+import { crewWash } from "@/lib/crew";
 import { cn } from "@/lib/format";
 import type { StepId } from "@/lib/onboarding";
 import { ApprovalsIcon, AppsIcon, ChatIcon } from "../icons";
 import { AgentFigure } from "../tex";
 import { Button, Pill } from "../ui";
-
-// Each member's own colour, from the design tokens, as on the crew page.
-const COLOUR: Record<CrewMember["id"], string> = { tex: "var(--accent)", byte: "var(--byte)", patch: "var(--patch)", scout: "var(--scout)" };
-const wash = (id: CrewMember["id"], strength: number): CSSProperties => ({ background: `color-mix(in srgb, ${COLOUR[id]} ${strength}%, var(--surface))` });
 
 /** Who is on the crew, in the backend's words, until the backend has said (and if it can't). */
 const CREW_FALLBACK: Pick<CrewMember, "id" | "name" | "role" | "description" | "available" | "kind">[] = [
@@ -76,7 +72,7 @@ export function StepWelcome({ steps, chatLabel, aiNeeded, onDone }: { steps: rea
         <ul aria-label="Your crew" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {members.map((member) => (
             <li key={member.id} className="flex items-start gap-3 rounded-xl border border-line bg-surface px-3.5 py-3">
-              <span className="grid size-10 shrink-0 place-items-center rounded-[11px]" style={wash(member.id, 16)}>
+              <span className="grid size-10 shrink-0 place-items-center rounded-[11px]" style={crewWash(member.id, 16)}>
                 <AgentFigure who={member.id} mood={member.available ? "ready" : "asleep"} glyph size={30} label="" />
               </span>
               <span className="flex min-w-0 flex-col gap-0.5">

@@ -1,94 +1,35 @@
 // The crew, as the backend describes it (`GET /v1/crew`): Tex leads, and Byte, Patch and Scout are
 // the specialists it hands work to. Who they are (name, role, description) and who is available
-// comes from the backend. What is written here is what the backend doesn't say: what each one is
-// good for in three lines, a request to try, and how the crew works together.
+// comes from the backend. What is written here is what the backend doesn't say: each member's
+// colour and a request to try. There is no screen of its own for the crew: it is explained in Help
+// (`help-content.ts`, the "crew" section), and Byte and Patch are asked for in the chat.
 
+import type { CSSProperties } from "react";
 import type { AgentProgress, CrewMember } from "./api/client";
-import { listNames, titleCase } from "./format";
-
-/** What the crew page says about a member beyond the backend's one-line description. */
-export type CrewGuide = {
-  /** What it can do, as three short lines. */
-  does: readonly [string, string, string];
-  /** Something to ask Tex that this member would end up doing. */
-  example: string;
-};
+import { titleCase } from "./format";
 
 /**
- * What each member is good for. These follow the crew as it is built: Byte works on a new branch
- * and opens the pull request, Patch posts one review and never changes code, and only Scout
- * touches the web.
+ * Something to ask Tex that each member would end up doing. Byte and Patch have no form of their
+ * own: a code change or a review is asked for in the chat, in plain words, with the repo named.
  */
-export const CREW_GUIDE: Record<CrewMember["id"], CrewGuide> = {
-  tex: {
-    does: [
-      "Answers you here and in every chat app you linked",
-      "Plans the job and hands each part to the right specialist",
-      "Works in your connected apps, and asks before anything risky",
-    ],
-    example: "Summarise my unread email and tell me what needs a reply today.",
-  },
-  byte: {
-    does: ["Writes new code and fixes bugs in your repos", "Works on a new branch, never on your main one", "Opens the pull request for you to merge"],
-    example: "Fix the typo in the README of acme/website and open a pull request.",
-  },
-  patch: {
-    does: [
-      "Reviews a pull request for bugs, security and tests",
-      "Posts one review on the pull request and sends you the verdict",
-      "Never changes code, and never merges",
-    ],
-    example: "Review pull request 42 in acme/website.",
-  },
-  scout: {
-    does: [
-      "Searches the web and reads the pages it finds",
-      "Comes back with a short answer and its links",
-      "The only one on the web, with no way into your files or apps",
-    ],
-    example: "Research what other scheduling tools charge, with links.",
-  },
+export const CREW_EXAMPLES: Record<CrewMember["id"], string> = {
+  tex: "Summarise my unread email and tell me what needs a reply today.",
+  byte: "Fix the typo in the README on my repo acme/website.",
+  patch: "Review pull request 42 in acme/website.",
+  scout: "Research what other scheduling tools charge, with links.",
 };
 
-/** How a job moves through the crew, for the strip at the foot of the crew page. */
-export const CREW_STEPS: readonly { title: string; body: string }[] = [
-  { title: "You text Tex", body: "One chat, in plain words. You never have to pick a specialist yourself." },
-  { title: "Tex plans and hands out", body: "Each part goes to whoever is best at it. Up to three specialists can work on one job at once." },
-  { title: "You see who is working", body: "The chat shows each one at work (“Scout · reading 4 pages”), and the activity log keeps it." },
-  { title: "Tex answers", body: "One answer comes back from Tex. Sending, deleting or spending still waits for your OK." },
-];
+/** Each member's own colour, from the design tokens (the accent for Tex). */
+export const CREW_COLOUR: Record<CrewMember["id"], string> = { tex: "var(--accent)", byte: "var(--byte)", patch: "var(--patch)", scout: "var(--scout)" };
 
-/** Whether a member works here yet, as the pill on its card says it. */
-export function describeAvailability(member: Pick<CrewMember, "kind" | "available">): { label: string; tone: "done" | "muted" } {
-  if (member.kind === "lead") return { label: "Leads your crew", tone: "done" };
-  return member.available ? { label: "On your crew", tone: "done" } : { label: "Coming soon", tone: "muted" };
-}
+/** A member's colour as a quiet wash over the surface, whatever the surface's own colour is. */
+export const crewWash = (id: CrewMember["id"], strength = 12): CSSProperties => ({
+  background: `color-mix(in srgb, ${CREW_COLOUR[id]} ${strength}%, var(--surface))`,
+});
 
-/** The lead, the specialists that work on this deployment, and the ones still to come. */
-export function splitCrew(crew: readonly CrewMember[]): { lead: CrewMember | undefined; working: CrewMember[]; coming: CrewMember[] } {
-  const specialists = crew.filter((member) => member.kind === "specialist");
-  return {
-    lead: crew.find((member) => member.kind === "lead"),
-    working: specialists.filter((member) => member.available),
-    coming: specialists.filter((member) => !member.available),
-  };
-}
-
-const names = (members: readonly CrewMember[]) => listNames(members.map((member) => member.name), "and");
-
-/** One line for the top of the crew page: who is working, and who is still to come. */
-export function crewHeadline(crew: readonly CrewMember[]): string {
-  const { lead, working, coming } = splitCrew(crew);
-  const tex = lead?.name ?? "Tex";
-  const onTheWay = coming.length > 0 ? `${names(coming)} ${coming.length === 1 ? "is" : "are"} on the way.` : "";
-  if (working.length === 0) return `${tex} is on the job today. ${onTheWay}`.trim();
-  return `${tex} leads and hands work to ${names(working)}. ${onTheWay}`.trim();
-}
-
-/** "soon" next to Crew in the navigation while no specialist works yet; nothing once one does. */
-export function crewNavNote(crew: readonly CrewMember[] | undefined): string | undefined {
-  if (!crew) return undefined;
-  return splitCrew(crew).working.length === 0 ? "soon" : undefined;
+/** The specialists that aren't switched on here yet (`available: false`), in the backend's order. */
+export function comingSoon(crew: readonly CrewMember[]): CrewMember[] {
+  return crew.filter((member) => member.kind === "specialist" && !member.available);
 }
 
 export type CrewBrowser = NonNullable<CrewMember["browser"]>;
@@ -96,25 +37,6 @@ export type CrewBrowser = NonNullable<CrewMember["browser"]>;
 /** The real browser a crew member can drive (Scout's), if the backend lists one. */
 export function crewBrowser(crew: readonly CrewMember[] | undefined): CrewBrowser | null {
   return crew?.find((member) => member.browser)?.browser ?? null;
-}
-
-/**
- * What to say about Scout's browser. Two things decide it, and they are not the same:
- * whether the browser is built yet, and whether this person's plan includes it.
- * `upgrade` is true when a better plan is all that stands in the way.
- */
-export function describeBrowser(browser: CrewBrowser, planName: string, included: boolean): { text: string; upgrade: boolean } {
-  if (!browser.available) {
-    return {
-      text: included
-        ? `A real browser isn’t ready yet. It comes with your ${planName} plan when it is.`
-        : `A real browser isn’t ready yet. It will need the ${planName} plan.`,
-      upgrade: false,
-    };
-  }
-  return included
-    ? { text: `A real browser is part of your ${planName} plan, at 2 credits per minute.`, upgrade: false }
-    : { text: `A real browser needs the ${planName} plan.`, upgrade: true };
 }
 
 // ---------------------------------------------------------------- progress lines

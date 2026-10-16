@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ActivityIcon, AppsIcon, ChevronRightIcon, CrewIcon, SettingsIcon } from "@/components/icons";
+import { ActivityIcon, AppsIcon, ChevronRightIcon, SettingsIcon } from "@/components/icons";
 import { GettingStartedCard, useGettingStarted } from "@/components/onboarding/getting-started";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { AgentFigure } from "@/components/tex";
-import { useAgentSettings, useChannels, useCrew, useMe, useMemories, usePlans } from "@/lib/api/hooks";
-import { crewNavNote } from "@/lib/crew";
+import { useAgentSettings, useChannels, useMe, useMemories, usePlans } from "@/lib/api/hooks";
 import { CHANNEL_LABEL, formatNumber, initials } from "@/lib/format";
 import { INTEGRATIONS_PATH } from "@/lib/integrations";
 
@@ -37,7 +36,6 @@ export default function MorePage() {
   const plans = usePlans();
   const channels = useChannels();
   const agent = useAgentSettings();
-  const crew = useCrew();
   const memories = useMemories();
   const plan = plans.data?.plans.find((p) => p.id === me.data?.plan);
   const linked = [...new Set((channels.data ?? []).filter((c) => c.channel !== "web").map((c) => CHANNEL_LABEL[c.channel]))];
@@ -84,7 +82,6 @@ export default function MorePage() {
             detail={memories.data ? `${formatNumber(memories.data.items.length)} saved` : undefined}
           />
           <Row href="/settings" icon={<SettingsIcon size={17} />} title="Settings" />
-          <Row href="/crew" icon={<CrewIcon size={17} />} title="Crew" detail={crewNavNote(crew.data)} />
           <Row href="/help" icon={glyph("?")} title="Help" detail="How Textcrew works" />
         </div>
       </PageBody>

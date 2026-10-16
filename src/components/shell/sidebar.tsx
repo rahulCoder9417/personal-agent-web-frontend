@@ -3,16 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useAgentStatus, useApprovals, useCrew, useMe, usePlans } from "@/lib/api/hooks";
+import { useAgentStatus, useApprovals, useMe, usePlans } from "@/lib/api/hooks";
 import { describeAgent } from "@/lib/agent-state";
-import { crewNavNote } from "@/lib/crew";
 import { cn, formatAgo, formatDate, formatNumber, initials, titleCase } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { PANEL_MOTION, useMotionReady } from "@/lib/motion";
 import { PANELS } from "@/lib/panels";
 import { useStoredFlag } from "@/lib/stored-flag";
 import { INTEGRATIONS_PATH } from "@/lib/integrations";
-import { ActivityIcon, ApprovalsIcon, AppsIcon, AutomationsIcon, ChatIcon, ChevronsLeftIcon, CrewIcon, SettingsIcon } from "../icons";
+import { ActivityIcon, ApprovalsIcon, AppsIcon, AutomationsIcon, ChatIcon, ChevronsLeftIcon, SettingsIcon } from "../icons";
 import { GettingStartedNav } from "../onboarding/getting-started";
 import { IconButton } from "../ui";
 import { Brand } from "./brand";
@@ -168,7 +167,7 @@ function CreditsCard({ shown }: { shown: boolean }) {
 /**
  * The left side of the page on wide screens: Tex's state, the places to go, credits and the account.
  * On a phone it is hidden but still drawn, so a wide screen gets it without a jump. What only it
- * shows (the agent's state away from the chat, the crew note, the plan's name) isn't asked for
+ * shows (the agent's state away from the chat, the plan's name) isn't asked for
  * there; the account and approvals are, for the phone's own top bar and tabs.
  *
  * The button at its top folds it down to a rail of icons and opens it again; this browser
@@ -182,7 +181,6 @@ export function Sidebar() {
   const motion = useMotionReady();
   const pending = useApprovals("pending").data?.length ?? 0;
   const me = useMe();
-  const crew = useCrew(shown);
   const { mode } = useAppConfig();
 
   const work: Item[] = [
@@ -193,7 +191,6 @@ export function Sidebar() {
   ];
   const setup: Item[] = [
     { href: INTEGRATIONS_PATH, label: "Integrations", icon: <AppsIcon size={18} /> },
-    { href: "/crew", label: "Crew", icon: <CrewIcon size={18} />, note: crewNavNote(crew.data) },
     { href: "/settings", label: "Settings", icon: <SettingsIcon size={18} /> },
     { href: "/help", label: "Help", icon: <HelpIcon size={18} /> },
   ];

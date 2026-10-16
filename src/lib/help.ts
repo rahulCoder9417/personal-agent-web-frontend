@@ -31,7 +31,6 @@ export const PLACES = {
   mcp: { label: "Integrations → MCP servers", short: "MCP servers", href: INTEGRATIONS_MCP_PATH },
   chatApps: { label: "Integrations → Chat apps", short: "Chat apps", href: INTEGRATIONS_PATH },
   linkTelegram: { label: "Link Telegram", href: linkChatHref("telegram") },
-  crew: { label: "Crew", href: "/crew" },
   settings: { label: "Settings", href: "/settings" },
   timezone: { label: "Settings → General", short: "General settings", href: "/settings" },
   ai: { label: "Settings → Agent & AI", short: "Agent & AI", href: "/settings/agent" },
@@ -81,7 +80,7 @@ export const note = (text: string): HelpBlock => ({ kind: "note", text });
 /** One question and its answer. Its `id` is its address on the page (`/help#telegram-commands`). */
 export type HelpTopic = { id: string; title: string; blocks: readonly HelpBlock[] };
 
-export type HelpIconName = "start" | "telegram" | "ai" | "apps" | "approvals" | "automations" | "credits" | "privacy" | "faq";
+export type HelpIconName = "start" | "crew" | "telegram" | "ai" | "apps" | "approvals" | "automations" | "credits" | "privacy" | "faq";
 
 /** One part of the page: a heading, a line on what is in it, the screens it is about, and its answers. */
 export type HelpSection = {
