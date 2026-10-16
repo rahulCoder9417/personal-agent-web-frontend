@@ -1868,6 +1868,80 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /v1/billing/subscription/resume:
+    post:
+      operationId: resumeSubscription
+      tags: [billing]
+      summary: Keep a cancelled plan (undo a cancel before the period ends)
+      description: |
+        Asks Polar to un-cancel the subscription that is set to end at the end of its period, so it
+        renews again as before. Nothing is charged now, and no credits are given: the plan and its
+        monthly credits keep following Polar's events (`subscription.uncanceled`, then the usual
+        renewal). Answers the subscription as it is now (`active`, or `past_due` if the last payment
+        had failed).
+      responses:
+        "200":
+          description: The plan will renew again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subscription" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: No cancelled plan that is still running (nothing to keep)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/billing/auto-topup:
+    get:
+      operationId: getAutoTopUp
+      tags: [billing]
+      summary: The user's auto top-up settings, this month's top-ups and the last try
+      description: |
+        `available` is false while the server setting `AUTO_TOPUP_ENABLED` is off: the web app then
+        hides auto top-up and says nothing about it, and the other fields are the defaults.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutoTopUp" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      operationId: setAutoTopUp
+      tags: [billing]
+      summary: Switch auto top-up on or off, and set when and how much
+      description: |
+        Switching on (or changing the settings while on) needs `consent: true`: the user allows
+        Polar to charge their saved card for the pack, up to `monthlyCap` times a calendar month
+        (UTC), whenever their balance drops under `thresholdCredits`. Pro and Max only. The card
+        is the one Polar keeps for the customer (their plan's card); without one the answer is
+        409. Switching off needs nothing else and always works. Fields left out keep their value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutoTopUpUpdate" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutoTopUp" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PlanLimit" }
+        "404":
+          description: Auto top-up is not available on this server (`AUTO_TOPUP_ENABLED` is off)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Polar has no saved card for this user, so nothing can be charged
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   # ---------------------------------------------------------------- credits
   /v1/credits:
     get:
@@ -5178,6 +5252,81 @@ components:
         status: { type: string, enum: [none, active, cancel_at_period_end, past_due, cancelled] }
         currentPeriodStart: { type: [string, "null"], format: date-time }
         currentPeriodEnd: { type: [string, "null"], format: date-time }
+
+    AutoTopUp:
+      type: object
+      required: [available, enabled, thresholdCredits, topUpId, monthlyCap, consentedAt, card, turnedOffReason, thisMonth, lastAttempt]
+      properties:
+        available:
+          type: boolean
+          description: The server allows auto top-up (`AUTO_TOPUP_ENABLED`). False → hide it.
+        enabled: { type: boolean }
+        thresholdCredits:
+          type: integer
+          description: A top-up is tried when a charge leaves the balance under this many credits.
+        topUpId: { type: string, description: The pack bought each time (see `GET /v1/billing/plans`) }
+        monthlyCap:
+          type: integer
+          description: At most this many auto top-ups in a calendar month (UTC).
+        consentedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the user last allowed the charges (switching on, or changing the settings).
+        card:
+          description: The saved card Polar charges, as last read from Polar. Null if none was found.
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [brand, last4]
+              properties:
+                brand: { type: string }
+                last4: { type: string }
+        turnedOffReason:
+          description: |
+            Why it was switched off by itself: `declined` (the card was declined twice in a row),
+            `no_card` (Polar had no saved card), `refused` (Polar refused the charge for another
+            reason). Null when the user switched it off, or while it is on.
+          oneOf:
+            - type: "null"
+            - type: string
+              enum: [declined, no_card, refused]
+        thisMonth:
+          type: object
+          required: [count, spentCents]
+          properties:
+            count: { type: integer, description: Auto top-ups charged (or being charged) this month }
+            spentCents: { type: integer, description: "What they cost, before tax" }
+        lastAttempt:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/AutoTopUpAttempt"
+
+    AutoTopUpAttempt:
+      type: object
+      required: [status, at, credits, amountCents]
+      properties:
+        status:
+          type: string
+          enum: [charging, waiting, credited, declined, failed]
+          description: |
+            `charging`: the charge is being made. `waiting`: paid, the credits are on their way
+            (they arrive with Polar's paid-order event). `credited`: the credits are in.
+            `declined`: the card was declined. `failed`: Polar refused or could not be reached.
+        at: { type: string, format: date-time }
+        credits: { type: integer }
+        amountCents: { type: integer }
+
+    AutoTopUpUpdate:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+        thresholdCredits: { type: integer, minimum: 20, maximum: 1000 }
+        topUpId: { type: string }
+        monthlyCap: { type: integer, minimum: 1, maximum: 5 }
+        consent:
+          type: boolean
+          description: Must be true to switch on or to change the settings while on.
 
     GrantSource:
       type: string

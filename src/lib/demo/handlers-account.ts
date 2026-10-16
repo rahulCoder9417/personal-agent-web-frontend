@@ -206,12 +206,62 @@ export const createCheckout: Handler = async ({ state, request, url }) => {
   return json({ checkoutUrl, discountApplied: false });
 };
 
+/** Like the backend: a plan that renews, or one whose last payment failed, can be cancelled. */
 export const cancelSubscription: Handler = ({ state }) => {
-  if (state.subscription.plan === "free" || state.subscription.status !== "active") {
+  const { plan, status } = state.subscription;
+  if (plan === "free" || (status !== "active" && status !== "past_due")) {
     throw conflict("There's no active paid subscription to cancel");
   }
   state.subscription = { ...state.subscription, status: "cancel_at_period_end" };
   return json(state.subscription);
+};
+
+/**
+ * "Keep my plan": only a cancelled plan (the backend also wants its period not over; the demo's
+ * plans never reach their end). Nothing is charged now.
+ */
+export const resumeSubscription: Handler = ({ state }) => {
+  const { plan, status } = state.subscription;
+  if (status === "active" || status === "past_due") throw conflict("Your plan already renews");
+  if (plan === "free" || status !== "cancel_at_period_end") throw conflict("No cancelled plan to keep");
+  state.subscription = { ...state.subscription, status: "active" };
+  return json(state.subscription);
+};
+
+// Auto top-up: the backend's rules, minus Polar (the demo's "card" is always there).
+export const getAutoTopUp: Handler = ({ state }) => json(state.autoTopUp);
+
+export const setAutoTopUp: Handler = async ({ state, request }) => {
+  if (!state.autoTopUp.available) throw notFound("Auto top-up is not available");
+  const body = await readJson(request);
+  const enabled = body.enabled === true;
+  const int = (name: string, min: number, max: number, current: number) => {
+    const v = body[name];
+    if (v === undefined) return current;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < min || v > max) throw badRequest(`${name} must be a whole number from ${min} to ${max}`);
+    return v;
+  };
+  const thresholdCredits = int("thresholdCredits", 20, 1000, state.autoTopUp.thresholdCredits);
+  const monthlyCap = int("monthlyCap", 1, 5, state.autoTopUp.monthlyCap);
+  const topUpId = typeof body.topUpId === "string" ? body.topUpId : state.autoTopUp.topUpId;
+  if (!state.topUps.some((pack) => pack.id === topUpId)) throw badRequest("Unknown top-up pack");
+  if (!enabled) {
+    state.autoTopUp = { ...state.autoTopUp, enabled: false, thresholdCredits, monthlyCap, topUpId };
+    return json(state.autoTopUp);
+  }
+  if (!PAID_PLANS.includes(state.user.plan)) throw planLimit("Auto top-up is for Pro and Max, like top-ups.");
+  if (body.consent !== true) throw badRequest("Allow the charges first: auto top-up charges your saved card.");
+  state.autoTopUp = {
+    ...state.autoTopUp,
+    enabled: true,
+    thresholdCredits,
+    monthlyCap,
+    topUpId,
+    consentedAt: nowIso(),
+    card: { brand: "visa", last4: "4242" },
+    turnedOffReason: null,
+  };
+  return json(state.autoTopUp);
 };
 
 // ---------------------------------------------------------------- credits

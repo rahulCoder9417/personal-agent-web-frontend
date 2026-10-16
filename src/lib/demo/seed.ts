@@ -3,6 +3,7 @@
 
 import { DEFAULT_NOTIFICATIONS } from "@/lib/notifications";
 import type {
+  AutoTopUp,
   ActivityEntry,
   AgentSettings,
   AgentStatus,
@@ -93,6 +94,8 @@ export type DemoData = {
   plans: Plan[];
   topUps: TopUpPack[];
   subscription: Subscription;
+  /** Auto top-up, as `GET /v1/billing/auto-topup` gives it. Hidden unless `TEXTCREW_DEMO_AUTO_TOPUP=on`. */
+  autoTopUp: AutoTopUp;
   grants: CreditGrant[];
   ledger: LedgerEntry[];
   activity: ActivityEntry[];
@@ -808,6 +811,25 @@ function seedMoney(now: Date) {
   return { grants, ledger: ledger.sort(newestFirst), activity: activity.sort(newestFirst), usage, proSince };
 }
 
+/**
+ * Off by default, like the backend's AUTO_TOPUP_ENABLED: `TEXTCREW_DEMO_AUTO_TOPUP=on` shows the
+ * auto top-up section (switched off, ready to be switched on).
+ */
+export function seedAutoTopUp(): AutoTopUp {
+  return {
+    available: process.env.TEXTCREW_DEMO_AUTO_TOPUP === "on",
+    enabled: false,
+    thresholdCredits: 100,
+    topUpId: "topup_10",
+    monthlyCap: 2,
+    consentedAt: null,
+    card: null,
+    turnedOffReason: null,
+    thisMonth: { count: 0, spentCents: 0 },
+    lastAttempt: null,
+  };
+}
+
 function seedSubscription(plan: PlanId, now: Date, proSince: string): Subscription {
   if (plan === "free") return { plan, status: "none", currentPeriodStart: null, currentPeriodEnd: null };
   return { plan, status: "active", currentPeriodStart: proSince, currentPeriodEnd: atDay(now, -20, 9, 0) };
@@ -883,6 +905,7 @@ export function createNewAccount(now: Date, plan: PlanId = process.env.TEXTCREW_
     plans: seedPlans(),
     topUps: [{ id: "topup_10", priceCents: 1000, credits: 800, expiresInDays: CREDIT_LIFETIME_DAYS }],
     subscription: seedSubscription(plan, now, signedUp),
+    autoTopUp: seedAutoTopUp(),
     grants: [
       { id: "grant_signup", source: "signup", amount: 100, remaining: 100, cheapModelOnly: false, createdAt: signedUp, expiresAt: iso(Date.parse(signedUp) + CREDIT_LIFETIME_DAYS * DAY) },
     ],
@@ -949,6 +972,7 @@ export function createSeed(now: Date, plan: PlanId = demoPlan(), account: DemoAc
     plans: seedPlans(),
     topUps: [{ id: "topup_10", priceCents: 1000, credits: 800, expiresInDays: CREDIT_LIFETIME_DAYS }],
     subscription: seedSubscription(plan, now, money.proSince),
+    autoTopUp: seedAutoTopUp(),
     grants: money.grants,
     ledger: money.ledger,
     activity: money.activity,

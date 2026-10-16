@@ -88,7 +88,7 @@ function CreditsLeft({ subscription, plan }: { subscription: Subscription; plan:
 /**
  * Pricing → Your plan: the plan with its price and what happens next (renews, ends, payment
  * failed), the credits left, what the plan includes, and Cancel behind a confirm dialog. Once
- * cancelled it says when it ends: the API can't undo a cancel, so there is no "keep my plan" here.
+ * cancelled it says when it ends; the plan's own column below offers "Keep my plan".
  */
 export function CurrentPlan({
   subscription,

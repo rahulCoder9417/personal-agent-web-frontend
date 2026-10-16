@@ -150,8 +150,9 @@ describe("Cancelling a plan", () => {
     expect(text(yourPlan())).toContain("Cancelled");
     expect(text(yourPlan())).toContain(`Ends on ${periodEnd}. You keep Pro until then, then move to Free.`);
     expect(button("Cancel plan")).toBeUndefined();
-    // The plans offer Pro again, as the backend allows once it is set to end.
-    expect(button("Subscribe to Pro again")).toBeDefined();
+    // Pro's own column offers to keep it, never a second paid month beside the first.
+    expect(button("Keep my plan")).toBeDefined();
+    expect(button("Subscribe to Pro again")).toBeUndefined();
   });
 
   it("says why in a toast when it is refused, never in red on the page, and keeps the plan as it was", async () => {

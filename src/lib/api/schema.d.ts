@@ -1232,6 +1232,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/billing/subscription/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep a cancelled plan (undo a cancel before the period ends)
+         * @description Asks Polar to un-cancel the subscription that is set to end at the end of its period, so it
+         *     renews again as before. Nothing is charged now, and no credits are given: the plan and its
+         *     monthly credits keep following Polar's events (`subscription.uncanceled`, then the usual
+         *     renewal). Answers the subscription as it is now (`active`, or `past_due` if the last payment
+         *     had failed).
+         */
+        post: operations["resumeSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/auto-topup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user's auto top-up settings, this month's top-ups and the last try
+         * @description `available` is false while the server setting `AUTO_TOPUP_ENABLED` is off: the web app then
+         *     hides auto top-up and says nothing about it, and the other fields are the defaults.
+         */
+        get: operations["getAutoTopUp"];
+        /**
+         * Switch auto top-up on or off, and set when and how much
+         * @description Switching on (or changing the settings while on) needs `consent: true`: the user allows
+         *     Polar to charge their saved card for the pack, up to `monthlyCap` times a calendar month
+         *     (UTC), whenever their balance drops under `thresholdCredits`. Pro and Max only. The card
+         *     is the one Polar keeps for the customer (their plan's card); without one the answer is
+         *     409. Switching off needs nothing else and always works. Fields left out keep their value.
+         */
+        put: operations["setAutoTopUp"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/credits": {
         parameters: {
             query?: never;
@@ -3514,6 +3567,61 @@ export interface components {
             currentPeriodStart?: string | null;
             /** Format: date-time */
             currentPeriodEnd?: string | null;
+        };
+        AutoTopUp: {
+            /** @description The server allows auto top-up (`AUTO_TOPUP_ENABLED`). False → hide it. */
+            available: boolean;
+            enabled: boolean;
+            /** @description A top-up is tried when a charge leaves the balance under this many credits. */
+            thresholdCredits: number;
+            /** @description The pack bought each time (see `GET /v1/billing/plans`) */
+            topUpId: string;
+            /** @description At most this many auto top-ups in a calendar month (UTC). */
+            monthlyCap: number;
+            /**
+             * Format: date-time
+             * @description When the user last allowed the charges (switching on, or changing the settings).
+             */
+            consentedAt: string | null;
+            /** @description The saved card Polar charges, as last read from Polar. Null if none was found. */
+            card: null | {
+                brand: string;
+                last4: string;
+            };
+            /**
+             * @description Why it was switched off by itself: `declined` (the card was declined twice in a row),
+             *     `no_card` (Polar had no saved card), `refused` (Polar refused the charge for another
+             *     reason). Null when the user switched it off, or while it is on.
+             */
+            turnedOffReason: null | ("declined" | "no_card" | "refused");
+            thisMonth: {
+                /** @description Auto top-ups charged (or being charged) this month */
+                count: number;
+                /** @description What they cost, before tax */
+                spentCents: number;
+            };
+            lastAttempt: null | components["schemas"]["AutoTopUpAttempt"];
+        };
+        AutoTopUpAttempt: {
+            /**
+             * @description `charging`: the charge is being made. `waiting`: paid, the credits are on their way
+             *     (they arrive with Polar's paid-order event). `credited`: the credits are in.
+             *     `declined`: the card was declined. `failed`: Polar refused or could not be reached.
+             * @enum {string}
+             */
+            status: "charging" | "waiting" | "credited" | "declined" | "failed";
+            /** Format: date-time */
+            at: string;
+            credits: number;
+            amountCents: number;
+        };
+        AutoTopUpUpdate: {
+            enabled: boolean;
+            thresholdCredits?: number;
+            topUpId?: string;
+            monthlyCap?: number;
+            /** @description Must be true to switch on or to change the settings while on. */
+            consent?: boolean;
         };
         /** @enum {string} */
         GrantSource: "signup" | "coupon" | "monthly" | "topup" | "admin" | "refund";
@@ -6464,6 +6572,102 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             /** @description No active paid subscription */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    resumeSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan will renew again */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subscription"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description No cancelled plan that is still running (nothing to keep) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAutoTopUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoTopUp"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    setAutoTopUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutoTopUpUpdate"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoTopUp"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlanLimit"];
+            /** @description Auto top-up is not available on this server (`AUTO_TOPUP_ENABLED` is off) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Polar has no saved card for this user, so nothing can be charged */
             409: {
                 headers: {
                     [name: string]: unknown;

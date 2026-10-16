@@ -22,6 +22,7 @@ import {
   type ApprovalStatus,
   type Attachment,
   type Automation,
+  type AutoTopUpUpdate,
   type AutomationDraft,
   type AutomationDraftSaved,
   type AutomationChange,
@@ -87,6 +88,7 @@ export const qk = {
   memories: ["memories"] as const,
   plans: ["billing", "plans"] as const,
   subscription: ["billing", "subscription"] as const,
+  autoTopUp: ["billing", "auto-topup"] as const,
   credits: ["credits"] as const,
   ledger: ["credits", "ledger"] as const,
   usage: (from: string, to: string) => ["usage", from, to] as const,
@@ -1181,6 +1183,28 @@ export function useCancelSubscription() {
   return useMutation({
     mutationFn: () => unwrap(api.POST("/v1/billing/subscription/cancel")),
     onSuccess: (subscription) => qc.setQueryData(qk.subscription, subscription),
+  });
+}
+
+/** "Keep my plan": undoes a cancel before the period ends (Polar renews it again). */
+export function useResumeSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST("/v1/billing/subscription/resume")),
+    onSuccess: (subscription) => qc.setQueryData(qk.subscription, subscription),
+  });
+}
+
+/** Auto top-up: `available` is false while the server has it switched off (then nothing shows). */
+export function useAutoTopUp(enabled = true) {
+  return useQuery({ queryKey: qk.autoTopUp, queryFn: () => unwrap(api.GET("/v1/billing/auto-topup")), enabled });
+}
+
+export function useSetAutoTopUp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AutoTopUpUpdate) => unwrap(api.PUT("/v1/billing/auto-topup", { body })),
+    onSuccess: (settings) => qc.setQueryData(qk.autoTopUp, settings),
   });
 }
 

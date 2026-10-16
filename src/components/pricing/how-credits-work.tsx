@@ -16,8 +16,12 @@ function Rule({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** Pricing → How credits work: what uses them, how long they last, zero, refunds, and the way to Help. */
-export function HowCreditsWork() {
+/**
+ * Pricing → How credits work: what uses them, how long they last, zero, refunds, and the way to
+ * Help. `autoTopUp`: the server allows auto top-up, so "nothing is charged at zero" holds only
+ * while it is off.
+ */
+export function HowCreditsWork({ autoTopUp = false }: { autoTopUp?: boolean }) {
   return (
     <Card className="flex flex-col gap-5 bg-chrome p-5">
       <dl className="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-x-8 gap-y-5">
@@ -41,7 +45,9 @@ export function HowCreditsWork() {
             and monthly credits you don’t use carry over until their 90 days are up.
           </Rule>
           <Rule title="At zero, Tex pauses">
-            Tex tells you in chat and your automations pause. Nothing is charged to your card: they start again by themselves when credits are added.
+            {autoTopUp
+              ? "Tex tells you in chat and your automations pause. They start again by themselves when credits are added. Your card is charged only if you switch on auto top-up."
+              : "Tex tells you in chat and your automations pause. Nothing is charged to your card: they start again by themselves when credits are added."}
           </Rule>
           <Rule title="Failed tasks are refunded">
             If a task fails because of a problem on our side, Tex says so and the credits it used come back shortly after.

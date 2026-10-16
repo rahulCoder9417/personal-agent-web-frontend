@@ -6,7 +6,8 @@ import { Page, PageBody, PageHeader } from "@/components/page";
 import { SettingsGroup } from "@/components/settings/settings-rows";
 import { ErrorState } from "@/components/ui";
 import type { Plan, Subscription, TopUpPack } from "@/lib/api/client";
-import { usePlans, useSubscription } from "@/lib/api/hooks";
+import { useAutoTopUp, usePlans, useSubscription } from "@/lib/api/hooks";
+import { AutoTopUpSection } from "./auto-top-up";
 import { CheckoutReturn } from "./checkout-return";
 import { CurrentPlan } from "./current-plan";
 import { HowCreditsWork } from "./how-credits-work";
@@ -30,6 +31,7 @@ function Loading() {
 /** Every section, once the plans and the subscription are in. */
 function Sections({ plans, topUps, subscription }: { plans: Plan[]; topUps: TopUpPack[]; subscription: Subscription }) {
   const current = plans.find((p) => p.id === subscription.plan);
+  const autoTopUp = useAutoTopUp().data?.available === true;
   return (
     <>
       <Suspense fallback={null}>
@@ -59,10 +61,12 @@ function Sections({ plans, topUps, subscription }: { plans: Plan[]; topUps: TopU
             <TopUps packs={topUps} allowed={current?.limits.topUps ?? false} />
           </SettingsGroup>
           <SettingsGroup id="credits" title="How credits work" description="1 credit is about 1 cent. Every plan runs on them, so you pay for the work Tex does.">
-            <HowCreditsWork />
+            <HowCreditsWork autoTopUp={autoTopUp} />
           </SettingsGroup>
         </div>
       </div>
+
+      <AutoTopUpSection packs={topUps} allowed={current?.limits.topUps ?? false} />
 
       <p className="text-[12px] text-muted">Checkout and billing are handled by Polar; we never see card details. Your plan changes once Polar confirms the payment.</p>
     </>
@@ -70,7 +74,8 @@ function Sections({ plans, topUps, subscription }: { plans: Plan[]; topUps: TopU
 }
 
 /**
- * Pricing: your plan (with Cancel), every plan side by side, top-ups, and how credits work. The
+ * Pricing: your plan (with Cancel), every plan side by side (a cancelled plan offers Keep my plan),
+ * top-ups, how credits work, and auto top-up when the server allows it. The
  * credit history stays in Settings → Credits; Settings → Plans leads here.
  */
 export function PricingScreen() {

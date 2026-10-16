@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useId, useState, type FormEvent } from "react";
 import { ApiError, errorMessage, type CouponRedemption, type TopUpPack } from "@/lib/api/client";
-import { useRedeemCoupon } from "@/lib/api/hooks";
+import { useAutoTopUp, useRedeemCoupon } from "@/lib/api/hooks";
 import { TopUpOption, TopUpWaiting } from "@/components/pricing/top-ups";
 import { toastError } from "@/components/toast";
 import { Button, ButtonLink, Card, inputClass, SectionLabel } from "@/components/ui";
@@ -118,6 +118,8 @@ export function RedeemCard() {
 }
 
 export function CreditsExplainer() {
+  // With auto top-up allowed on the server, "no surprise bills" says when a card can be charged.
+  const autoTopUp = useAutoTopUp().data?.available === true;
   return (
     <Card role="group" aria-label="How credits work" className="flex flex-col gap-3 bg-chrome p-5 text-[13px] text-fg-2">
       <div className="flex flex-col gap-1.5">
@@ -142,6 +144,7 @@ export function CreditsExplainer() {
       </p>
       <p>
         <strong className="font-semibold text-fg">No surprise bills.</strong> At zero, Tex pauses and tells you in chat.
+        {autoTopUp && " Your card is charged only if you switch on auto top-up in Pricing."}
       </p>
       <Link href={PRICING_PATH} className="self-start font-medium text-accent hover:text-accent-dark">
         Compare plans

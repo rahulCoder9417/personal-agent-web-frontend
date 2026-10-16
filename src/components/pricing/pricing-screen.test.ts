@@ -209,7 +209,7 @@ describe("Pricing on Max", () => {
 });
 
 describe("Pricing once the plan is cancelled", () => {
-  it("says when it ends and that Free comes next, with no Cancel button and no resume", async () => {
+  it("says when it ends and that Free comes next, with no Cancel button (Keep my plan is in the plan's column)", async () => {
     const { qc, subscription } = await account("pro", (s) => ({ ...s, status: "cancel_at_period_end" }));
     const card = yourPlan(draw(qc));
     const words = text(card);
@@ -221,11 +221,12 @@ describe("Pricing once the plan is cancelled", () => {
     expect(words).not.toContain("Keep my plan");
   });
 
-  it("lets Pro be taken again, or Max start, from the plans", async () => {
+  it("lets Pro be kept (never a second paid month), or Max start, from the plans", async () => {
     const { qc } = await account("pro", (s) => ({ ...s, status: "cancel_at_period_end" }));
     const html = draw(qc);
-    expect(column(html, "Pro")).toMatch(/<button [^>]*>Subscribe to Pro again<\/button>/);
-    expect(text(column(html, "Pro"))).toContain("Subscribing again starts a new month today.");
+    expect(column(html, "Pro")).toMatch(/<button [^>]*>Keep my plan<\/button>/);
+    expect(text(column(html, "Pro"))).toContain("Keep it and it renews as before; nothing is charged today.");
+    expect(column(html, "Pro")).not.toContain("Subscribe to Pro again");
     expect(column(html, "Max")).toMatch(/<button [^>]*>Start Max<\/button>/);
   });
 });

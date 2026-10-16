@@ -4,7 +4,8 @@ import { useDeferredValue, useId, useMemo, useState, type ReactNode } from "reac
 import { chatDraftHref } from "@/lib/chat-link";
 import { cn } from "@/lib/format";
 import { countAnswers, PLACES, placeName, searchHelp, type HelpIconName, type HelpSection, type HelpTopic } from "@/lib/help";
-import { CREW_SECTION_ID, HELP_ASK_TEX, HELP_POPULAR, HELP_SECTIONS } from "@/lib/help-content";
+import { useAutoTopUp } from "@/lib/api/hooks";
+import { CREW_SECTION_ID, HELP_ASK_TEX, HELP_POPULAR, helpSectionsFor } from "@/lib/help-content";
 import { AppIcon } from "../brand-icon";
 import { ApprovalsIcon, AppsIcon, AutomationsIcon, ChevronRightIcon, CloseIcon, CrewIcon, KeyIcon, LinkIcon, LockIcon, SearchIcon, WarningIcon } from "../icons";
 import { Columns, COLUMN_ITEM, Page, PageBody, PageHeader, READING } from "../page";
@@ -235,7 +236,10 @@ function StillStuck() {
 export function HelpScreen() {
   const [query, setQuery] = useState("");
   const typed = useDeferredValue(query);
-  const found = useMemo(() => searchHelp(HELP_SECTIONS, typed), [typed]);
+  // Auto top-up has an answer only while the server allows it.
+  const autoTopUp = useAutoTopUp().data?.available === true;
+  const sections = useMemo(() => helpSectionsFor({ autoTopUp }), [autoTopUp]);
+  const found = useMemo(() => searchHelp(sections, typed), [sections, typed]);
   const searching = typed.trim() !== "";
 
   return (
@@ -251,7 +255,7 @@ export function HelpScreen() {
         ) : (
           <>
             <Intro />
-            <Contents sections={HELP_SECTIONS} />
+            <Contents sections={sections} />
           </>
         )}
         {found.map((section) => (
