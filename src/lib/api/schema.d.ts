@@ -352,6 +352,19 @@ export interface paths {
          *       apology (`message.created`) and no answer.
          *     - Drafts and the end of their turn are sent in order, so no draft of a turn comes after its
          *       end. After a reconnect, the next draft (if the turn still runs) brings the whole text back.
+         *
+         *     **Event ids and catching up after a reconnect.** Every event but `message.draft` has an SSE
+         *     `id:` (like `1760600000000-0`; ids only grow). The stream keeps each user's events of the
+         *     last 15 minutes, at most the last 500. A connection that gives the id of the last event it
+         *     got (the `Last-Event-ID` header, which the browser's EventSource sends by itself when it
+         *     reconnects, or `?lastEventId=` for a new EventSource) gets every event after it first, in
+         *     order, then the live ones, each once. The first event is always `ready`, with
+         *     `{"resumed": true}` when everything since that id is replayed, and `{"resumed": false}`
+         *     when it can't be (no id given, the id is too old or unknown, or the record could not be
+         *     read): the app then asks for the lists again, as it did before ids existed. A
+         *     `message.draft` has no id and is never replayed: the next draft brings the whole text back.
+         *     `ping` (after 25 seconds without an event) has no id either.
+         *
          *     Browsers can't set headers on EventSource, so the token may be passed as `?token=`.
          */
         get: operations["streamEvents"];
@@ -4518,6 +4531,15 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /** @description The data of the `ready` event, the first on every connection to `GET /v1/stream`. */
+        StreamReady: {
+            /**
+             * @description True: the connection gave a `Last-Event-ID`, and every event after it is sent before
+             *     the live ones, so nothing was missed. False: nothing is replayed; anything sent while
+             *     the client was away is not sent again, so the client asks for its lists again.
+             */
+            resumed: boolean;
+        };
         StreamEvent: {
             /** @enum {string} */
             type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated" | "automation_draft.updated" | "conversation.updated" | "conversation.deleted" | "message.draft";
@@ -5115,20 +5137,25 @@ export interface operations {
         parameters: {
             query?: {
                 token?: string;
+                /** @description The same as `Last-Event-ID`, for a new EventSource, which can't set headers. The header wins. */
+                lastEventId?: string;
             };
-            header?: never;
+            header?: {
+                /** @description The id of the last event this client got. The events after it are sent first. */
+                "Last-Event-ID"?: string;
+            };
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Event stream */
+            /** @description Event stream. The data of `ready` is a `StreamReady`; of every other event but `ping`, a `StreamEvent`. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/event-stream": components["schemas"]["StreamEvent"];
+                    "text/event-stream": components["schemas"]["StreamEvent"] | components["schemas"]["StreamReady"];
                 };
             };
             401: components["responses"]["Unauthorized"];
