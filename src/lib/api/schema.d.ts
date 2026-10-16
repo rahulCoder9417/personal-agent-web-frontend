@@ -2586,6 +2586,13 @@ export interface components {
              *     draft; in a chat app it is the outline sent there, with the link and a Save button.
              */
             automationDraftId?: string | null;
+            /**
+             * @description The `clientMessageId` the web app sent this message with (`POST /v1/messages`). Only
+             *     on a message the user wrote in the web app; left out on every other message. A client
+             *     that shows a message before the server has answered (an optimistic bubble) matches it
+             *     to the saved one with this, also when the saved one arrives first on the live stream.
+             */
+            clientMessageId?: string;
             /** Format: date-time */
             createdAt: string;
         };
