@@ -36,7 +36,8 @@ export function AutomationsIntro({ compact = false }: { compact?: boolean }) {
             </h2>
             <p className={cn("text-[14px] text-muted", READING)}>
               An automation is a job you hand Tex once, in plain words. Tex then does it at the time you named, on a schedule, or the moment
-              something happens in one of your apps, and posts each result in your Automations chat. There is no form: you make one by asking.
+              something happens in one of your apps, and posts each result in your Automations chat. There is no form: you ask, Tex shows you a draft, and you
+              save it. Nothing runs before you do.
             </p>
           </div>
 

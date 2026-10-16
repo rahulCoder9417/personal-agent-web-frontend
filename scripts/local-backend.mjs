@@ -6,9 +6,9 @@
 //
 // What is real: every /v1 route, the OpenAPI validation, the database, the job queues, credits,
 // approvals, automations, the Polar webhook handling.
-// What is a stand-in: the agent (a small script that answers, asks for approval and makes
-// automations), Composio, LiteLLM, Telegram, and Polar's hosted checkout (a local page whose
-// "Pay" button sends the same signed webhooks Polar would).
+// What is a stand-in: the agent (a small script that answers, asks for approval, sets reminders
+// and proposes automation drafts), Composio, LiteLLM, Telegram, and Polar's hosted checkout (a
+// local page whose "Pay" button sends the same signed webhooks Polar would).
 //
 // It prints a session token for a seeded user. Put it in .env.local as TEXTCREW_DEV_TOKEN and the
 // app talks to this backend without Clerk. Data is wiped on every start.
@@ -85,6 +85,20 @@ await (await load("src/shared/db/migrate.ts")).runMigrations();
 
 const { DeliverKind } = await load("proto-gen/vm/v1/vm_pb.ts");
 
+/** The stand-in agent's last draft in each chat, so "make it 8:30 instead" proposes a newer version of it. */
+const lastDraftIds = new Map();
+
+/**
+ * Proposes an automation, as Tex does for anything more than a plain reminder: the platform posts
+ * the draft (a card in web chat; an outline, the link and ✅ Save on Telegram) and the turn ends.
+ * Only the user saves it.
+ */
+async function propose(mcp, delivery, parts) {
+  const made = await mcp("propose_automation", { ...parts, session_key: delivery.sessionKey });
+  if (made.isError) return mcp("send_message", { text: `I couldn’t draft that: ${made.text}`, session_key: delivery.sessionKey });
+  lastDraftIds.set(delivery.sessionKey, JSON.parse(made.text).draft_id);
+}
+
 /** The scripted agent. It uses the same platform tools a real agent would. */
 async function agent(delivery, mcp) {
   const say = (text) => mcp("send_message", { text, session_key: delivery.sessionKey });
@@ -99,14 +113,33 @@ async function agent(delivery, mcp) {
 
   // Schedules first: "every Monday, send me my week" is an automation, not an email.
   if (/\bevery (monday|week|weekday|day|morning)\b/i.test(text)) {
-    const made = await mcp("create_automation", {
+    return propose(mcp, delivery, {
       title: "Send me my week",
       instruction: "Read my calendar and inbox and send a short summary.",
       cron: "0 9 * * 1",
       timezone: "Asia/Kolkata",
-      session_key: delivery.sessionKey,
+      apps: ["googlecalendar", "gmail"],
     });
-    return say(made.isError ? `I couldn’t set that up: ${made.text}` : "Set. Every Monday at 9:00 I’ll send you your week.");
+  }
+  // "When my boss emails me, tell me": an app event.
+  if (/\bwhen\b.*\b(email|emails|mail)\b/i.test(text)) {
+    return propose(mcp, delivery, {
+      title: "Boss emails",
+      instruction: "Tell me who wrote and what they want, in two lines.",
+      trigger: { app: "gmail", event: "GMAIL_NEW_GMAIL_MESSAGE", config: { from: "boss@northwind.studio" } },
+      apps: ["gmail"],
+    });
+  }
+  // "Make it 8:30 instead": a newer version of the last draft, which it replaces.
+  if (lastDraftIds.has(delivery.sessionKey) && /\b(instead|make it)\b/i.test(text)) {
+    return propose(mcp, delivery, {
+      title: "Send me my week",
+      instruction: "Read my calendar and inbox and send a short summary.",
+      cron: "30 8 * * 1",
+      timezone: "Asia/Kolkata",
+      apps: ["googlecalendar", "gmail"],
+      replaces_draft_id: lastDraftIds.get(delivery.sessionKey),
+    });
   }
   if (/\bremind\b/i.test(text)) {
     const made = await mcp("schedule_reminder", {
@@ -131,7 +164,8 @@ async function agent(delivery, mcp) {
 const EMAIL = { to: "maya@acme.com", subject: "Moving today’s 3pm", body: "Hi Maya, could we move today’s 3pm to tomorrow, same time? Thanks!" };
 
 fakes.installFakeVm(agent);
-fakes.installFakeTelegram();
+/** What the bot "sent" to Telegram: the stand-in keeps it, buttons and all. */
+const telegram = fakes.installFakeTelegram();
 await fakes.installFakeComposio();
 // Any key is accepted, except one containing "bad" (to see the rejection).
 (await load("src/modules/integrations/byok.ts")).setByokVerifier(async (_provider, key) => !key.includes("bad"));
@@ -208,7 +242,7 @@ async function localRoute(request, url) {
   }
 
   // POST /__local/telegram  {"text": "LINK-ABCD-EFGH"}: a message from the seeded Telegram chat.
-  if (parts[1] === "telegram" && request.method === "POST") {
+  if (parts[1] === "telegram" && !parts[2] && request.method === "POST") {
     const { text } = await request.json();
     const response = await fetch(`${API}/webhooks/telegram`, {
       method: "POST",
@@ -218,10 +252,27 @@ async function localRoute(request, url) {
     return Response.json({ delivered: response.ok });
   }
 
+  // POST /__local/telegram/button  {"data": "drf:<id>:save"}: the seeded chat taps a button.
+  if (parts[1] === "telegram" && parts[2] === "button" && request.method === "POST") {
+    const { data } = await request.json();
+    const response = await fetch(`${API}/webhooks/telegram`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": process.env.TELEGRAM_WEBHOOK_SECRET },
+      body: JSON.stringify(fakes.telegramButton(TELEGRAM_CHAT, String(data))),
+    });
+    return Response.json({ delivered: response.ok });
+  }
+
+  // GET /__local/telegram/sent: what the bot sent to Telegram, with its buttons, newest last.
+  if (parts[1] === "telegram" && parts[2] === "sent") return Response.json(telegram.sent);
+
   return html(
     `<h1>Textcrew local backend</h1><p>The real API on <code>${API}</code>, with stand-ins for the agent, Composio and Polar.</p>
      <p class=m>Send a Telegram message as the seeded chat (use it to finish a link code):</p>
-     <pre>curl -X POST ${API}/__local/telegram -H 'content-type: application/json' -d '{"text":"LINK-XXXX-XXXX"}'</pre>`,
+     <pre>curl -X POST ${API}/__local/telegram -H 'content-type: application/json' -d '{"text":"LINK-XXXX-XXXX"}'</pre>
+     <p class=m>See what the bot sent there, and tap a button under it (a draft's ✅ Save):</p>
+     <pre>curl ${API}/__local/telegram/sent
+curl -X POST ${API}/__local/telegram/button -H 'content-type: application/json' -d '{"data":"drf:…:save"}'</pre>`,
   );
 }
 
@@ -275,13 +326,16 @@ const asUser = (pathname, init = {}) =>
 const send = (text) => asUser("/v1/messages", { method: "POST", body: JSON.stringify({ text, clientMessageId: randomUUID() }) });
 const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// A linked Telegram chat, a few messages, one pending approval and one automation.
+// A linked Telegram chat, a few messages, one pending approval and one automation draft in each
+// of web chat and Telegram (nothing runs until the user saves one).
 const link = await (await asUser("/v1/channels/link-codes", { method: "POST", body: JSON.stringify({ channel: "telegram" }) })).json();
 await fetch(`${API}/__local/telegram`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: link.code }) });
 await settle(1500);
 await send("Every Monday at 9am, send me my week");
 await settle(2500);
 await send("Email Maya that our 3pm moves to tomorrow");
+await settle(2500);
+await fetch(`${API}/__local/telegram`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "When my boss emails me, tell me" }) });
 await settle(2500);
 
 const balance = (await (await asUser("/v1/me")).json()).credits?.balance;

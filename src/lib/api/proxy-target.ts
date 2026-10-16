@@ -15,6 +15,7 @@ export const ALLOWED_RESOURCES: ReadonlySet<string> = new Set([
   "mcp-servers",
   "byok",
   "automations",
+  "automation-drafts",
   "pr-reviews",
   "agent",
   "crew",

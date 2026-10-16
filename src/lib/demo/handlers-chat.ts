@@ -27,6 +27,7 @@ import {
   messageSaved,
   startWebConversation,
 } from "./handlers-conversations";
+import { proposalOf, proposeDraft } from "./handlers-drafts";
 import { memoryRequestOf, rememberFact } from "./handlers-memory";
 import { syncAgentSettings } from "./handlers-setup";
 import { BYTE_REPLY, SCOUT_REPLY } from "./replies";
@@ -98,7 +99,13 @@ function setMessageStatus(state: DemoState, id: string, status: Message["status"
 }
 
 /** Tex says something in a conversation. Nothing is said in one that was deleted in the meantime. */
-export function postFromTex(state: DemoState, conversationId: string, text: string, approvalId: string | null = null): void {
+export function postFromTex(
+  state: DemoState,
+  conversationId: string,
+  text: string,
+  approvalId: string | null = null,
+  automationDraftId: string | null = null,
+): void {
   const conversation = findConversation(state, conversationId);
   if (!conversation) return;
   const message: Message = {
@@ -109,6 +116,8 @@ export function postFromTex(state: DemoState, conversationId: string, text: stri
     text,
     status: "sent",
     approvalId,
+    // A draft Tex proposed: the web app draws its card under the line (as the backend sends it).
+    ...(automationDraftId ? { automationDraftId } : {}),
     createdAt: nowIso(),
   };
   state.messages.unshift(message);
@@ -276,8 +285,14 @@ function answer(state: DemoState, request: Message, job: CrewJob | null = null):
   setMessageStatus(state, request.id, "read");
   // "Remember that…" is a fact to keep, not a job: it comes first, so its words can't be taken for one.
   const fact = memoryRequestOf(request.text);
-  const risk = fact ? null : riskOf(request.text);
-  if (fact) {
+  // Something to do later is proposed as a draft, before anything in it can be read as a risky
+  // action or a job for the crew ("every Monday, send me my open pull requests").
+  const proposed = fact ? null : proposeDraft(state, request);
+  const risk = fact || proposed ? null : riskOf(request.text);
+  if (proposed) {
+    postFromTex(state, request.conversationId, proposed.line, null, proposed.draft.id);
+    chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
+  } else if (fact) {
     postFromTex(state, request.conversationId, rememberFact(state, fact));
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
   } else if (risk) {
@@ -363,9 +378,11 @@ export const sendMessage: Handler = async ({ state, request }) => {
     setMessageStatus(state, message.id, "processing");
   });
   // A job for a specialist takes longer, and says what it is doing on the way.
-  const job = memoryRequestOf(text) || riskOf(text) ? null : crewJobOf(state, text);
-  // Tex's answer is written on screen as it is written, as in web chat for real.
-  const reply = plannedReply(message, job);
+  const later = !memoryRequestOf(text) && proposalOf(text) !== null;
+  const job = later || memoryRequestOf(text) || riskOf(text) ? null : crewJobOf(state, text);
+  // Tex's answer is written on screen as it is written, as in web chat for real. A draft is posted
+  // whole, with its card.
+  const reply = later ? null : plannedReply(message, job);
   if (job) {
     // Tex says who it hands the job to, then starts over when the specialist sets to work.
     writeDraft(state, message, `I’ll hand this to ${job.name}.`, PICKUP_MS + DRAFT_STEP_MS, PICKUP_MS + 8 * DRAFT_STEP_MS);

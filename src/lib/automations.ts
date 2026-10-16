@@ -234,7 +234,11 @@ function dayAndTime(iso: string, now: Date): string {
  * "Once, tomorrow at 10:00 AM", "When a new email arrives in Gmail". `accountZone` is the
  * person's own time zone (from their profile), so a schedule in it reads "your time".
  */
-export function describeAutomationWhen(automation: Automation, accountZone?: string | null, now = new Date()): string {
+export function describeAutomationWhen(
+  automation: Pick<Automation, "preset" | "kind" | "runAt" | "cron" | "timezone" | "trigger">,
+  accountZone?: string | null,
+  now = new Date(),
+): string {
   // The trigger's own name (GITHUB_PULL_REQUEST_EVENT) says less than this does.
   if (automation.preset === "pr_review") return "When a pull request opens or gets new commits";
 
@@ -321,7 +325,10 @@ export const AUTOMATION_CREDITS =
  * card: "Tomorrow, 8:00 AM", "Each time it happens", "2h ago", "Not yet". `ran` says whether there
  * is a result to look at in the Automations chat.
  */
-export function describeAutomationTimes(automation: Automation, now = new Date()): { next: string; last: string; ran: boolean } {
+export function describeAutomationTimes(
+  automation: Pick<Automation, "preset" | "enabled" | "kind" | "nextRunAt" | "lastRunAt" | "pausedReason">,
+  now = new Date(),
+): { next: string; last: string; ran: boolean } {
   const review = automation.preset === "pr_review";
   let next: string;
   if (!automation.enabled) next = "Not while it’s paused";

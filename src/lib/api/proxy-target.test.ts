@@ -19,6 +19,16 @@ describe("resolveUpstream", () => {
     expect(resolveUpstream(BASE, ["pr-reviews", "acme", ".."])).toBeNull();
   });
 
+  it("lets one automation and the automation drafts through", () => {
+    expect(resolveUpstream(BASE, ["automations", "aut_1"])?.toString()).toBe("http://localhost:8080/v1/automations/aut_1");
+    expect(resolveUpstream(BASE, ["automation-drafts"])?.toString()).toBe("http://localhost:8080/v1/automation-drafts");
+    expect(resolveUpstream(BASE, ["automation-drafts", "drf_1", "save"])?.toString()).toBe("http://localhost:8080/v1/automation-drafts/drf_1/save");
+    expect(resolveUpstream(BASE, ["automation-drafts", "drf_1", "discard"])?.toString()).toBe(
+      "http://localhost:8080/v1/automation-drafts/drf_1/discard",
+    );
+    expect(resolveUpstream(BASE, ["automation-drafts", ".."])).toBeNull();
+  });
+
   it("lets crew jobs and the GitHub repos to pick from through", () => {
     expect(resolveUpstream(BASE, ["crew-jobs"], "?limit=20")?.toString()).toBe("http://localhost:8080/v1/crew-jobs?limit=20");
     expect(resolveUpstream(BASE, ["crew-jobs", "crj_01jb2k"])?.toString()).toBe("http://localhost:8080/v1/crew-jobs/crj_01jb2k");

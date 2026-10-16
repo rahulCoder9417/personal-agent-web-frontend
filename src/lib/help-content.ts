@@ -472,8 +472,14 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         id: "automations-make",
         title: "Make one",
         blocks: [
-          p("Ask Tex in chat, in plain words. There is no form. Tex says what it set up and when it runs."),
+          p("Ask Tex in chat, in plain words. There is no form. Tex shows it back as a **draft** first: in the web chat a card with its steps drawn small and **Save**; on Telegram an outline with a link and a **Save** button. Nothing runs until you save it."),
           ask("Every weekday at 10am, list the pull requests waiting for my review."),
+          list(
+            "**Open in Automations** shows the draft on a canvas, step by step, before you save it.",
+            "**Save paused** saves it switched off, to turn on when you’re ready.",
+            "A draft is kept for 7 days. Ask Tex to change it and it proposes a new version; the old one says it was replaced.",
+            "A plain one-time reminder (“Remind me Friday at 10 to call the bank”) is set at once, without a draft.",
+          ),
           p("{automations} has ready-made ones. A click opens the chat with the words typed in; nothing is sent until you press Send."),
         ],
       },
@@ -507,8 +513,8 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         title: "Pause, change or delete one",
         blocks: [
           list(
-            "On {automations}, the switch on each card pauses or resumes it.",
-            "**Change** opens the chat with “Change my automation …” typed in. Tell Tex what to change.",
+            "On {automations}, the switch on each card pauses or resumes it. Its name, or its strip of steps, opens its own page, where it is drawn as a flow.",
+            "**Change** opens the chat with “Change my automation …” typed in. Tell Tex what to change: it shows the change as a draft, with the steps that change marked, and saving it replaces the old one.",
             "**Delete** removes it, after asking once more.",
           ),
           p("Textcrew pauses an automation by itself at zero credits (it comes back when credits are added) and after 3 failures in a row (turn it back on yourself)."),

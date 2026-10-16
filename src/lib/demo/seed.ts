@@ -9,6 +9,7 @@ import type {
   Approval,
   Attachment,
   Automation,
+  AutomationDraft,
   ByokKey,
   ChannelLink,
   ChannelType,
@@ -72,6 +73,8 @@ export type DemoData = {
   mcpServers: McpServer[];
   byok: ByokKey[];
   automations: Automation[];
+  /** The drafts Tex proposed in the chats, in any state, newest first. */
+  drafts: AutomationDraft[];
   /** The repos with pull-request review on. Each one belongs to an automation with `preset: pr_review`. */
   prReviews: DemoPrReview[];
   /** When review was last turned on, for the limit of 30 an hour. */
@@ -531,11 +534,18 @@ const SEED_REVIEWS: readonly DemoPrReview[] = [
 ];
 
 /** A repo with review on is an automation like any other, with the preset that marks it. */
-export function reviewAutomation(id: string, name: string, timezone: string, createdAt: string): Automation {
+export function reviewAutomation(
+  id: string,
+  name: string,
+  timezone: string,
+  createdAt: string,
+  copyTo: Automation["copyTo"] = "telegram",
+): Automation {
+  const [owner, repo] = name.split("/");
   return {
     id, kind: "event", title: `Review pull requests in ${name}`, instruction: `Have Patch review each pull request in ${name}.`,
-    trigger: { app: "github", event: "GITHUB_PULL_REQUEST_EVENT" }, preset: "pr_review", timezone, enabled: true, pausedReason: null,
-    nextRunAt: null, lastRunAt: null, createdAt,
+    trigger: { app: "github", event: "GITHUB_PULL_REQUEST_EVENT", config: { owner, repo } }, preset: "pr_review", timezone, enabled: true, pausedReason: null,
+    nextRunAt: null, lastRunAt: null, createdAt, copyTo,
   };
 }
 
@@ -547,18 +557,68 @@ function seedAutomations(now: Date): Automation[] {
   return [
     {
       id: "aut_meetings", kind: "repeat", title: "Today’s meetings", instruction: "Send me today’s meetings with who’s in each one.",
-      cron: "0 8 * * 1-5", timezone, preset: null, enabled: true, pausedReason: null,
+      cron: "0 8 * * 1-5", timezone, preset: null, enabled: true, pausedReason: null, copyTo: "telegram",
       nextRunAt: nearestRun(now, 8, weekdays, 1), lastRunAt: nearestRun(now, 8, weekdays, -1), createdAt: created,
     },
     {
       id: "aut_invoice", kind: "once", title: "Chase the Acme invoice", instruction: "Remind me to chase invoice INV-2291.",
-      runAt: atDay(now, -1, 10), timezone, preset: null, enabled: true, pausedReason: null,
+      runAt: atDay(now, -1, 10), timezone, preset: null, enabled: true, pausedReason: null, copyTo: null,
       nextRunAt: atDay(now, -1, 10), lastRunAt: null, createdAt: atDay(now, 3, 12, 5),
     },
     { ...reviewAutomation("aut_pr_website", "northwind/website", timezone, atDay(now, 8, 10, 30)), lastRunAt: earlierToday(now, 93) },
     {
       ...reviewAutomation("aut_pr_api", "northwind/api", timezone, atDay(now, 6, 9, 30)),
       enabled: false, pausedReason: "failures", lastRunAt: atDay(now, 2, 16, 20),
+    },
+  ];
+}
+
+/** How long Tex's drafts are kept, as the backend keeps them. */
+export const DRAFT_DAYS = 7;
+
+/** The outline the backend sends to Telegram for a draft, with its link and a Save button. */
+export function draftOutline(draft: Pick<AutomationDraft, "id" | "kind" | "title" | "instruction" | "changeOf">, when: string, apps: string[]): string {
+  const icon = draft.kind === "event" ? "⚡" : "⏰";
+  const link = draft.changeOf ? `https://app.textcrew.in/automations/${draft.changeOf}?draft=${draft.id}` : `https://app.textcrew.in/automations/new?draft=${draft.id}`;
+  return [
+    `${icon} New automation, not saved yet: ${draft.title}`,
+    `When: ${when}`,
+    `Tex: ${draft.instruction}`,
+    ...(apps.length ? [`Apps: ${apps.join(", ")}`] : []),
+    "Asks first: before sending, deleting or paying",
+    "Results: your Automations chat, and a copy here",
+    `Review it: ${link}`,
+  ].join("\n");
+}
+
+/**
+ * Tex's drafts so far. In the active web chat, "Every Monday at 10…" was proposed, then asked again
+ * at 9: the first is replaced by the second, which waits to be saved. On Telegram, "When my boss
+ * emails me…" waits too, as an app event with its setting (who it is from).
+ */
+function seedDrafts(now: Date): AutomationDraft[] {
+  const timezone = "Asia/Kolkata";
+  const keep = (createdAt: string) => iso(Date.parse(createdAt) + DRAFT_DAYS * DAY);
+  const monday = {
+    kind: "repeat" as const, madeBy: "agent" as const, changeOf: null, title: "Monday pull requests",
+    instruction: "List my open pull requests in northwind/website and say which ones are waiting on me.",
+    runAt: null, timezone, trigger: null, apps: ["github"], copyTo: null, automationId: null,
+  };
+  return [
+    {
+      ...monday, id: "drf_monday", status: "open", cron: "0 9 * * 1", nextRunAt: nearestRun(now, 9, [1], 1),
+      replacedBy: null, createdAt: earlierToday(now, 46), expiresAt: keep(earlierToday(now, 46)), decidedAt: null,
+    },
+    {
+      ...monday, id: "drf_monday_10", status: "replaced", cron: "0 10 * * 1", nextRunAt: nearestRun(now, 10, [1], 1),
+      replacedBy: "drf_monday", createdAt: earlierToday(now, 49), expiresAt: keep(earlierToday(now, 49)), decidedAt: earlierToday(now, 46),
+    },
+    {
+      id: "drf_boss", status: "open", madeBy: "agent", changeOf: null, kind: "event", title: "Boss emails",
+      instruction: "Tell me who wrote and what they want, in two lines.", runAt: null, cron: null, timezone,
+      trigger: { app: "gmail", event: "GMAIL_NEW_GMAIL_MESSAGE", config: { from: "boss@northwind.studio" } },
+      apps: ["gmail"], copyTo: "telegram", nextRunAt: null, replacedBy: null, automationId: null,
+      createdAt: earlierToday(now, 119), expiresAt: keep(earlierToday(now, 119)), decidedAt: null,
     },
   ];
 }
@@ -644,6 +704,16 @@ function seedChats(now: Date, withAutomationsChat: boolean): { conversations: Co
       attachments: [{ id: "att_voice_1", name: "voice-note.ogg", mimeType: "audio/ogg" }],
     }],
     ["msg_2", earlierToday(now, 207), { direction: "out", status: "delivered", text: "Filed. Tidy notes are on your “Acme kickoff” page in Notion." }],
+    // On Telegram a draft is an outline with its link and a Save button; the web app draws its card.
+    ["msg_tg_boss_ask", earlierToday(now, 120), { direction: "in", status: "read", text: "When my boss emails me, tell me here" }],
+    ["msg_tg_boss", earlierToday(now, 119), {
+      direction: "out", status: "delivered", automationDraftId: "drf_boss",
+      text: draftOutline(
+        { id: "drf_boss", kind: "event", title: "Boss emails", instruction: "Tell me who wrote and what they want, in two lines.", changeOf: null },
+        "a new email arrives in Gmail (from: boss@northwind.studio)",
+        ["Gmail"],
+      ),
+    }],
     // A copy of the verdict that is kept in the Automations chat (the review was turned on with Telegram linked).
     ["msg_review_copy", earlierToday(now, 92), {
       direction: "out", status: "delivered",
@@ -658,6 +728,12 @@ function seedChats(now: Date, withAutomationsChat: boolean): { conversations: Co
   chat("cnv_web_1", "web", 1, true, [
     ["msg_w5", earlierToday(now, 55), { direction: "in", status: "read", text: "What did you get done for me yesterday?" }],
     ["msg_w6", earlierToday(now, 54), { direction: "out", status: "sent", text: "Yesterday I posted your update in #team once you gave the OK, and filed two sets of meeting notes in Notion. Nothing from then is waiting on you." }],
+    // Tex proposes an automation as a draft, as the backend does: one line, and the card under it.
+    // Asked again, the newer draft replaces the first.
+    ["msg_w6a", earlierToday(now, 50), { direction: "in", status: "read", text: "Every Monday at 10, send me my open pull requests" }],
+    ["msg_w6b", earlierToday(now, 49), { direction: "out", status: "sent", automationDraftId: "drf_monday_10", text: "Here's a draft of \"Monday pull requests\". Nothing runs until you save it." }],
+    ["msg_w6c", earlierToday(now, 47), { direction: "in", status: "read", text: "Make it 9 instead" }],
+    ["msg_w6d", earlierToday(now, 46), { direction: "out", status: "sent", automationDraftId: "drf_monday", text: "Here's a draft of \"Monday pull requests\". Nothing runs until you save it." }],
     ["msg_w7", earlierToday(now, 41), { direction: "in", status: "read", text: `What did Patch find in pull request #${REVIEWED.number}? What should I fix first?` }],
     // An answer written in Markdown, as Tex writes for the web chat: a heading, a table, code, a list, a link.
     ["msg_w8", earlierToday(now, 40), { direction: "out", status: "sent", text: prFindingsReply(REVIEWED.number) }],
@@ -787,6 +863,7 @@ export function createNewAccount(now: Date, plan: PlanId = process.env.TEXTCREW_
     mcpServers: [],
     byok: [noKey("anthropic", "claude-sonnet-5-5"), noKey("openai", "gpt-6.1-sol"), noKey("openrouter", "anthropic/claude-sonnet-5.5")],
     automations: [],
+    drafts: [],
     prReviews: [],
     prReviewCalls: [],
     // Made at sign-up, not started yet.
@@ -852,6 +929,7 @@ export function createSeed(now: Date, plan: PlanId = demoPlan(), account: DemoAc
       { provider: "openrouter", set: false, last4: null, model: null, effectiveModel: "anthropic/claude-sonnet-5.5", inUse: false, updatedAt: null },
     ],
     automations: seedAutomations(now),
+    drafts: seedDrafts(now),
     prReviews: SEED_REVIEWS.map((review) => ({ ...review })),
     prReviewCalls: [],
     agentStatus: { state: "awake", lastActiveAt: earlierToday(now, 15) },

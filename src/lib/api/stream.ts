@@ -17,8 +17,8 @@ import {
   turnsOverAfterReconnect,
 } from "../drafts";
 import { threadIsWorking } from "../chat-thread";
-import type { AgentProgress, AgentStatus, Approval, Conversation, CreditBalance, Message, MessageDraft, StreamEvent } from "./client";
-import { addMessage, cachedThread, invalidateAutomations, noteAgentStatusEvent, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
+import type { AgentProgress, AgentStatus, Approval, AutomationDraft, Conversation, CreditBalance, Message, MessageDraft, StreamEvent } from "./client";
+import { addMessage, cachedThread, invalidateAutomations, noteAgentStatusEvent, noteDraft, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
 
 const EVENT_TYPES: StreamEvent["type"][] = [
   "message.created",
@@ -30,6 +30,7 @@ const EVENT_TYPES: StreamEvent["type"][] = [
   "agent.progress",
   "credits.updated",
   "automation.updated",
+  "automation_draft.updated",
   "conversation.updated",
   "conversation.deleted",
 ];
@@ -175,6 +176,13 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
     case "automation.updated":
       void invalidateAutomations(qc);
       break;
+    case "automation_draft.updated": {
+      // A draft Tex proposed, saved, discarded, replaced or expired: its card and page follow.
+      const draft = event.data as AutomationDraft;
+      noteDraft(qc, draft);
+      if (draft.status === "saved") void invalidateAutomations(qc);
+      break;
+    }
   }
 }
 

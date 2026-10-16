@@ -279,6 +279,13 @@ export const disconnectClaude: Handler = ({ state }) => {
 
 export const listAutomations: Handler = ({ state }) => json({ items: state.automations });
 
+/** One automation, for its own page. Unknown (or deleted): 404, as the backend answers for another account's too. */
+export const getAutomation: Handler = ({ state, params }) => {
+  const automation = state.automations.find((item) => item.id === params.automationId);
+  if (!automation) throw notFound("Automation not found");
+  return json(automation);
+};
+
 export const updateAutomation: Handler = async ({ state, request, params }) => {
   const automation = state.automations.find((item) => item.id === params.automationId);
   if (!automation) throw notFound("That automation doesn't exist");

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AutomationCard } from "@/components/automations/automation-card";
+import { DraftsWaiting } from "@/components/automations/drafts-waiting";
 import { AutomationsIntro } from "@/components/automations/intro";
 import { AutomationsOverview } from "@/components/automations/overview";
 import { usePlanAutomations } from "@/components/automations/plan-meter";
@@ -20,8 +21,8 @@ const KINDS: Automation["kind"][] = ["once", "repeat", "event"];
 
 const STEPS = [
   { title: "Ask Tex", body: "Type it in the box above, pick a template below, or say it your own way in chat: what to do, and when." },
-  { title: "Tex confirms", body: "It tells you what it understood and when it will run. Nothing risky happens without your OK." },
-  { title: "It shows up here", body: "With its next run, in plain words. Each result lands in your Automations chat. Pause or delete it any time." },
+  { title: "Tex drafts it", body: "You see it as a small diagram of its steps, with Save. On Telegram: an outline, a link and a Save button." },
+  { title: "You save it", body: "Nothing runs before you do. Then it shows up here with its next run, and each result lands in your Automations chat." },
 ];
 
 const CARD_GRID = "grid grid-cols-[repeat(auto-fill,minmax(min(340px,100%),1fr))] gap-3";
@@ -90,6 +91,8 @@ export default function AutomationsPage() {
       <AutomationsIntro compact={all.length > 0} />
 
       {all.length > 0 && <AutomationsOverview automations={all} />}
+
+      <DraftsWaiting timezone={timezone} />
 
       <section aria-labelledby="your-automations" className="flex min-w-0 flex-col gap-3">
         <div className="flex min-h-[34px] flex-wrap items-center justify-between gap-x-4 gap-y-2">

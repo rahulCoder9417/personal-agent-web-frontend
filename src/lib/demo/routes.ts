@@ -5,6 +5,7 @@ import * as account from "./handlers-account";
 import * as chat from "./handlers-chat";
 import * as conversations from "./handlers-conversations";
 import * as crew from "./handlers-crew";
+import * as drafts from "./handlers-drafts";
 import * as memory from "./handlers-memory";
 import * as setup from "./handlers-setup";
 
@@ -48,8 +49,14 @@ const ROUTES: Route[] = [
   route("DELETE", "byok/:provider", setup.deleteByokKey),
 
   route("GET", "automations", setup.listAutomations),
+  route("GET", "automations/:automationId", setup.getAutomation),
   route("PATCH", "automations/:automationId", setup.updateAutomation),
   route("DELETE", "automations/:automationId", setup.deleteAutomation),
+
+  route("GET", "automation-drafts", drafts.listDrafts),
+  route("GET", "automation-drafts/:draftId", drafts.getDraft),
+  route("POST", "automation-drafts/:draftId/save", drafts.saveDraft),
+  route("POST", "automation-drafts/:draftId/discard", drafts.discardDraft),
 
   route("GET", "pr-reviews", crew.listPrReviews),
   route("PUT", "pr-reviews/:owner/:repo", crew.enablePrReview),

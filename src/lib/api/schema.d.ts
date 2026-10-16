@@ -317,8 +317,11 @@ export interface paths {
          * @description One long-lived SSE connection per browser tab. Event types:
          *     `message.created`, `message.status`, `message.draft`, `approval.created`, `approval.resolved`,
          *     `agent.status`, `agent.progress`, `credits.updated`, `automation.updated`,
-         *     `conversation.updated`, `conversation.deleted`.
+         *     `automation_draft.updated`, `conversation.updated`, `conversation.deleted`.
          *     Each event's `data` is JSON matching the `StreamEvent` schema.
+         *
+         *     `automation_draft.updated` carries the whole draft (`AutomationDraft`): sent when Tex
+         *     proposes one, and when one is saved, discarded, replaced or expires.
          *
          *     `message.created` and `message.status` carry the whole message, so its `conversationId`
          *     comes with it. `conversation.updated` carries the whole conversation: it is sent when one
@@ -570,13 +573,16 @@ export interface paths {
         };
         /**
          * The user's automations and reminders
-         * @description Automations are created by chatting with the agent; the web app can list, pause and delete
-         *     them. A repo with pull-request review on is an automation too (`preset: pr_review`); it is
-         *     turned on and off with `/v1/pr-reviews`.
+         * @description Automations are made by chatting with the agent: it proposes a draft, and the user saves it
+         *     (`/v1/automation-drafts`). A plain one-time reminder is the exception: the agent saves it at
+         *     once. The web app can list, pause and delete them. A repo with pull-request review on is an
+         *     automation too (`preset: pr_review`); it is turned on and off with `/v1/pr-reviews`.
          *
          *     Every run answers in the Automations chat (`GET /v1/conversations?kind=automations`), never
          *     in the user's other conversations. An automation made in a Telegram chat also sends a copy
-         *     of each run's answer to that chat.
+         *     of each run's answer to that chat (`copyTo`).
+         *
+         *     A one-time reminder that has run is finished and left out of this list.
          */
         get: operations["listAutomations"];
         put?: never;
@@ -594,7 +600,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * One automation (its own page in the web app draws it as a flow)
+         * @description The same as an item of `GET /v1/automations`. A finished one-time reminder is still found
+         *     here by its id (`nextRunAt` null, `lastRunAt` set). Another user's automation, or one that
+         *     was deleted, is 404.
+         */
+        get: operations["getAutomation"];
         put?: never;
         post?: never;
         /** Delete (timer or trigger is removed too) */
@@ -603,6 +615,104 @@ export interface paths {
         head?: never;
         /** Pause or resume */
         patch: operations["updateAutomation"];
+        trace?: never;
+    };
+    "/v1/automation-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user's open drafts, newest first
+         * @description A draft is an automation Tex proposed in a chat (its `propose_automation` tool) that the user
+         *     has not saved. It never runs: it has no timer and no watch at the app. Only the user saves
+         *     it, here (`POST /v1/automation-drafts/{draftId}/save`) or with the Save button on Telegram.
+         *
+         *     This lists the open ones only: at most 20 per user, each for 7 days. A saved, discarded,
+         *     replaced or expired one is read by its id. The message that carries a draft in a chat has
+         *     its id (`Message.automationDraftId`).
+         */
+        get: operations["listAutomationDrafts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/automation-drafts/{draftId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One draft, in any state
+         * @description For the draft's card in the chat and its page (`/automations/new?draft=…`, or
+         *     `/automations/{changeOf}?draft=…` for a change). Another user's draft, or one removed after
+         *     30 days, is 404.
+         */
+        get: operations["getAutomationDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/automation-drafts/{draftId}/save": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save a draft, which makes the automation
+         * @description The automation is made from the draft, with the same checks as when Tex proposed it, run
+         *     again now: the plan's limit (a draft did not count), 15 minutes between runs, a moment not
+         *     yet past, the app connected. Then its timer is set or its watch made. `enabled: false`
+         *     ("Save paused") makes it switched off (`pausedReason: user`), to try or turn on later.
+         *
+         *     A draft that changes an automation (`changeOf`) makes the new automation and then removes
+         *     the old one, with its timer or watch.
+         *
+         *     One draft makes one automation: a second save, also at the same moment (a double click),
+         *     answers 409 with `details.status: saved` and the automation's id. A replaced, expired or
+         *     discarded draft can't be saved either (409, `details.status` says which).
+         */
+        post: operations["saveAutomationDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/automation-drafts/{draftId}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard an open draft
+         * @description Nothing was running, so nothing stops. The draft's card then says it was discarded.
+         */
+        post: operations["discardAutomationDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/pr-reviews": {
@@ -2471,6 +2581,12 @@ export interface components {
             status: "queued" | "processing" | "sent" | "delivered" | "read" | "failed";
             approvalId?: string | null;
             /**
+             * @description Tex proposed an automation in this message (`GET /v1/automation-drafts/{draftId}`).
+             *     The web app draws the draft's card under it. In web chat the text is one line about the
+             *     draft; in a chat app it is the outline sent there, with the link and a Save button.
+             */
+            automationDraftId?: string | null;
+            /**
              * @description The `clientMessageId` the web app sent this message with (`POST /v1/messages`). Only
              *     on a message the user wrote in the web app; left out on every other message. A client
              *     that shows a message before the server has answered (an optimistic bubble) matches it
@@ -2606,9 +2722,33 @@ export interface components {
             timezone?: string | null;
             /** @description kind=event */
             trigger?: {
-                app?: string;
-                event?: string;
+                /** @example gmail */
+                app: string;
+                /** @example GMAIL_NEW_GMAIL_MESSAGE */
+                event: string;
+                /**
+                 * @description The trigger's settings, as they were given when the automation was made: what the
+                 *     app watches, for example `{ "owner": "acme", "repo": "web" }` for a pull-request
+                 *     review. Empty when it has none. Their names are Composio's, per event.
+                 */
+                config: {
+                    [key: string]: unknown;
+                };
             } | null;
+            /**
+             * @description Where a copy of each run's answer goes, besides the Automations chat: the chat app the
+             *     automation was made in. Null: no copy (made in web chat, or from the web app with no
+             *     chat app linked).
+             * @enum {string|null}
+             */
+            copyTo: "telegram" | "whatsapp" | "imessage" | null;
+            /**
+             * @description The apps Tex said it will use, by app slug (`App.slug`), as it named them in the draft
+             *     the automation was saved from. Empty for an older automation, or when none were named:
+             *     Tex then uses the user's connected apps as needed. For now only shown; the trigger's
+             *     app (`trigger.app`) is not repeated here.
+             */
+            apps: string[];
             /**
              * @description `pr_review`: this automation is pull-request review for one repo (see `/v1/pr-reviews`).
              * @enum {string|null}
@@ -2655,6 +2795,84 @@ export interface components {
             lastUsedAt: string | null;
             /** @description How many times the agent found it with a search. */
             useCount: number;
+        };
+        /**
+         * @description `open`: waiting for the user, at most 7 days. `saved`: the user saved it and the automation
+         *     exists (`automationId`). `discarded`: the user threw it away. `replaced`: Tex proposed a
+         *     newer version (`replacedBy`); this one can no longer be saved. `expired`: 7 days passed.
+         * @enum {string}
+         */
+        AutomationDraftStatus: "open" | "saved" | "discarded" | "replaced" | "expired";
+        /**
+         * @description An automation Tex proposed and the user has not saved (or has, see `status`). It holds the
+         *     same parts as an `Automation`, and never runs. Drawn as the same five steps: the trigger,
+         *     Tex's instruction, the apps, "asks you first" and the results.
+         */
+        AutomationDraft: {
+            /** @example drf_01jz3m8q4kd2v7x9w0t5b6c8ya */
+            id: string;
+            status: components["schemas"]["AutomationDraftStatus"];
+            /**
+             * @description `agent`: Tex proposed it. (`user`: made on the canvas, from phase 3.)
+             * @enum {string}
+             */
+            madeBy: "agent" | "user";
+            /**
+             * @description The automation this draft would change. Saving makes the new automation and then
+             *     removes that one. Null: a new automation.
+             */
+            changeOf: string | null;
+            /** @enum {string} */
+            kind: "once" | "repeat" | "event";
+            title: string;
+            instruction: string;
+            /**
+             * Format: date-time
+             * @description kind=once
+             */
+            runAt: string | null;
+            /** @description kind=repeat, in `timezone` */
+            cron: string | null;
+            /** @description The time zone it runs in (the user's own when Tex named none). */
+            timezone: string;
+            /** @description kind=event */
+            trigger: {
+                app: string;
+                event: string;
+                config: {
+                    [key: string]: unknown;
+                };
+            } | null;
+            /** @description The apps Tex said it will use, by app slug (see `Automation.apps`). */
+            apps: string[];
+            /**
+             * @description The chat app it was proposed in, which gets a copy of each answer once saved.
+             * @enum {string|null}
+             */
+            copyTo: "telegram" | "whatsapp" | "imessage" | null;
+            /**
+             * Format: date-time
+             * @description When it would first run if it were saved now: the moment (kind=once), or the schedule's
+             *     next time (kind=repeat). Null for an app event.
+             */
+            nextRunAt: string | null;
+            /** @description The newer draft, when `replaced`. */
+            replacedBy: string | null;
+            /** @description The automation it made, when `saved`. It may have been deleted since. */
+            automationId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /**
+             * Format: date-time
+             * @description When it was saved, discarded, replaced or expired.
+             */
+            decidedAt: string | null;
+        };
+        AutomationDraftSaved: {
+            draft: components["schemas"]["AutomationDraft"];
+            automation: components["schemas"]["Automation"];
         };
         PrReviewRepo: {
             /** @description The automation's id. Pause or resume it with `PATCH /v1/automations/{automationId}`. */
@@ -3800,8 +4018,8 @@ export interface components {
         };
         StreamEvent: {
             /** @enum {string} */
-            type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated" | "conversation.updated" | "conversation.deleted" | "message.draft";
-            data: components["schemas"]["Message"] | components["schemas"]["MessageDraft"] | components["schemas"]["Conversation"] | components["schemas"]["ConversationDeleted"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"];
+            type: "message.created" | "message.status" | "approval.created" | "approval.resolved" | "agent.status" | "agent.progress" | "credits.updated" | "automation.updated" | "automation_draft.updated" | "conversation.updated" | "conversation.deleted" | "message.draft";
+            data: components["schemas"]["Message"] | components["schemas"]["MessageDraft"] | components["schemas"]["Conversation"] | components["schemas"]["ConversationDeleted"] | components["schemas"]["Approval"] | components["schemas"]["AgentStatus"] | components["schemas"]["AgentProgress"] | components["schemas"]["CreditBalance"] | components["schemas"]["Automation"] | components["schemas"]["AutomationDraft"];
         };
     };
     responses: {
@@ -3917,6 +4135,7 @@ export interface components {
         ChannelLinkId: string;
         McpServerId: string;
         AutomationId: string;
+        DraftId: string;
         MemoryId: string;
         ConversationId: string;
         Provider: components["schemas"]["ByokProvider"];
@@ -4808,6 +5027,30 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    getAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                automationId: components["parameters"]["AutomationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Automation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     deleteAutomation: {
         parameters: {
             query?: never;
@@ -4859,6 +5102,155 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listAutomationDrafts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AutomationDraft"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAutomationDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draftId: components["parameters"]["DraftId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationDraft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveAutomationDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draftId: components["parameters"]["DraftId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description False saves it paused.
+                     * @default true
+                     */
+                    enabled?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationDraftSaved"];
+                };
+            };
+            /**
+             * @description A check failed now, for example the moment it was set for has passed or the app is no
+             *     longer connected. The message says what, in words for the user. The draft stays open.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["PlanLimit"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description The draft is not open. `details.status` is `saved` (with `details.automationId`),
+             *     `replaced` (with `details.replacedBy`, the newer draft), `expired` or `discarded`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description The app could not be asked to watch for the event just now. The draft stays open; try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    discardAutomationDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draftId: components["parameters"]["DraftId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discarded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationDraft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The draft is not open (`details.status` says what it is) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listPrReviews: {
