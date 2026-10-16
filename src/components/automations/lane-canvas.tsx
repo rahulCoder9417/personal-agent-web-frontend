@@ -373,7 +373,10 @@ export default function LaneCanvas(props: LaneCanvasProps) {
   const { diagram, boxes, empties, results, heads, conditions, selected, count, editing, compact, dragging, onSelect, onRemove, onSkip, onPlus, onDrop, onDropTrigger, label } = props;
   const flow = useRef<ReactFlowInstance | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
-  const [heights, setHeights] = useState<Map<string, number>>(() => new Map());
+  // Each box's size as React Flow measured it. Given back on its node (`measured`), so React Flow
+  // keeps it, and the layout makes room for it.
+  const [sizes, setSizes] = useState<Map<string, { width: number; height: number }>>(() => new Map());
+  const heights = useMemo(() => new Map([...sizes].map(([id, size]) => [id, size.height])), [sizes]);
   const [over, setOver] = useState<string | null>(null);
   const [width, setWidth] = useState(0);
 
@@ -393,22 +396,40 @@ export default function LaneCanvas(props: LaneCanvasProps) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  // Placed once React Flow is ready and the board's width is known, whichever comes last; on a
+  // phone again whenever the width changes (it doesn't pan there).
+  const [ready, setReady] = useState(false);
   const placedOnce = useRef(false);
-  const place = useCallback(() => {
-    if (!width || !flow.current) return;
+  useEffect(() => {
+    if (!ready || !width || !flow.current) return;
     if (compact || !placedOnce.current) {
       placedOnce.current = true;
       void flow.current.setViewport({ x: width / 2, y: compact ? 16 : 32, zoom });
     }
-  }, [width, compact, zoom]);
-  useEffect(place, [place]);
+  }, [ready, width, compact, zoom]);
 
   const shared = (key: string): Shared => ({ selected: selected === key, editing, over: over === key, zone: zoneOf(key), onSelect, onRemove });
   const nodes: Node[] = [];
   for (const item of diagram.items) {
     const at = placed.boxes.get(item.key)!;
-    // Its size before it is measured, so it is drawn from the first paint (and on the server).
-    const base = { id: item.key, position: { x: at.x, y: at.y }, initialWidth: at.width, initialHeight: at.height, draggable: false, selectable: false, connectable: false, focusable: false };
+    // Its size before it is measured, so it is drawn from the first paint (and on the server), its
+    // size once measured, and where its line in and its line out meet it, so the lines are drawn
+    // without waiting for React Flow to find them.
+    const base = {
+      id: item.key,
+      position: { x: at.x, y: at.y },
+      initialWidth: at.width,
+      initialHeight: at.height,
+      ...(sizes.get(item.key) ? { measured: sizes.get(item.key) } : {}),
+      handles: [
+        { type: "target" as const, position: Position.Top, x: at.width / 2 - 0.5, y: 0, width: 1, height: 1 },
+        { type: "source" as const, position: Position.Bottom, x: at.width / 2 - 0.5, y: at.height - 1, width: 1, height: 1 },
+      ],
+      draggable: false,
+      selectable: false,
+      connectable: false,
+      focusable: false,
+    };
     if (item.kind === "results") nodes.push({ ...base, type: "results", data: { ...shared(item.key), ...results } });
     else if (item.kind === "empty") {
       const empty = empties.get(item.key);
@@ -461,13 +482,14 @@ export default function LaneCanvas(props: LaneCanvasProps) {
   });
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setHeights((current) => {
-      let next: Map<string, number> | null = null;
+    setSizes((current) => {
+      let next: Map<string, { width: number; height: number }> | null = null;
       for (const change of changes) {
         if (change.type !== "dimensions" || !change.dimensions) continue;
-        if (current.get(change.id) === change.dimensions.height) continue;
+        const was = current.get(change.id);
+        if (was && was.width === change.dimensions.width && was.height === change.dimensions.height) continue;
         next ??= new Map(current);
-        next.set(change.id, change.dimensions.height);
+        next.set(change.id, { width: change.dimensions.width, height: change.dimensions.height });
       }
       return next ?? current;
     });
@@ -511,7 +533,7 @@ export default function LaneCanvas(props: LaneCanvasProps) {
         onNodesChange={onNodesChange}
         onInit={(instance) => {
           flow.current = instance;
-          place();
+          setReady(true);
         }}
         defaultViewport={{ x: 0, y: 32, zoom: 1 }}
         minZoom={0.4}

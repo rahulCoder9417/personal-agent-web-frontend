@@ -56,6 +56,8 @@ describe("the canvas", () => {
     expect(words).toContain("Add a write step");
     expect(words).toContain("Skip reading");
     expect(html).toContain('aria-label="Remove Fetch emails"');
+    // A line between each two boxes, drawn from the first paint (each box says where its lines meet it).
+    expect(html.match(/class="react-flow__edge-path"/g)?.length).toBe(4);
     // React Flow's own link stays.
     expect(html).toContain("React Flow");
   });
