@@ -84,10 +84,36 @@ describe("a draft in the chat", () => {
     expect(words).toContain("Not saved yet");
   });
 
+  it("draws the steps as one column of badges joined by a line, and doesn't repeat the title in the instruction", () => {
+    const html = draw({ ...base, apps: ["github", "gmail"] }, "telegram");
+    const words = text(html);
+    // The title once, in the card's head; the instruction under Tex's name.
+    expect(words.split("Monday pull requests").length - 1).toBe(1);
+    expect(words).toContain("Tex’s instruction List my open pull requests in acme/web");
+    // Five badges, and a line between each two (none after the last).
+    expect(html.match(/data-badge/g)).toHaveLength(5);
+    expect(html.match(/data-line/g)).toHaveLength(4);
+    // The apps as chips, each with its name.
+    expect(html).toMatch(/<ul aria-label="Apps"[^>]*><li[^>]*>.*GitHub<\/li><li[^>]*>.*Gmail<\/li><\/ul>/);
+    // Not said again in the steps: the card's head says it once.
+    expect(words.split("Not saved yet").length - 1).toBe(1);
+    // The first run on its own line, then the small print in short pieces.
+    expect(words).toMatch(/First run \S.* 9:00 AM/);
+    expect(html).toMatch(/<ul aria-label="Before you save"[^>]*><li[^>]*>Nothing runs until you save it<\/li><li[^>]*><span[^>]*><\/span>Expires in \d+ days<\/li><\/ul>/);
+    // The two buttons the same size, side by side where the card is wide enough.
+    expect(html.match(/h-10 rounded-\[10px\][^"]*w-full/g)).toHaveLength(2);
+  });
+
+  it("shows the instruction's own title when it differs from the card's (a review)", () => {
+    const words = text(draw({ ...base, preset: "pr_review", kind: "event" } as AutomationDraft, "telegram"));
+    expect(words).toContain("Patch reviews it");
+    expect(words).toContain("Runs each time it happens");
+  });
+
   it("links a change to the automation's page, and says saving replaces it", () => {
     const html = draw({ ...base, changeOf: "aut_7" });
     expect(html).toContain('href="/automations/aut_7?draft=drf_1"');
-    expect(text(html)).toContain("Saving replaces the automation it changes.");
+    expect(text(html)).toContain("Saving replaces the automation it changes");
     expect(text(html)).toContain("a change to an automation");
   });
 
