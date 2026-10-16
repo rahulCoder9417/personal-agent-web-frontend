@@ -870,6 +870,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agent/prewarm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start waking the user's agent container before their message arrives
+         * @description The web app calls this when the user opens the chat and when they start typing, so the
+         *     container is awake by the time the message is sent (a sleeping one takes 2.5 to 3.5
+         *     seconds to wake). It only starts the wake and answers at once; the wake itself runs in the
+         *     worker. Nothing is woken when the container is already awake (or waking or busy), when the
+         *     user has no credits, when no AI is connected (`aiAccess: none`), or when the account is
+         *     suspended. At most one call a minute per user does anything: a second call within the
+         *     minute answers `started: false` with `reason: recent`, never 429. The usual awake time is
+         *     charged, and the 3-minute idle stop counts from the wake.
+         */
+        post: operations["prewarmAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agent/settings": {
         parameters: {
             query?: never;
@@ -889,7 +916,8 @@ export interface paths {
          *     what pays for the AI right now.
          *
          *     `claudeModel` and `claudeEffort` are the Claude model and the thinking effort Claude Code
-         *     uses (null: Claude Code's own default). They apply to turns that run on Claude Code, and
+         *     uses (null: Default, which is Sonnet 5.5 at low effort for Tex's chat; Byte and Patch then
+         *     keep Opus 5.5 at medium effort, and a chosen effort applies on Sonnet 5.5). They apply to turns that run on Claude Code, and
          *     can be set whatever the engine is now. `claudeChoices` lists what may be chosen: every
          *     Claude model Claude Code can use, each with the effort levels it takes.
          */
@@ -906,7 +934,7 @@ export interface paths {
          *     `{ runtime: claude_code, aiPreference: auto }`; Textcrew AI → `{ aiPreference: platform }`.
          *
          *     `claudeModel` and `claudeEffort` may be sent too, alone or with the others. Null goes back
-         *     to Claude Code's own default. They can be set whatever the engine is now; they take effect
+         *     to Default (Sonnet 5.5, quick). They can be set whatever the engine is now; they take effect
          *     on turns that run on Claude Code. A model id that isn't in `claudeChoices.models` is
          *     400 `invalid_request`. Example: `{ claudeModel: claude-opus-5-5, claudeEffort: xhigh }`.
          */
@@ -1930,7 +1958,7 @@ export interface paths {
          * Put chosen agent settings back to their defaults (admin)
          * @description `engine`: the chosen engine goes back to Hermes (a Claude plan stays connected; the user
          *     can choose Claude Code again). `model` and `effort`: Claude Code's model and thinking effort
-         *     go back to Default, Claude Code's own choice. `browser`: Scout's browser switch is set again
+         *     go back to Default (Sonnet 5.5, quick). `browser`: Scout's browser switch is set again
          *     from the user's plan and the deployment, as a plan change does. The same functions the user's
          *     own settings use make each change, so the vm-manager is told the same way.
          */
@@ -3144,6 +3172,17 @@ export interface components {
             /** Format: date-time */
             lastActiveAt?: string | null;
         };
+        AgentPrewarm: {
+            /** @description A wake was started (it finishes in the background). */
+            started: boolean;
+            /**
+             * @description `started`: the wake was started. `recent`: this user already asked within the last
+             *     minute. `awake`: the container is already waking, awake or busy. `no_credits`: the
+             *     balance is zero. `no_ai`: no AI is connected. `suspended`: the account is suspended.
+             * @enum {string}
+             */
+            reason: "started" | "recent" | "awake" | "no_credits" | "no_ai" | "suspended";
+        };
         Plan: {
             id: components["schemas"]["PlanId"];
             name: string;
@@ -3568,10 +3607,10 @@ export interface components {
                 /** Format: date-time */
                 connectedAt: string | null;
             };
-            /** @description Null: Default (Claude Code's own choice). */
+            /** @description Null: Default (Sonnet 5.5). */
             claudeModel: string | null;
             /**
-             * @description Null: Default (Claude Code's own choice).
+             * @description Null: Default (low on the default model, else Claude Code's own).
              * @enum {string|null}
              */
             claudeEffort: "low" | "medium" | "high" | "xhigh" | "max" | null;
@@ -3958,14 +3997,16 @@ export interface components {
             };
             ownKeyProviders: components["schemas"]["ByokProvider"][];
             /**
-             * @description The Claude model Claude Code uses, one of `claudeChoices.models`. Null: Claude Code's
-             *     own default. Applies when Claude Code is the engine.
+             * @description The Claude model Claude Code uses, one of `claudeChoices.models`. Null: Default, Sonnet
+             *     5.5 (`claude-sonnet-5-5`) for Tex, with Byte and Patch on Opus 5.5 at medium effort.
+             *     Applies when Claude Code is the engine.
              * @example claude-opus-5-5
              */
             claudeModel: string | null;
             /**
-             * @description How hard Claude Code thinks. Null: Claude Code's own default. Applies when Claude Code
-             *     is the engine.
+             * @description How hard Claude Code thinks. Null: Default, which is `low` when the model is on Default
+             *     too, and Claude Code's own default for a chosen model. Applies when Claude Code is the
+             *     engine.
              * @enum {string|null}
              */
             claudeEffort: "low" | "medium" | "high" | "xhigh" | "max" | null;
@@ -5561,6 +5602,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    prewarmAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether a wake was started, and if not, why not */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPrewarm"];
                 };
             };
             401: components["responses"]["Unauthorized"];

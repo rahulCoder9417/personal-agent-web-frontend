@@ -121,7 +121,7 @@ describe("Settings → Agent & AI", () => {
     const modelFor = html.match(/<label for="([^"]+)"[^>]*>Model<\/label>/)?.[1];
     const effortFor = html.match(/<label for="([^"]+)"[^>]*>Thinking effort<\/label>/)?.[1];
     expect(modelFor && effortFor).toBeTruthy();
-    expect(html).toMatch(new RegExp(`<button id="${modelFor}" type="button" role="combobox"[^>]*>.*?>Default<`));
+    expect(html).toMatch(new RegExp(`<button id="${modelFor}" type="button" role="combobox"[^>]*>.*?>Default \\(Sonnet 5\\.5, quick\\)<`));
     expect(html).toMatch(new RegExp(`<button id="${effortFor}" type="button" role="combobox"[^>]*>.*?>High<`));
     // Both sit before AI access.
     expect(html.indexOf(">Thinking effort</label>")).toBeLessThan(html.indexOf(">AI access</h2>"));

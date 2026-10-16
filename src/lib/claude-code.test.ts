@@ -36,7 +36,7 @@ const settings = (claudeModel: string | null, claudeEffort: AgentSettings["claud
 describe("modelOptions", () => {
   it("offers Default first, then the backend's models in its order, each under its group, with its note", () => {
     expect(modelOptions(settings(null))).toEqual([
-      { value: "", label: "Default" },
+      { value: "", label: "Default (Sonnet 5.5, quick)" },
       { value: "claude-opus-5-5", label: "Opus 5.5", group: "Current models" },
       { value: "claude-fable-5-1", label: "Fable 5.1", group: "Current models", note: "Uses usage credits on Pro." },
       { value: "claude-sonnet-4-6", label: "Sonnet 4.6", group: "Older models" },
@@ -53,7 +53,7 @@ describe("modelOptions", () => {
   it("lists every model the demo offers: the current ones, then the older ones", () => {
     const groups = optionGroups(modelOptions(settings(null, null, CLAUDE_CHOICES)));
     expect(groups.map((group) => [group.label, group.options.map((option) => option.label)])).toEqual([
-      [null, ["Default"]],
+      [null, ["Default (Sonnet 5.5, quick)"]],
       ["Current models", ["Opus 5.5", "Sonnet 5.5", "Haiku 5.5", "Fable 5.1"]],
       [
         "Older models",
@@ -89,13 +89,19 @@ describe("optionGroups", () => {
 describe("effortOptions", () => {
   it("offers Default first, then each level in words: all of them on Default", () => {
     expect(effortOptions(settings(null, "xhigh"))).toEqual([
-      { value: "", label: "Default" },
+      { value: "", label: "Default (Low)" },
       { value: "low", label: "Low" },
       { value: "medium", label: "Medium" },
       { value: "high", label: "High" },
       { value: "xhigh", label: "Extra high" },
       { value: "max", label: "Max" },
     ]);
+  });
+
+  it("says what Default is: low on the default model, Claude Code's own for a chosen one", () => {
+    expect(effortOptions(settings(null))[0]).toEqual({ value: "", label: "Default (Low)" });
+    expect(effortOptions(settings("claude-opus-5-5"))[0]).toEqual({ value: "", label: "Default" });
+    expect(modelOptions(settings("claude-opus-5-5"))[0]).toEqual({ value: "", label: "Default (Sonnet 5.5, quick)" });
   });
 
   it("offers only the levels the chosen model takes", () => {
@@ -144,7 +150,7 @@ describe("a backend from before model groups and levels", () => {
 
   it("lists the models with no heading, offers every level and says nothing", () => {
     expect(modelOptions(settings("claude-opus-5-5", "high", OLD))).toEqual([
-      { value: "", label: "Default" },
+      { value: "", label: "Default (Sonnet 5.5, quick)" },
       { value: "claude-opus-5-5", label: "Opus 5.5" },
     ]);
     expect(modelEfforts(settings("claude-opus-5-5", "high", OLD))).toEqual(ALL);
