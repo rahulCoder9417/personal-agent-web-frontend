@@ -16,8 +16,9 @@ import {
   turnsOver,
   turnsOverAfterReconnect,
 } from "../drafts";
+import { threadIsWorking } from "../chat-thread";
 import type { AgentProgress, AgentStatus, Approval, Conversation, CreditBalance, Message, MessageDraft, StreamEvent } from "./client";
-import { addMessage, invalidateAutomations, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
+import { addMessage, cachedThread, invalidateAutomations, noteAgentStatusEvent, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
 
 const EVENT_TYPES: StreamEvent["type"][] = [
   "message.created",
@@ -87,6 +88,32 @@ export function useDrafts(): Drafts {
   return useQuery<Drafts>({ queryKey: DRAFTS_KEY, queryFn: () => NO_DRAFTS, enabled: false, initialData: NO_DRAFTS, staleTime: Infinity }).data;
 }
 
+/**
+ * Tex's answer is sent a moment before its turn ends: the turn's last events (the person's message
+ * `delivered`, the agent no longer `busy`) follow within a second or two. If they haven't arrived
+ * this long after the answer, they were lost on the way, and the thread would show Tex at work on a
+ * finished turn until the stream next reconnects.
+ */
+export const SETTLE_CHECK_MS = 10_000;
+
+/**
+ * Tex wrote in a conversation (not a question: that pauses the turn). If its thread still shows Tex
+ * at work on the person's message `SETTLE_CHECK_MS` later, the agent's state and the thread are
+ * asked for again: the API says whether the turn ended. A turn that is still running (Tex said "on
+ * it" and carries on) stays at work, as the API says so too.
+ */
+function checkTurnSettles(qc: QueryClient, message: Message) {
+  if (message.direction !== "out" || message.approvalId) return;
+  const { conversationId } = message;
+  const stillWorking = () =>
+    threadIsWorking(qc.getQueryData<AgentStatus>(qk.agentStatus)?.state === "busy", cachedThread(qc, conversationId) ?? []);
+  setTimeout(() => {
+    if (!stillWorking()) return;
+    void qc.invalidateQueries({ queryKey: qk.agentStatus });
+    void qc.invalidateQueries({ queryKey: qk.thread(conversationId) });
+  }, SETTLE_CHECK_MS);
+}
+
 /** Folds one event from the live stream into the query cache, so every screen shows it. */
 export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
   switch (event.type) {
@@ -95,6 +122,7 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
       addMessage(qc, event.data as Message);
       // Tex's answer takes the place of what was shown of it while it was written, and the steps fold into it.
       updateDrafts(qc, (drafts) => messageArrived(drafts, event.data as Message));
+      checkTurnSettles(qc, event.data as Message);
       break;
     case "message.status":
       upsertMessage(qc, event.data as Message);
@@ -120,6 +148,7 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
       break;
     case "agent.status": {
       const status = event.data as AgentStatus;
+      noteAgentStatusEvent(qc);
       qc.setQueryData(qk.agentStatus, status);
       if (status.state !== "busy") {
         // The turn is over: its progress lines have nothing more to say, and nothing is being written.

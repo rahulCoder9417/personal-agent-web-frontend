@@ -14,6 +14,7 @@ import {
   unwrap,
   type AgentRuntime,
   type AgentSettings,
+  type AgentStatus,
   type AgentSettingsUpdate,
   type AiPreference,
   type Approval,
@@ -234,14 +235,42 @@ export function removeConversation(qc: QueryClient, conversationId: string) {
 type MessagePage = Page<Message>;
 type Thread = InfiniteData<MessagePage, string | undefined>;
 
+/** How far along each status is. The backend only ever moves a message forward along this. */
+const STATUS_STEP: Record<Message["status"], number> = { queued: 0, processing: 1, sent: 2, delivered: 3, failed: 3, read: 4 };
+
+/**
+ * Of two copies of one message, the one further along. A copy that says less is older than what is
+ * known already (the reply to sending it, or a list asked for while the turn ran and answered after
+ * the turn's last event): it never takes the message back, so "Tex is on it" doesn't come back under
+ * a message that was delivered.
+ */
+export function laterMessage(known: Message, incoming: Message): Message {
+  return STATUS_STEP[incoming.status] >= STATUS_STEP[known.status] ? incoming : { ...incoming, status: known.status };
+}
+
+/** A conversation's cached messages, newest first; undefined when its thread hasn't been asked for. */
+export function cachedThread(qc: QueryClient, conversationId: string): Message[] | undefined {
+  return qc.getQueryData<Thread>(qk.thread(conversationId))?.pages.flatMap((page) => page.items);
+}
+
+/** A page of a thread from the API, each message in it kept as far along as the cache already has it. */
+export function pageAfterCache(qc: QueryClient, conversationId: string, page: MessagePage): MessagePage {
+  const known = new Map((cachedThread(qc, conversationId) ?? []).map((message) => [message.id, message]));
+  if (!known.size) return page;
+  return { ...page, items: page.items.map((message) => (known.has(message.id) ? laterMessage(known.get(message.id)!, message) : message)) };
+}
+
 /** One conversation's messages, newest first. Nothing is asked for until a conversation is known. */
 export function useThread(conversationId: string | null) {
+  const qc = useQueryClient();
   return useInfiniteQuery({
     queryKey: qk.thread(conversationId ?? ""),
     enabled: conversationId !== null,
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }): Promise<MessagePage> =>
-      unwrap(api.GET("/v1/messages", { params: { query: { limit: PAGE, cursor: pageParam, conversationId: conversationId ?? undefined } } })),
+    queryFn: async ({ pageParam }): Promise<MessagePage> => {
+      const page = await unwrap(api.GET("/v1/messages", { params: { query: { limit: PAGE, cursor: pageParam, conversationId: conversationId ?? undefined } } }));
+      return conversationId ? pageAfterCache(qc, conversationId, page) : page;
+    },
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 }
@@ -260,7 +289,7 @@ export function upsertMessage(qc: QueryClient, message: Message) {
     if (exists) {
       return {
         ...data,
-        pages: data.pages.map((p) => ({ ...p, items: p.items.map((m) => (m.id === message.id ? message : m)) })),
+        pages: data.pages.map((p) => ({ ...p, items: p.items.map((m) => (m.id === message.id ? laterMessage(m, message) : m)) })),
       };
     }
     const [first, ...rest] = data.pages;
@@ -640,9 +669,30 @@ export function useDisablePrReview() {
 
 // ---------------------------------------------------------------- agent
 
+// How many times the live stream has said what the agent is doing (`agent.status`), per query cache.
+const statusEvents = new WeakMap<QueryClient, number>();
+
+/** The live stream said what the agent is doing (`src/lib/api/stream.ts`). */
+export function noteAgentStatusEvent(qc: QueryClient): void {
+  statusEvents.set(qc, (statusEvents.get(qc) ?? 0) + 1);
+}
+
+/**
+ * Asks the API what the agent is doing. When the live stream said so while the answer was on its
+ * way, the stream's word is the newer one and stays: an answer read while a turn ran ("busy") and
+ * arriving after the turn's end ("awake") would otherwise put Tex back to work.
+ */
+export async function fetchAgentStatus(qc: QueryClient, ask: () => Promise<AgentStatus> = () => unwrap(api.GET("/v1/agent/status"))): Promise<AgentStatus> {
+  const before = statusEvents.get(qc) ?? 0;
+  const answer = await ask();
+  const heard = qc.getQueryData<AgentStatus>(qk.agentStatus);
+  return (statusEvents.get(qc) ?? 0) !== before && heard ? heard : answer;
+}
+
 /** `enabled: false` reads what is cached without asking (the sidebar's card, hidden on a phone). */
 export function useAgentStatus(enabled = true) {
-  return useQuery({ queryKey: qk.agentStatus, queryFn: () => unwrap(api.GET("/v1/agent/status")), enabled });
+  const qc = useQueryClient();
+  return useQuery({ queryKey: qk.agentStatus, queryFn: () => fetchAgentStatus(qc), enabled });
 }
 
 /**
