@@ -74,8 +74,11 @@ export const saveDraft: Handler = async ({ state, request, params }) => {
   }
 
   const now = nowIso();
+  // A change is made in place, as the backend does it: the automation keeps its id and its page.
+  const changing = draft.changeOf ? state.automations.find((item) => item.id === draft.changeOf) : undefined;
   const automation: Automation = {
-    id: nextId(state, "aut"),
+    ...(changing ?? {}),
+    id: changing?.id ?? nextId(state, "aut"),
     kind: draft.kind,
     title: draft.title,
     instruction: draft.instruction,
@@ -84,16 +87,17 @@ export const saveDraft: Handler = async ({ state, request, params }) => {
     timezone: draft.timezone,
     trigger: draft.trigger,
     apps: [...draft.apps],
+    askFirst: draft.askFirst ?? "risky",
     copyTo: draft.copyTo,
     preset: null,
     enabled,
     pausedReason: enabled ? null : "user",
     nextRunAt: draft.kind === "event" ? null : draft.nextRunAt,
-    lastRunAt: null,
-    createdAt: now,
+    lastRunAt: changing?.lastRunAt ?? null,
+    createdAt: changing?.createdAt ?? now,
   };
-  state.automations.push(automation);
-  if (draft.changeOf) state.automations = state.automations.filter((item) => item.id !== draft.changeOf);
+  if (changing) Object.assign(changing, automation);
+  else state.automations.push(automation);
   Object.assign(draft, { status: "saved", automationId: automation.id, decidedAt: now });
   logActivity(state, { actor: "user", action: "automation_saved", summary: `Saved the automation “${draft.title}”${enabled ? "" : ", paused"}` });
   emit(state, "automation.updated", automation);
@@ -189,6 +193,7 @@ export function proposeDraft(state: DemoState, request: { text: string }): { dra
     instruction: upperFirst(request.text.trim()),
     timezone: state.user.timezone,
     copyTo: null,
+    askFirst: "risky",
     replacedBy: null,
     automationId: null,
     createdAt,

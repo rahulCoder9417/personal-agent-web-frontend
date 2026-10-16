@@ -137,16 +137,16 @@ describe("saving a draft", () => {
     expect((await draft("drf_boss")).status).toBe("open");
   });
 
-  it("replaces the automation a change is for, even with the plan full", async () => {
+  it("changes the automation a change is for in place, even with the plan full: same id, same page", async () => {
     await call("POST", "automation-drafts/drf_monday/save");
     const change: AutomationDraft = { ...(await draft("drf_boss")), id: "drf_change", changeOf: "aut_invoice", status: "open", title: "Chase the Acme invoice, twice" };
     getStore().drafts.unshift(change);
     const saved = await call<AutomationDraftSaved>("POST", "automation-drafts/drf_change/save");
     expect(saved.status).toBe(200);
-    const ids = (await automations()).map((automation) => automation.id);
-    expect(ids).not.toContain("aut_invoice");
-    expect(ids).toContain(saved.body.automation.id);
-    expect(ids).toHaveLength(5);
+    expect(saved.body.automation.id).toBe("aut_invoice");
+    const all = await automations();
+    expect(all).toHaveLength(5);
+    expect(all.find((automation) => automation.id === "aut_invoice")?.title).toBe("Chase the Acme invoice, twice");
   });
 });
 
