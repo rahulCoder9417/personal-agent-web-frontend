@@ -1,7 +1,7 @@
 // The parts of an automation's flow drawn in plain HTML: the mark of each step, the strip on a card
-// and in the chat (the five steps side by side, or one under another), and the list that stands in
-// for the canvas on a phone. No drawing library: the canvas (flow-canvas.tsx) is loaded only on an
-// automation's own page.
+// (the five steps side by side), and the list that stands in for the canvas on a phone. No drawing
+// library: the canvas (flow-canvas.tsx) is loaded only on an automation's own page. The draft's card
+// in the chat draws its steps in its own column (chat/draft-steps.tsx).
 
 import type { ReactNode } from "react";
 import type { FlowStep, FlowStepId } from "@/lib/automation-flow";
@@ -41,7 +41,8 @@ export function StepMark({ step, kind, size = 28 }: { step: FlowStep; kind: Auto
   );
 }
 
-function AppsGlyph({ size }: { size: number }) {
+/** The apps step's own glyph, when it names no app. */
+export function AppsGlyph({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden>
       <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />
@@ -96,57 +97,6 @@ export function FlowStrip({ steps, kind, className }: { steps: readonly FlowStep
             <span className="sr-only">
               {step.label}: {step.title}
               {step.lines.length ? `. ${step.lines.join(". ")}` : ""}
-            </span>
-          </span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-/**
- * The five steps one under another, each with its name and what it says, joined by arrows: the
- * small diagram in a draft's card in the chat. `changed` marks the steps a change would alter.
- */
-export function FlowColumn({
-  steps,
-  kind,
-  changed,
-  className,
-}: {
-  steps: readonly FlowStep[];
-  kind: AutomationKind;
-  changed?: ReadonlySet<FlowStepId>;
-  className?: string;
-}) {
-  return (
-    <ol aria-label="How it would run" className={cn("flex flex-col", className)}>
-      {steps.map((step, index) => (
-        <li key={step.id} className="flex flex-col">
-          {index > 0 && (
-            <span className="flex h-3.5 items-center pl-[13px]">
-              <Arrow down />
-            </span>
-          )}
-          <span className="flex min-w-0 items-start gap-2.5">
-            <StepMark step={step} kind={kind} size={28} />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="flex items-center gap-1.5 text-[11.5px] text-muted">
-                {step.label}
-                {changed?.has(step.id) && <ChangedTag />}
-              </span>
-              <span className="line-clamp-2 text-[13px] leading-snug font-medium break-words text-fg">{step.title}</span>
-              {step.id === "instruction" && step.lines[0] && step.lines[0] !== step.title && (
-                <span className="line-clamp-2 text-[12.5px] leading-snug break-words text-fg-2">{step.lines[0]}</span>
-              )}
-              {step.id !== "instruction" &&
-                step.lines
-                  .filter((line) => line !== "Not saved yet")
-                  .map((line) => (
-                    <span key={line} className="truncate text-[12px] text-muted">
-                      {line}
-                    </span>
-                  ))}
             </span>
           </span>
         </li>
