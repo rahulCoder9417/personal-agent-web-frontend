@@ -16,8 +16,9 @@ import {
   turnsOver,
   turnsOverAfterReconnect,
 } from "../drafts";
+import { threadIsWorking } from "../chat-thread";
 import type { AgentProgress, AgentStatus, Approval, Conversation, CreditBalance, Message, MessageDraft, StreamEvent } from "./client";
-import { addMessage, invalidateAutomations, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
+import { addMessage, cachedThread, invalidateAutomations, noteAgentStatusEvent, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
 
 const EVENT_TYPES: StreamEvent["type"][] = [
   "message.created",
@@ -87,6 +88,32 @@ export function useDrafts(): Drafts {
   return useQuery<Drafts>({ queryKey: DRAFTS_KEY, queryFn: () => NO_DRAFTS, enabled: false, initialData: NO_DRAFTS, staleTime: Infinity }).data;
 }
 
+/**
+ * Tex's answer is sent a moment before its turn ends: the turn's last events (the person's message
+ * `delivered`, the agent no longer `busy`) follow within a second or two. If they haven't arrived
+ * this long after the answer, they were lost on the way, and the thread would show Tex at work on a
+ * finished turn until the stream next reconnects.
+ */
+export const SETTLE_CHECK_MS = 10_000;
+
+/**
+ * Tex wrote in a conversation (not a question: that pauses the turn). If its thread still shows Tex
+ * at work on the person's message `SETTLE_CHECK_MS` later, the agent's state and the thread are
+ * asked for again: the API says whether the turn ended. A turn that is still running (Tex said "on
+ * it" and carries on) stays at work, as the API says so too.
+ */
+function checkTurnSettles(qc: QueryClient, message: Message) {
+  if (message.direction !== "out" || message.approvalId) return;
+  const { conversationId } = message;
+  const stillWorking = () =>
+    threadIsWorking(qc.getQueryData<AgentStatus>(qk.agentStatus)?.state === "busy", cachedThread(qc, conversationId) ?? []);
+  setTimeout(() => {
+    if (!stillWorking()) return;
+    void qc.invalidateQueries({ queryKey: qk.agentStatus });
+    void qc.invalidateQueries({ queryKey: qk.thread(conversationId) });
+  }, SETTLE_CHECK_MS);
+}
+
 /** Folds one event from the live stream into the query cache, so every screen shows it. */
 export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
   switch (event.type) {
@@ -95,6 +122,7 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
       addMessage(qc, event.data as Message);
       // Tex's answer takes the place of what was shown of it while it was written, and the steps fold into it.
       updateDrafts(qc, (drafts) => messageArrived(drafts, event.data as Message));
+      checkTurnSettles(qc, event.data as Message);
       break;
     case "message.status":
       upsertMessage(qc, event.data as Message);
@@ -120,6 +148,7 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
       break;
     case "agent.status": {
       const status = event.data as AgentStatus;
+      noteAgentStatusEvent(qc);
       qc.setQueryData(qk.agentStatus, status);
       if (status.state !== "busy") {
         // The turn is over: its progress lines have nothing more to say, and nothing is being written.
@@ -150,9 +179,119 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
 }
 
 /**
- * Keeps one Server-Sent Events connection open and folds each event into the query cache,
- * so every screen updates live. `onEvent` also sees each event.
- * EventSource reconnects on its own; each reconnect catches up (`catchUpAfterReconnect`).
+ * The backend writes a `ping` after 25 seconds without an event. Nothing at all for this long, and
+ * the connection is taken to be dead though the browser still holds it open (it can stay that way
+ * for minutes, delivering nothing): it is replaced, and the new one catches up.
+ */
+export const SILENT_MS = 70_000;
+/** How often the connection's silence is looked at. */
+export const WATCH_EVERY_MS = 10_000;
+/**
+ * A stream that was refused (the proxy answered 401 or 502, say) is closed for good by the browser,
+ * which never tries it again. It is opened again after this long, then twice as long each time
+ * it is refused again, up to `REOPEN_MAX_MS`.
+ */
+export const REOPEN_FIRST_MS = 3_000;
+export const REOPEN_MAX_MS = 60_000;
+/** `EventSource.CLOSED`: the browser has given the connection up for good. */
+const CLOSED = 2;
+
+/** What the live connection needs of the browser, so it can be tried without one. */
+export type LiveSource = Pick<EventSource, "addEventListener" | "close" | "readyState">;
+export type LiveBrowser = {
+  open: () => LiveSource;
+  /** Whether the page is on screen. */
+  visible: () => boolean;
+  /** Calls `listener` each time the page is shown or hidden; returns how to stop. */
+  onVisibility: (listener: () => void) => () => void;
+};
+
+/**
+ * Keeps one Server-Sent Events connection open and folds each event into the query cache. Each
+ * connection after the first catches up as it opens (`catchUpAfterReconnect`): the browser's own
+ * reconnects after a dropped connection, and the ones made here, when a connection has gone silent
+ * (`SILENT_MS`; looked at again at once when the page is shown) or was refused for good. Returns how
+ * to close it.
+ */
+export function connectLive(qc: QueryClient, browser: LiveBrowser, onEvent?: StreamListener): () => void {
+  let source: LiveSource | null = null;
+  let opened = false;
+  let heardAt = Date.now();
+  let reopenMs = REOPEN_FIRST_MS;
+  let reopenTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const open = () => {
+    clearTimeout(reopenTimer);
+    reopenTimer = undefined;
+    source?.close();
+    const current = browser.open();
+    source = current;
+    heardAt = Date.now();
+    // Only the newest connection speaks: one replaced may still deliver something as it goes.
+    const heard = () => {
+      if (source !== current) return false;
+      heardAt = Date.now();
+      return true;
+    };
+    current.addEventListener("ready", () => {
+      if (!heard()) return;
+      reopenMs = REOPEN_FIRST_MS;
+      // A reconnect: anything sent while we were away is missing. (The first connect needs
+      // nothing: the lists are being asked for the first time.)
+      if (opened) catchUpAfterReconnect(qc, browser.visible());
+      opened = true;
+    });
+    current.addEventListener("ping", heard);
+    const onMessage = (raw: MessageEvent<string>) => {
+      if (!heard()) return;
+      let event: StreamEvent;
+      try {
+        event = JSON.parse(raw.data) as StreamEvent;
+      } catch {
+        return;
+      }
+      applyStreamEvent(qc, event);
+      onEvent?.(event);
+    };
+    for (const type of EVENT_TYPES) current.addEventListener(type, onMessage as EventListener);
+    current.addEventListener("error", () => {
+      // After a dropped connection the browser tries again by itself. Refused, it gives up.
+      if (source !== current || current.readyState !== CLOSED || reopenTimer) return;
+      reopenTimer = setTimeout(open, reopenMs);
+      reopenMs = Math.min(reopenMs * 2, REOPEN_MAX_MS);
+    });
+  };
+
+  const silent = () => !reopenTimer && Date.now() - heardAt > SILENT_MS;
+  const watch = setInterval(() => {
+    if (silent()) open();
+  }, WATCH_EVERY_MS);
+  // A page put away for a while: its timers may have slept too, so it is looked at as it comes back.
+  const stopVisibility = browser.onVisibility(() => {
+    if (browser.visible() && silent()) open();
+  });
+  open();
+  return () => {
+    clearInterval(watch);
+    clearTimeout(reopenTimer);
+    stopVisibility();
+    source?.close();
+    source = null;
+  };
+}
+
+const inBrowser: LiveBrowser = {
+  open: () => new EventSource("/api/v1/stream"),
+  visible: () => document.visibilityState === "visible",
+  onVisibility: (listener) => {
+    document.addEventListener("visibilitychange", listener);
+    return () => document.removeEventListener("visibilitychange", listener);
+  },
+};
+
+/**
+ * Keeps the live connection open (`connectLive`) while the app is on screen, so every screen
+ * updates live. `onEvent` also sees each event.
  */
 export function useEventStream(onEvent?: StreamListener) {
   const qc = useQueryClient();
@@ -161,30 +300,5 @@ export function useEventStream(onEvent?: StreamListener) {
     listener.current = onEvent;
   }, [onEvent]);
 
-  useEffect(() => {
-    const source = new EventSource("/api/v1/stream");
-    let opened = false;
-
-    const onReady = () => {
-      // A reconnect: anything sent while we were away is missing. (The first connect needs
-      // nothing: the lists are being asked for the first time.)
-      if (opened) catchUpAfterReconnect(qc, document.visibilityState === "visible");
-      opened = true;
-    };
-
-    const onMessage = (raw: MessageEvent<string>) => {
-      let event: StreamEvent;
-      try {
-        event = JSON.parse(raw.data) as StreamEvent;
-      } catch {
-        return;
-      }
-      applyStreamEvent(qc, event);
-      listener.current?.(event);
-    };
-
-    source.addEventListener("ready", onReady);
-    for (const type of EVENT_TYPES) source.addEventListener(type, onMessage as EventListener);
-    return () => source.close();
-  }, [qc]);
+  useEffect(() => connectLive(qc, inBrowser, (event) => listener.current?.(event)), [qc]);
 }
