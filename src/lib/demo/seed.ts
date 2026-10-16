@@ -389,7 +389,7 @@ const FABLE_NOTE = "Pro: paid with usage credits. Max: up to half your weekly li
 /**
  * What Claude Code's model and effort can be set to, as the backend offers them (`claudeChoices`):
  * every Claude model Claude Code can use, the current ones first, each with the levels it takes.
- * Null in the settings is Claude Code's own default.
+ * Null in the settings is Default (Sonnet 5.5 at low effort).
  */
 export const CLAUDE_CHOICES: AgentSettings["claudeChoices"] = {
   models: [

@@ -185,7 +185,7 @@ function SavedNote() {
 
 /**
  * Which Claude model Claude Code uses and how hard it thinks, as two rows of the Engine group.
- * "Default" leaves it to Claude Code. Each change is saved as it is made; it applies to turns that
+ * "Default" is Sonnet 5.5 at low effort, for quick answers (Byte and Patch keep Opus 5.5). Each change is saved as it is made; it applies to turns that
  * run on Claude Code. Only offered once a Claude plan is connected.
  */
 export function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
@@ -203,7 +203,7 @@ export function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
         label="Model"
         help={
           <>
-            The Claude model Claude Code runs. Default is Claude Code’s own.
+            The Claude model Claude Code runs. Default is Sonnet 5.5 at low effort, for quick answers; Byte and Patch then work on Opus 5.5.
             {saved === "model" && <SavedNote />}
           </>
         }
@@ -216,7 +216,7 @@ export function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
         label="Thinking effort"
         help={
           <>
-            How hard Claude Code thinks before it answers. Default is Claude Code’s own.
+            How hard Claude Code thinks before it answers. Default is low on the default model, and Claude Code’s own for a model you pick.
             {saved === "effort" && <SavedNote />}
           </>
         }

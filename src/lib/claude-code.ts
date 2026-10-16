@@ -1,6 +1,8 @@
 // Claude Code's model and thinking effort, as the settings offer them. The backend says what can
 // be chosen (`claudeChoices`): every model, its group, the levels it takes and a note. Null in the
-// settings is Claude Code's own default.
+// settings is "Default": Sonnet 5.5 at low effort, for quick answers (the Bridge, in the vm-manager),
+// with Byte and Patch on Opus 5.5 at medium effort. An effort left on Default with a chosen model is
+// Claude Code's own for that model.
 
 import type { AgentSettings, ClaudeEffort } from "./api/client";
 import { titleCase } from "./format";
@@ -17,6 +19,12 @@ export type OptionGroup = { label: string | null; options: SelectOption[] };
 export type ClaudeModelChoice = AgentSettings["claudeChoices"]["models"][number];
 
 export const DEFAULT_OPTION: SelectOption = { value: "", label: "Default" };
+
+/** "Default" in the Model select, saying what it runs. */
+export const DEFAULT_MODEL_OPTION: SelectOption = { value: "", label: "Default (Sonnet 5.5, quick)" };
+
+/** "Default" in the Thinking effort select while the model is on Default too: low. */
+export const DEFAULT_EFFORT_OPTION: SelectOption = { value: "", label: "Default (Low)" };
 
 const EFFORT_LABEL: Record<string, string> = {
   low: "Low",
@@ -58,7 +66,7 @@ export function modelOptions(settings: Choices): SelectOption[] {
     ...(model.group ? { group: groupLabel(model.group) } : {}),
     ...(model.note ? { note: model.note } : {}),
   }));
-  return [DEFAULT_OPTION, ...withSaved(models, settings.claudeModel, (id) => id)];
+  return [DEFAULT_MODEL_OPTION, ...withSaved(models, settings.claudeModel, (id) => id)];
 }
 
 /** Options split where the heading changes, in order, for a select with headings. */
@@ -94,7 +102,8 @@ export function effortApplies(settings: Choices): boolean {
 /** The "Thinking effort" select: "Default" first, then the levels the chosen model takes. */
 export function effortOptions(settings: Choices): SelectOption[] {
   const efforts = modelEfforts(settings).map((effort) => ({ value: effort, label: effortLabel(effort) }));
-  return [DEFAULT_OPTION, ...withSaved(efforts, settings.claudeEffort, effortLabel)];
+  const fallback = settings.claudeModel ? DEFAULT_OPTION : DEFAULT_EFFORT_OPTION;
+  return [fallback, ...withSaved(efforts, settings.claudeEffort, effortLabel)];
 }
 
 /** The level a model runs a level it doesn't take at: the nearest lower one it does take. */
