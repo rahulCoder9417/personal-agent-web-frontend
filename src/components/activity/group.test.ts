@@ -81,6 +81,18 @@ describe("actionLabel", () => {
     expect(actionLabel("coupon_redeemed")).toBe("coupon redeemed");
   });
 
+  it("says an app action didn't run, and keeps a refused approval request under Approvals", () => {
+    const failed = entry("f", "2026-10-01T14:23:00", {
+      action: "app_action_failed",
+      summary: "Couldn't run GMAIL_SEND_EMAIL in Gmail: it needs your approval, and none was given",
+      creditsCharged: 0,
+    });
+    expect(describeActivity(failed)).toMatchObject({ who: "Tex", label: "app action didn’t run" });
+    const refused = entry("q", "2026-10-01T14:24:00", { action: "approval_request_refused", summary: "Couldn't ask for approval" });
+    expect(describeActivity(refused).label).toBe("approval request refused");
+    expect(matchesFilter(refused, "approvals")).toBe(true);
+  });
+
   it("reads a new chat as the person's", () => {
     const started = entry("n", "2026-10-01T14:22:00", { actor: "user", action: "chat_started", summary: "Started a new chat in web chat" });
     expect(describeActivity(started)).toEqual({ crew: null, who: "You", label: "started a new chat", summary: "Started a new chat in web chat" });

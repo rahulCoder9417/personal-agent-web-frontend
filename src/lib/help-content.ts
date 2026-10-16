@@ -225,17 +225,18 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         id: "telegram-commands",
         title: "Bot commands",
         blocks: [
-          p("Send these in your chat with the bot:"),
+          p("Send these in your chat with the bot. Type `/`, or tap the bot’s menu button, to pick `/new` or `/help` from a list."),
           table(
             ["Send", "What happens"],
             ["`/new`", "Starts a new conversation. Tex won’t use what you talked about before in this chat; your saved memories stay. Free. The bot answers “Started a new chat…”."],
-            ["`/clear` or `/reset`", "The same as `/new`."],
+            ["`/help`", "A short note on what Tex can do, the commands, and a link to this page. Free. Tex doesn’t see it."],
+            ["`/clear` or `/reset`", "The same as `/new`. They aren’t in the menu."],
             ["`/start`", "What Telegram sends when you open the bot. From **Open Telegram** it carries your code, and links the chat."],
             ["A link code, such as `LINK-7KQ2-M9XP`", "Links this chat to your account."],
             ["A coupon code, such as `AGT-7KQ2-M9XP-4RWD-ABCD`", "Adds the coupon’s credits. The bot says how many, when they expire, and your new balance."],
             ["`yes` or `no`", "Answers the newest approval waiting in this chat, like tapping **Approve** or **Reject**."],
           ),
-          note("A command must be the whole message: “/new please” goes to Tex as a normal message. Anything else, `/help` included, is a normal message too: Tex reads it and answers."),
+          note("A command must be the whole message: “/new please” goes to Tex as a normal message. Anything else is a normal message too: Tex reads it and answers."),
         ],
       },
       {

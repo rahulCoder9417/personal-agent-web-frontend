@@ -5,42 +5,8 @@ import { ApprovalDetail } from "@/components/approvals/approval-detail";
 import { ApprovalList } from "@/components/approvals/approval-list";
 import { Page, PageHeader } from "@/components/page";
 import { EmptyState, ErrorState, FilterPills, SkeletonRows, type FilterOption } from "@/components/ui";
-import type { Mood } from "@/components/tex";
-import type { ApprovalStatus } from "@/lib/api/client";
+import { APPROVAL_EMPTY as EMPTY, APPROVAL_TABS as TABS, type ApprovalTab as Tab } from "@/lib/approval-tabs";
 import { useApprovals } from "@/lib/api/hooks";
-
-/** A replaced request has no tab: Tex asked again, and the newer request is the one listed. */
-type Tab = Exclude<ApprovalStatus, "replaced">;
-
-const TABS: { value: Tab; label: string }[] = [
-  { value: "pending", label: "Pending" },
-  { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Denied" },
-  { value: "expired", label: "Expired" },
-];
-
-const EMPTY: Record<Tab, { mood: Mood; title: string; body: string }> = {
-  pending: {
-    mood: "done",
-    title: "All caught up",
-    body: "Nothing is waiting on you. Tex will ask here and in your chat when something needs an OK.",
-  },
-  approved: {
-    mood: "ready",
-    title: "Nothing approved yet",
-    body: "Actions you approve are kept here with what happened next.",
-  },
-  rejected: {
-    mood: "ready",
-    title: "Nothing rejected",
-    body: "Actions you reject are kept here so you can see what Tex didn’t do.",
-  },
-  expired: {
-    mood: "asleep",
-    title: "Nothing expired",
-    body: "An approval expires if you don’t answer in time. Tex does nothing when that happens.",
-  },
-};
 
 export default function ApprovalsPage() {
   const [tab, setTab] = useState<Tab>("pending");
@@ -52,6 +18,7 @@ export default function ApprovalsPage() {
     approved: useApprovals("approved"),
     rejected: useApprovals("rejected"),
     expired: useApprovals("expired"),
+    replaced: useApprovals("replaced"),
   };
   const current = lists[tab];
   const approvals = current.data ?? [];

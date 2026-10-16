@@ -5477,7 +5477,10 @@ components:
       properties:
         id: { type: string }
         actor: { type: string, enum: [user, agent, admin, system] }
-        action: { type: string, examples: [run_app_action, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked, channel_unlinked, web_search, web_search_refused, read_page, read_page_refused, crew_progress, browser_enabled, browser_disabled, pr_review_requested, remember, recall, forget, memory_refused, memory_deleted, memories_cleared, chat_started, conversation_deleted] }
+        action:
+          type: string
+          description: "What happened. `app_action_failed`: an app action that failed or was refused (the summary says why in plain words; never its inputs). `approval_request_refused`: a request for approval that was refused before the user saw it."
+          examples: [run_app_action, app_action_failed, approval_request_refused, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked, channel_unlinked, web_search, web_search_refused, read_page, read_page_refused, crew_progress, browser_enabled, browser_disabled, pr_review_requested, remember, recall, forget, memory_refused, memory_deleted, memories_cleared, chat_started, conversation_deleted]
         summary: { type: string }
         crew:
           type: [string, "null"]
