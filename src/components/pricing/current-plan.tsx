@@ -138,9 +138,10 @@ export function CurrentPlan({
         <div className="flex flex-col gap-2.5 border-t border-line px-6 py-5 max-sm:px-5 @min-[680px]:border-t-0">
           <SectionLabel as="h3">What it includes</SectionLabel>
           {features.length > 0 ? (
-            <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(230px,100%),1fr))] gap-x-6 gap-y-2 text-[13.5px]">
+            // Down each column first, as many columns as fit, so the list reads in its own order.
+            <ul className="gap-x-6 text-[13.5px]" style={{ columnWidth: 230 }}>
               {features.map((feature) => (
-                <li key={feature} className="flex gap-2.5">
+                <li key={feature} className="flex break-inside-avoid gap-2.5 pb-2">
                   <CheckIcon size={16} className="mt-[2px] shrink-0 text-accent" />
                   <span>{feature}</span>
                 </li>
