@@ -56,7 +56,7 @@ export function describeSubscription(subscription: Subscription, plan: Plan | un
     case "cancel_at_period_end":
       return end ? `Ends on ${end}. You keep ${name} until then, then move to Free.` : `Ends with this period. You keep ${name} until then, then move to Free.`;
     case "past_due":
-      return `The last payment for ${name} didn’t go through. Polar will try again and has emailed you a link to update your card. You keep ${name} in the meantime.`;
+      return `The last payment for ${name} didn’t go through. Polar will try again. Press Update card to change the card, and Polar tries it at once. You keep ${name} in the meantime.`;
     case "cancelled":
       return end ? `Ended on ${end}. You’re on Free now.` : "Your subscription has ended. You’re on Free now.";
     case "none":

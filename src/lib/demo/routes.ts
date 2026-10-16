@@ -87,6 +87,7 @@ const ROUTES: Route[] = [
   route("POST", "billing/checkout", account.createCheckout),
   route("POST", "billing/subscription/cancel", account.cancelSubscription),
   route("POST", "billing/subscription/resume", account.resumeSubscription),
+  route("POST", "billing/portal", account.openBillingPortal),
   route("GET", "billing/auto-topup", account.getAutoTopUp),
   route("PUT", "billing/auto-topup", account.setAutoTopUp),
 

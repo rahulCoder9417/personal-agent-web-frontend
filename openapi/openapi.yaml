@@ -1880,6 +1880,11 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/PlanLimit" }
+        "503":
+          description: Payments are not set up on this server (no Polar token). Nothing was started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /v1/billing/subscription/cancel:
     post:
@@ -1919,6 +1924,38 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409":
           description: No cancelled plan that is still running (nothing to keep)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/billing/portal:
+    post:
+      operationId: openBillingPortal
+      tags: [billing]
+      summary: A link to Polar's customer portal (card, invoices, receipts)
+      description: |
+        Returns a short-lived link to Polar's customer portal for this user, signed in already. There
+        the user can change the card, download invoices and receipts, and see past orders. The
+        portal has a back link to the web app's billing page. Plan and credit changes made there
+        reach the backend only through Polar's signed webhooks, as for every other change.
+      responses:
+        "200":
+          description: Redirect the browser to `portalUrl`
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [portalUrl]
+                properties:
+                  portalUrl: { type: string, format: uri }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Nothing bought yet, so Polar has no billing account for this user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Payments are not set up on this server, or Polar could not be reached. Retry later
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

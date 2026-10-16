@@ -1270,6 +1270,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/billing/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A link to Polar's customer portal (card, invoices, receipts)
+         * @description Returns a short-lived link to Polar's customer portal for this user, signed in already. There
+         *     the user can change the card, download invoices and receipts, and see past orders. The
+         *     portal has a back link to the web app's billing page. Plan and credit changes made there
+         *     reach the backend only through Polar's signed webhooks, as for every other change.
+         */
+        post: operations["openBillingPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/billing/auto-topup": {
         parameters: {
             query?: never;
@@ -6612,6 +6635,15 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["PlanLimit"];
+            /** @description Payments are not set up on this server (no Polar token). Nothing was started */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     cancelSubscription: {
@@ -6665,6 +6697,48 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             /** @description No cancelled plan that is still running (nothing to keep) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    openBillingPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect the browser to `portalUrl` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uri */
+                        portalUrl: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Nothing bought yet, so Polar has no billing account for this user */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Payments are not set up on this server, or Polar could not be reached. Retry later */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

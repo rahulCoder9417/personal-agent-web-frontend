@@ -229,6 +229,15 @@ export const resumeSubscription: Handler = ({ state }) => {
   return json(state.subscription);
 };
 
+/**
+ * Polar's customer portal. Like the backend: someone who never bought anything has no billing
+ * account (409). The demo has no portal, so the link is a page of this app that says so.
+ */
+export const openBillingPortal: Handler = ({ state, url }) => {
+  if (state.subscription.status === "none") throw conflict("Nothing bought yet, so there is no billing account to manage");
+  return json({ portalUrl: `${url.origin}/connected?portal=demo` });
+};
+
 // Auto top-up: the backend's rules, minus Polar (the demo's "card" is always there).
 export const getAutoTopUp: Handler = ({ state }) => json(state.autoTopUp);
 
