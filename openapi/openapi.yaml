@@ -1156,9 +1156,10 @@ paths:
       summary: Run once now, as a test
       description: |
         Runs the saved automation once, now, on or paused: a normal run in the Automations chat, at
-        a normal run's cost, with approvals as usual. A line before it says it is a test run, and
-        Tex is told so; the copy to a chat app (`copyTo`) is marked "Test run" too. An app event's
-        test has no real event: Tex is told to work without one.
+        a normal run's cost, with approvals as usual, except that they stay in the web app: a test
+        run is the user's own, so none is copied to Telegram. A line before it says it is a test
+        run, and Tex is told so; the copy to a chat app (`copyTo`) is marked "Test run" too. An app
+        event's test has no real event: Tex is told to work without one.
 
         It does not move the schedule, does not finish a one-time reminder and does not count as a
         failure. At most 10 test runs an hour per user (429). One `clientRequestId`, one run.
@@ -4293,8 +4294,10 @@ components:
         What the user is told on Telegram (the web app shows it only once Telegram is linked). A
         notice on Telegram is always in addition to the chat the work was asked in, never instead
         of it, and nothing is sent while Telegram is not linked, switched off or blocked. An
-        approval is sent to Telegram too whenever Telegram is linked, whatever these say.
-      required: [crewJobs, prReviews, automationRuns, quietHours]
+        approval asked on Telegram is always asked there. One asked in the web app (web chat, a
+        crew job or a test run started there) stays in the web app. One asked by an automation's
+        run goes to Telegram too, with the same buttons, while `automationApprovals` is on.
+      required: [crewJobs, prReviews, automationRuns, automationApprovals, quietHours]
       properties:
         crewJobs:
           type: boolean
@@ -4309,6 +4312,13 @@ components:
           description: |
             A copy of each answer of an automation made in the web app. An automation made on
             Telegram always sends its answer there. Off at first.
+        automationApprovals:
+          type: boolean
+          description: |
+            An approval asked by an automation's run (a pull-request review included, and a crew
+            job such a run started) is sent to Telegram as well, with Approve and Deny buttons; the
+            first answer wins. Off: it waits in the web app only. A test run ("Run once now") is
+            the user's own, in the web app, so its approvals stay there. On at first.
         quietHours: { $ref: "#/components/schemas/QuietHours" }
 
     QuietHours:
@@ -4336,6 +4346,7 @@ components:
         crewJobs: { type: boolean }
         prReviews: { type: boolean }
         automationRuns: { type: boolean }
+        automationApprovals: { type: boolean }
         quietHours:
           type: object
           properties:

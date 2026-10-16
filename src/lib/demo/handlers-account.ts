@@ -82,6 +82,7 @@ function notificationsChange(current: NotificationSettings, raw: unknown): Notif
     ...(booleanField(raw, "crewJobs") === undefined ? {} : { crewJobs: raw.crewJobs as boolean }),
     ...(booleanField(raw, "prReviews") === undefined ? {} : { prReviews: raw.prReviews as boolean }),
     ...(booleanField(raw, "automationRuns") === undefined ? {} : { automationRuns: raw.automationRuns as boolean }),
+    ...(booleanField(raw, "automationApprovals") === undefined ? {} : { automationApprovals: raw.automationApprovals as boolean }),
     ...(quiet ? { quietHours: { ...(booleanField(quiet, "enabled") === undefined ? {} : { enabled: quiet.enabled as boolean }), ...(quiet.start ? { start: quiet.start as string } : {}), ...(quiet.end ? { end: quiet.end as string } : {}) } } : {}),
   };
   const next = withNotificationChange(current, change);

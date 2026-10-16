@@ -1,25 +1,28 @@
-// What Tex tells the user on Telegram (Settings → General, "Tell me on Telegram when…"): three
+// What Tex tells the user on Telegram (Settings → General, "Tell me on Telegram when…"): four
 // switches and quiet hours, kept by the backend on the account (`Me.notifications`). A notice on
-// Telegram is always in addition to the chat the work was asked in, never instead of it.
+// Telegram is always in addition to the chat the work was asked in, never instead of it. An
+// approval asked in the web app stays there; one an automation asks goes to Telegram too while
+// its switch is on.
 
 import type { Me, MeUpdate } from "@/lib/api/client";
 
 export type NotificationSettings = Me["notifications"];
 export type NotificationSettingsUpdate = NonNullable<MeUpdate["notifications"]>;
-export type NoticeSwitch = "crewJobs" | "prReviews" | "automationRuns";
+export type NoticeSwitch = "crewJobs" | "prReviews" | "automationRuns" | "automationApprovals";
 
 /** The settings every account starts with (the backend's defaults). */
 export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
   crewJobs: true,
   prReviews: true,
   automationRuns: false,
+  automationApprovals: true,
   quietHours: { enabled: true, start: "22:00", end: "08:00" },
 };
 
 /** The anchor of the group on Settings → General, for links that lead to it. */
 export const TELEGRAM_NOTICES_ID = "telegram-notices";
 
-/** The three switches, in the order shown, with what each one sends. */
+/** The four switches, in the order shown, with what each one sends. */
 export const NOTICE_SWITCHES: readonly { key: NoticeSwitch; label: string; help: string }[] = [
   {
     key: "crewJobs",
@@ -36,6 +39,11 @@ export const NOTICE_SWITCHES: readonly { key: NoticeSwitch; label: string; help:
     label: "Automation runs finish",
     help: "A copy of each answer of an automation made in the web app. The ones made on Telegram always answer there.",
   },
+  {
+    key: "automationApprovals",
+    label: "An automation needs my OK",
+    help: "Approve or Deny on Telegram when an automation asks; what you ask in the web app stays here.",
+  },
 ];
 
 /** The settings with a change applied: only the fields it names change. */
@@ -44,6 +52,7 @@ export function withNotificationChange(current: NotificationSettings, change: No
     crewJobs: change.crewJobs ?? current.crewJobs,
     prReviews: change.prReviews ?? current.prReviews,
     automationRuns: change.automationRuns ?? current.automationRuns,
+    automationApprovals: change.automationApprovals ?? current.automationApprovals,
     quietHours: { ...current.quietHours, ...change.quietHours },
   };
 }
