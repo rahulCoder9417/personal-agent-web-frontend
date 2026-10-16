@@ -1,6 +1,9 @@
 // The rules of the app's dropdowns, before anything draws them: which option a key moves to, what
 // typing picks out, which options a search leaves, and whether the list opens under the field or
-// above it. `Select` and `Combobox` (src/components/select.tsx) draw them.
+// above it. `Select` and `Combobox` (src/components/select.tsx) draw them, and so do `MultiSelect`
+// and `TimePicker`.
+
+import type { ReactNode } from "react";
 
 /** One choice in a dropdown. */
 export type ListOption = {
@@ -14,6 +17,8 @@ export type ListOption = {
   disabled?: boolean;
   /** More words a search finds the option by, besides its label, value and hint. */
   keywords?: readonly string[];
+  /** A mark before the label: an app's logo, a kind's glyph. Shown in the list and in the closed field. */
+  icon?: ReactNode;
 };
 
 /** Options under a heading of their own. */
@@ -306,4 +311,11 @@ export function placeList(anchor: Rect, view: { width: number; height: number },
   const width = Math.min(Math.max(anchor.width, minWidth), view.width - 2 * MARGIN);
   const left = Math.max(MARGIN, Math.min(anchor.left, view.width - width - MARGIN));
   return { up, left, width, maxHeight: Math.max(Math.min(want, up ? above : below), 0) };
+}
+
+// ---------------------------------------------------------------- several at once
+
+/** Ticks a value that isn't chosen (at the end) and unticks one that is: a click in a MultiSelect. */
+export function toggleValue(values: readonly string[], value: string): string[] {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 }

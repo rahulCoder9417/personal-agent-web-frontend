@@ -247,3 +247,45 @@ export const PricingIcon = (p: IconProps) => (
     <path d="M8.5 8.5h.01" />
   </Base>
 );
+
+/** A page of a calendar: a day to pick. */
+export const CalendarIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+    <path d="M3.5 10h17M8 3v4M16 3v4" />
+  </Base>
+);
+
+/** A triangle: run it now. */
+export const PlayIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M8 5.5v13a.8.8 0 0 0 1.2.7l10.3-6.5a.8.8 0 0 0 0-1.4L9.2 4.8A.8.8 0 0 0 8 5.5Z" />
+  </Base>
+);
+
+/** Two bars: paused. */
+export const PauseIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M9 5.5v13M15 5.5v13" />
+  </Base>
+);
+
+export const PlusIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </Base>
+);
+
+export const MinusIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M5 12h14" />
+  </Base>
+);
+
+/** Two arrows round: sign in again (reconnect). */
+export const RefreshIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M19.5 12a7.5 7.5 0 0 1-13.2 4.9M4.5 12a7.5 7.5 0 0 1 13.2-4.9" />
+    <path d="M18 3.5v4h-4M6 20.5v-4h4" />
+  </Base>
+);
