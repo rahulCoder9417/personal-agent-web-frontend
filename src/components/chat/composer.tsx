@@ -7,7 +7,8 @@ import { useMe, useSendMessage, useUploadAttachment } from "@/lib/api/hooks";
 import { formatBytes } from "@/lib/format";
 import { CloseIcon, FileIcon, PaperclipIcon, SendIcon } from "../icons";
 import { AgentFigure } from "../tex";
-import { ButtonLink, InlineError, Spinner } from "../ui";
+import { toastError } from "../toast";
+import { ButtonLink, Spinner } from "../ui";
 import { PRICING_PATH } from "@/lib/pricing";
 
 const MAX_FILES = 5;
@@ -44,6 +45,10 @@ function OutOfCredits() {
  * Where you type to Tex. Files can be attached with the paperclip or dropped on the chat.
  * `conversationId` is the web conversation that is open: the message is written in it, which makes
  * it the active one. Without it (nothing said in web chat yet) the backend picks the active one.
+ *
+ * Sending doesn't wait for the API: the box empties at once and the message shows in the thread as
+ * "sending" (`sendMessageOptions`). If the API refuses it, the words and files come back to the box
+ * (unless something new was typed meanwhile) and a toast says why.
  */
 export function Composer({ ref, conversationId, placeholder = "Message Tex…" }: { ref?: Ref<ComposerHandle>; conversationId?: string; placeholder?: string }) {
   const router = useRouter();
@@ -104,19 +109,21 @@ export function Composer({ ref, conversationId, placeholder = "Message Tex…" }
     (send.error instanceof ApiError && send.error.outOfCredits) || (me.data !== undefined && me.data.credits.balance <= 0);
   if (outOfCredits) return <OutOfCredits />;
 
-  const canSend = text.trim().length > 0 && uploading === 0 && !send.isPending;
+  const canSend = text.trim().length > 0 && uploading === 0;
   const submit = () => {
     if (!canSend) return;
-    send.mutate(
-      { text: text.trim(), attachmentIds: files.map((f) => f.id), conversationId },
-      {
-        onSuccess: () => {
-          setText("");
-          setFiles([]);
-          setFileError(null);
-        },
-      },
-    );
+    const sent = { text: text.trim(), files };
+    setText("");
+    setFiles([]);
+    setFileError(null);
+    send.mutateAsync({ text: sent.text, attachments: sent.files, clientMessageId: crypto.randomUUID(), conversationId }).catch((error: unknown) => {
+      // What was sent comes back to the box, unless something new is in it by now.
+      setText((now) => (now.trim() ? now : sent.text));
+      setFiles((now) => (now.length ? now : sent.files));
+      // Out of credits: the box gives way to what to do about it, which says so.
+      if (!(error instanceof ApiError && error.outOfCredits)) toastError("Couldn’t send your message", error);
+    });
+    input.current?.focus();
   };
 
   return (
@@ -192,18 +199,16 @@ export function Composer({ ref, conversationId, placeholder = "Message Tex…" }
             onClick={submit}
             className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-accent text-white transition-colors hover:bg-accent-dark disabled:bg-surface-2 disabled:text-muted"
           >
-            {send.isPending ? <Spinner size={14} /> : <SendIcon size={15} />}
+            <SendIcon size={15} />
           </button>
         </div>
       </div>
 
       <div className="flex min-h-4 items-center justify-between gap-3 px-3">
-        {fileError ? (
+        {fileError && (
           <p role="alert" className="text-[12.5px] text-danger">
             {fileError}
           </p>
-        ) : (
-          <InlineError error={send.error} />
         )}
         <span className="ml-auto text-[12px] text-muted max-md:hidden">Enter to send, Shift+Enter for a new line. Drop files anywhere.</span>
       </div>

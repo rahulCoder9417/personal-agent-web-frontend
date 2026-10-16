@@ -23,7 +23,7 @@ import type {
 import { QueryClient } from "@tanstack/react-query";
 import { applyStreamEvent } from "@/lib/api/stream";
 import { threadIsWorking } from "@/lib/chat-thread";
-import { DRAFTS_KEY, type Drafts, NO_DRAFTS, turnOnScreen } from "@/lib/drafts";
+import { DRAFTS_KEY, type Drafts, NO_DRAFTS, trailLine, turnOnScreen } from "@/lib/drafts";
 import { hasMarkdown } from "@/lib/markdown";
 import { draftCuts, runDemoAutomation } from "./handlers-chat";
 import { handleDemoRequest, resetDemoStore } from "./index";
@@ -308,13 +308,14 @@ describe("chat", () => {
       "draft:Now your inbox.",
       "draft:Two emails from Maya mention tomorrow’s review, so I’ll read both before I tell you what she needs from you.",
     ]);
-    expect(seen.filter((step) => step.startsWith("progress:"))).toEqual(["progress:using Google Calendar", "progress:using Gmail", "progress:reading 2 emails"]);
+    expect(seen.filter((step) => step.startsWith("progress:"))).toEqual(["progress:Checked your calendar", "progress:Checked your inbox", "progress:Read 2 emails"]);
     const answer = (await call<Page<Message>>("GET", `messages?conversationId=${sent.body.conversationId}`)).body.items[0];
     expect(answer).toMatchObject({ direction: "out" });
     expect(answer.text.startsWith("Today: “Roadmap sync” at 3pm")).toBe(true);
-    // The long line was kept as a step, with the tool it went on to, and folded into the answer.
+    // Each tool is a step; the long line was kept as a step before the tool it went on to; all fold into the answer.
     const folded = (qc.getQueryData<Drafts>(DRAFTS_KEY) ?? NO_DRAFTS).folded[answer.id];
-    expect(folded.map((step) => [step.text.slice(0, 15), step.progress.map((line) => line.text)])).toEqual([["Two emails from", ["reading 2 emails"]]]);
+    expect(folded.map((step) => step.text.slice(0, 21))).toEqual(["Checked your calendar", "Checked your inbox", "Two emails from Maya ", "Read 2 emails"]);
+    expect(trailLine(folded)).toBe("Read 2 emails · 4 steps");
     expect(onScreen()).toBeNull();
     expect(flashes).toBe(0);
   });

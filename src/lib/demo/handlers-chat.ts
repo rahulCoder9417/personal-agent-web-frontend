@@ -192,11 +192,11 @@ function reportProgress(state: DemoState, job: CrewJob, step: string): void {
 const DAY_TURN = {
   when: /\b(my day|inbox)\b/i,
   runs: [
-    { text: "Let me check your calendar.", tool: "using Google Calendar" },
-    { text: "Now your inbox.", tool: "using Gmail" },
+    { text: "Let me check your calendar.", tool: "Checked your calendar" },
+    { text: "Now your inbox.", tool: "Checked your inbox" },
     {
       text: "Two emails from Maya mention tomorrow’s review, so I’ll read both before I tell you what she needs from you.",
-      tool: "reading 2 emails",
+      tool: "Read 2 emails",
     },
   ],
   reply:
@@ -338,6 +338,8 @@ export const sendMessage: Handler = async ({ state, request }) => {
     ...(attachments.length ? { attachments: attachments.map(({ id, name, mimeType }) => ({ id, name, mimeType })) } : {}),
     status: "queued",
     approvalId: null,
+    // As the backend does: the web app matches its "sending" bubble to the saved message with it.
+    clientMessageId,
     createdAt: nowIso(),
   };
   state.messages.unshift(message);
