@@ -2,6 +2,7 @@
 
 import {
   type InfiniteData,
+  type MutationOptions,
   type QueryClient,
   useInfiniteQuery,
   useMutation,
@@ -252,20 +253,82 @@ function threadIsEmpty(qc: QueryClient, conversationId: string): boolean | undef
   return thread ? thread.pages.every((page) => page.items.length === 0) : undefined;
 }
 
+/** The id of a message the person just sent, shown at once while the API saves it (`localMessage`). */
+export const LOCAL_ID_PREFIX = "local:";
+
+/** Whether a message is only on this screen so far: sent, and not yet saved by the API. */
+export const isLocalMessage = (message: Pick<Message, "id">) => message.id.startsWith(LOCAL_ID_PREFIX);
+
+/**
+ * The person's message as the thread shows it the moment they send it ("sending"), before the API
+ * has saved it. The saved message takes its place (`withMessage`); it goes if the send fails.
+ */
+export function localMessage(
+  input: { clientMessageId: string; conversationId: string; text: string; attachments?: readonly Pick<Attachment, "id" | "name" | "mimeType">[] },
+  now = new Date(),
+): Message {
+  return {
+    id: `${LOCAL_ID_PREFIX}${input.clientMessageId}`,
+    conversationId: input.conversationId,
+    channel: "web",
+    direction: "in",
+    text: input.text,
+    ...(input.attachments?.length ? { attachments: input.attachments.map(({ id, name, mimeType }) => ({ id, name, mimeType })) } : {}),
+    status: "queued",
+    approvalId: null,
+    clientMessageId: input.clientMessageId,
+    createdAt: now.toISOString(),
+  };
+}
+
+/**
+ * The "sending" bubble a saved message stands for: the one sent with the same `clientMessageId`. A
+ * backend that doesn't say it yet: the newest one with the same words, for a message of the person's
+ * from web chat.
+ */
+function standIn(items: readonly Message[], message: Message): Message | undefined {
+  if (isLocalMessage(message) || message.direction !== "in" || message.channel !== "web") return undefined;
+  const locals = items.filter(isLocalMessage);
+  if (message.clientMessageId) return locals.find((local) => local.clientMessageId === message.clientMessageId);
+  return locals.find((local) => local.text === message.text);
+}
+
+/**
+ * A thread (newest first) with a new or changed message in it. A saved message of the person's takes
+ * the place of the "sending" bubble it stands for, so the two are never both shown, whichever comes
+ * first: the API's answer to the send, or the message on the live stream.
+ */
+export function withMessage(data: Thread, message: Message): Thread {
+  const items = data.pages.flatMap((page) => page.items);
+  const local = standIn(items, message);
+  if (items.some((item) => item.id === message.id)) {
+    return {
+      ...data,
+      pages: data.pages.map((page) => ({
+        ...page,
+        items: page.items.filter((item) => item !== local).map((item) => (item.id === message.id ? message : item)),
+      })),
+    };
+  }
+  if (local) {
+    return { ...data, pages: data.pages.map((page) => ({ ...page, items: page.items.map((item) => (item === local ? message : item)) })) };
+  }
+  const [first, ...rest] = data.pages;
+  if (!first) return data;
+  return { ...data, pages: [{ ...first, items: [message, ...first.items] }, ...rest] };
+}
+
 /** Puts a new or changed message into its conversation's cached thread (the API lists newest first). */
 export function upsertMessage(qc: QueryClient, message: Message) {
-  qc.setQueryData<Thread>(qk.thread(message.conversationId), (data) => {
-    if (!data) return data;
-    const exists = data.pages.some((p) => p.items.some((m) => m.id === message.id));
-    if (exists) {
-      return {
-        ...data,
-        pages: data.pages.map((p) => ({ ...p, items: p.items.map((m) => (m.id === message.id ? message : m)) })),
-      };
-    }
-    const [first, ...rest] = data.pages;
-    if (!first) return data;
-    return { ...data, pages: [{ ...first, items: [message, ...first.items] }, ...rest] };
+  qc.setQueryData<Thread>(qk.thread(message.conversationId), (data) => (data ? withMessage(data, message) : data));
+}
+
+/** Takes the "sending" bubble of a send that failed (or was answered) out of its thread. */
+export function removeLocalMessage(qc: QueryClient, conversationId: string, clientMessageId: string) {
+  const id = `${LOCAL_ID_PREFIX}${clientMessageId}`;
+  qc.setQueryData<Thread>(qk.thread(conversationId), (data) => {
+    if (!data?.pages.some((page) => page.items.some((item) => item.id === id))) return data;
+    return { ...data, pages: data.pages.map((page) => ({ ...page, items: page.items.filter((item) => item.id !== id) })) };
   });
 }
 
@@ -353,26 +416,45 @@ export function useDeleteConversation() {
   });
 }
 
+/** What the composer sends: the words, the files already uploaded, and the id that makes sending it twice harmless. */
+export type SendInput = {
+  text: string;
+  /** Made before the request, so the "sending" bubble and the saved message can be matched. */
+  clientMessageId: string;
+  attachments?: readonly Attachment[];
+  conversationId?: string;
+};
+
+const postMessage = (input: SendInput): Promise<Message> =>
+  unwrap(
+    api.POST("/v1/messages", {
+      body: {
+        text: input.text,
+        clientMessageId: input.clientMessageId,
+        ...(input.attachments?.length ? { attachmentIds: input.attachments.map((file) => file.id) } : {}),
+        ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+      },
+    }),
+  );
+
 /**
- * Sends a web message. With `conversationId` it is written in that web conversation, which becomes
- * the active one, and Tex carries on with that conversation's own context; without, in the active one.
- * The Automations chat is written in where it is: it never becomes the active one.
+ * Sending a web message, as `useSendMessage` does it (apart, so it can be tried without React):
+ * - at once, the message shows in the open conversation as "sending" (`localMessage`);
+ * - the saved message takes its place (`withMessage`), from the API's answer or the live stream;
+ * - if the send fails, the "sending" bubble goes (the composer puts the words back and says why).
+ * With no conversation open yet (nothing said in web chat), there is no thread to show it in: it
+ * shows with the API's answer, which starts the conversation.
  */
-export function useSendMessage() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { text: string; attachmentIds?: string[]; clientMessageId?: string; conversationId?: string }) =>
-      unwrap(
-        api.POST("/v1/messages", {
-          body: {
-            text: input.text,
-            clientMessageId: input.clientMessageId ?? crypto.randomUUID(),
-            ...(input.attachmentIds?.length ? { attachmentIds: input.attachmentIds } : {}),
-            ...(input.conversationId ? { conversationId: input.conversationId } : {}),
-          },
-        }),
-      ),
-    onSuccess: (message) => {
+export function sendMessageOptions(qc: QueryClient, post: (input: SendInput) => Promise<Message> = postMessage): MutationOptions<Message, Error, SendInput> {
+  return {
+    mutationFn: post,
+    onMutate: (input) => {
+      if (input.conversationId) upsertMessage(qc, localMessage({ ...input, conversationId: input.conversationId }));
+    },
+    onError: (_error, input) => {
+      if (input.conversationId) removeLocalMessage(qc, input.conversationId, input.clientMessageId);
+    },
+    onSuccess: (message, input) => {
       const list = qc.getQueryData<ConversationList>(qk.conversations);
       const inAutomations = automationsChatOf(qc)?.id === message.conversationId;
       if (list && !inAutomations && !allConversations(list).some((item) => item.id === message.conversationId)) {
@@ -384,8 +466,21 @@ export function useSendMessage() {
         void qc.invalidateQueries({ queryKey: qk.thread(message.conversationId) });
       }
       addMessage(qc, message);
+      // Whatever happened to it on the way, the "sending" bubble has done its job.
+      if (input.conversationId) removeLocalMessage(qc, input.conversationId, input.clientMessageId);
     },
-  });
+  };
+}
+
+/**
+ * Sends a web message. With `conversationId` it is written in that web conversation, which becomes
+ * the active one, and Tex carries on with that conversation's own context; without, in the active one.
+ * The Automations chat is written in where it is: it never becomes the active one. The message
+ * shows at once, before the API answers (`sendMessageOptions`); several can be on their way at once.
+ */
+export function useSendMessage() {
+  const qc = useQueryClient();
+  return useMutation(sendMessageOptions(qc));
 }
 
 export function useUploadAttachment() {
