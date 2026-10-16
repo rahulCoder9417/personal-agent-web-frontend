@@ -8,29 +8,68 @@
 // the next runs are listed. Save makes a new one with a one-time key (a double click makes one);
 // Save changes keeps the automation's id. "Ask Tex to change this" keeps the parts as the person's
 // own draft and opens the chat with it named.
+//
+// With steps (phase 4), the canvas is the trigger, each step and the results, laid out by dagre: a
+// "+" on an arrow adds a step there (up to 6), and a step's panel moves it up or down or removes it.
+// A step whose "only if" now looks at another step turns red until the person checks it. On a phone
+// the steps are cards, each opening its settings in place.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiError, type Automation, type AutomationDraft, type AutomationParts } from "@/lib/api/client";
-import { useApps, useAutomationCheck, useChangeAutomation, useChannels, useCreateAutomation, useCreateAutomationDraft } from "@/lib/api/hooks";
-import { isDirty, kindOf, partsKey, previewSource, problemsByStep, problemsOfError, toParts, type EditorParts } from "@/lib/automation-editor";
-import { automationFlow, automationHref, changedSteps, FLOW_STEP_IDS, type FlowStep, type FlowStepId } from "@/lib/automation-flow";
+import { useAppActionLists, useApps, useAutomationCheck, useChangeAutomation, useChannels, useCreateAutomation, useCreateAutomationDraft } from "@/lib/api/hooks";
+import {
+  firstProblemKey,
+  isDirty,
+  kindOf,
+  partsKey,
+  previewSource,
+  problemsByStep,
+  problemsOfError,
+  toOneInstruction,
+  toParts,
+  toStepped,
+  type EditorParts,
+} from "@/lib/automation-editor";
+import { automationFlow, automationHref, changedSteps, stepKey, type FlowStep } from "@/lib/automation-flow";
+import {
+  acknowledgeCondition,
+  canAddStep,
+  conditionWarnings,
+  emptyStep,
+  insertStep,
+  MAX_STEPS,
+  moveStep,
+  newStepId,
+  previewSteps,
+  removeStep,
+  replaceStep,
+  stepApps,
+  stepsCostLine,
+  type EditorStep,
+} from "@/lib/automation-steps";
+import type { AutomationKind } from "@/lib/automations";
 import { chatDraftHref } from "@/lib/chat-link";
 import { cn, formatDateTime } from "@/lib/format";
 import { useMediaQuery, SHOWN_AT } from "@/lib/media-query";
 import { PRICING_PATH } from "@/lib/pricing";
 import { toast, toastError } from "../toast";
+import { ConfirmButton } from "../confirm-button";
 import { Button } from "../ui";
-import { StepForm, type EditorContext } from "./editor-forms";
+import { InstructionForm, Problems, StepForm, type EditorContext } from "./editor-forms";
 import { ChangedTag, StepMark } from "./flow-parts";
+import { StepForm as OneStepForm } from "./step-form";
 import { useDraftSave } from "./use-draft-save";
 
-const FlowCanvas = dynamic(() => import("./flow-canvas"), {
-  ssr: false,
-  loading: () => <div aria-hidden className="h-[260px] w-full animate-pulse rounded-xl border border-line bg-surface-2" />,
-});
+const CanvasLoading = () => <div aria-hidden className="h-[260px] w-full animate-pulse rounded-xl border border-line bg-surface-2" />;
+const FlowCanvas = dynamic(() => import("./flow-canvas"), { ssr: false, loading: CanvasLoading });
+/** The canvas of an automation with steps, with dagre: its own chunk (steps-canvas.tsx). */
+const StepsCanvas = dynamic(() => import("./steps-canvas"), { ssr: false, loading: CanvasLoading });
+
+/** Every box counts as worked on (after Save was tried, or when a box's problems show from the start). */
+const ALL = "*";
 
 /** How long the parts must stay the same before they are sent to be checked. */
 export const CHECK_AFTER_MS = 400;
@@ -48,14 +87,19 @@ function useDebounced<T>(value: T, ms: number): T {
 }
 
 /** The steps as the canvas draws the form, with a plain ask where a box is still empty. */
-export function editorSteps(editor: EditorParts, target: EditorTarget, accountZone: string | null | undefined): FlowStep[] {
+export function editorSteps(
+  editor: EditorParts,
+  target: EditorTarget,
+  accountZone: string | null | undefined,
+  actionLabel?: (step: EditorStep) => string | null | undefined,
+): FlowStep[] {
   const base = target.kind === "change" ? { enabled: target.automation.enabled, pausedReason: target.automation.pausedReason, lastRunAt: target.automation.lastRunAt } : {};
-  const steps = automationFlow(previewSource(editor, base), accountZone);
+  const steps = automationFlow(previewSource(editor, base, actionLabel), accountZone);
   return steps.map((step) => {
     if (step.id === "trigger" && !editor.mode) return { ...step, title: "Pick when it runs", short: "When?", lines: ["Once, on a schedule or on an app event"] };
     if (step.id === "trigger" && editor.mode === "event" && !editor.event.app) return { ...step, title: "Pick an app and what happens", lines: [] };
-    if (step.id === "instruction" && !editor.title.trim() && !editor.instruction.trim()) return { ...step, title: "Say what Tex does", lines: ["A title and the instruction"] };
-    if (step.id === "instruction" && !editor.title.trim()) return { ...step, title: "Give it a title" };
+    if (step.key === "instruction" && !editor.title.trim() && !editor.instruction.trim()) return { ...step, title: "Say what Tex does", lines: ["A title and the instruction"] };
+    if (step.key === "instruction" && !editor.title.trim()) return { ...step, title: "Give it a title" };
     return step;
   });
 }
@@ -97,11 +141,16 @@ export function AutomationEditor({
   const draftSave = useDraftSave();
 
   const [editor, setEditor] = useState(start);
-  const [selected, setSelected] = useState<FlowStepId>("trigger");
+  const [selected, setSelected] = useState<string>("trigger");
   // On a new canvas a box shows its problems once it has been worked on, or once Save was tried.
   const fresh = target.kind === "new" && !target.draft && !revealProblems;
-  const [touched, setTouched] = useState<ReadonlySet<FlowStepId>>(() => new Set(fresh ? [] : FLOW_STEP_IDS));
+  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set(fresh ? [] : [ALL]));
   const [saveProblems, setSaveProblems] = useState<{ key: string; problems: ReturnType<typeof problemsOfError> } | null>(null);
+  const isTouched = useCallback((key: string) => touched.has(ALL) || touched.has(key), [touched]);
+  const touch = (key: string) => {
+    if (!isTouched(key)) setTouched(new Set([...touched, key]));
+  };
+  const touchAll = () => setTouched(new Set([ALL]));
 
   const key = partsKey(editor);
   const settledKey = useDebounced(key, CHECK_AFTER_MS);
@@ -109,26 +158,78 @@ export function AutomationEditor({
   const automationId = target.kind === "change" ? target.automation.id : null;
   const check = useAutomationCheck(parts, settledKey, automationId);
   const dirty = isDirty(editor, start);
+  const stepped = editor.steps.length > 0;
+
+  // The apps' action lists, to name each action as its app does and to say what a run can cost.
+  const actionApps = useMemo(() => stepApps(editor.steps.filter((step) => step.type === "action")), [editor.steps]);
+  const lists = useAppActionLists(actionApps);
+  const lookup = useCallback((app: string, action: string) => lists.byApp.get(app)?.find((item) => item.slug === action), [lists.byApp]);
+  const actionLabel = useCallback((step: EditorStep) => (step.type === "action" && step.app && step.action ? lookup(step.app, step.action)?.name : undefined), [lookup]);
 
   const problems = saveProblems?.key === key ? saveProblems.problems : check.data?.problems;
   const read = problemsByStep(problems);
+  const warnings = useMemo(() => conditionWarnings(editor.steps), [editor.steps]);
   const shown = useMemo(() => {
-    const map = new Map<FlowStepId, readonly string[]>();
-    for (const [step, list] of read.byStep) if (touched.has(step)) map.set(step, list);
+    const map = new Map<string, readonly string[]>();
+    for (const [step, list] of read.byStep) if (isTouched(step)) map.set(step, list);
+    for (const step of editor.steps) {
+      const k = stepKey(step.id);
+      const list = [...(warnings.has(step.id) ? [warnings.get(step.id)!] : []), ...(isTouched(k) ? (read.byStepId.get(step.id) ?? []) : [])];
+      if (list.length) map.set(k, list);
+    }
     return map;
-  }, [read.byStep, touched]);
+  }, [read.byStep, read.byStepId, editor.steps, warnings, isTouched]);
   const checking = key !== settledKey || check.isFetching;
   const knownBad = !checking && check.data?.ok === false && settledKey === key;
 
-  const steps = useMemo(() => editorSteps(editor, target, accountZone), [editor, target, accountZone]);
+  const steps = useMemo(() => editorSteps(editor, target, accountZone, actionLabel), [editor, target, accountZone, actionLabel]);
   const changed = useMemo(() => (target.kind === "change" ? changedSteps(previewSource(editor), target.automation) : undefined), [editor, target]);
   const kind = kindOf(editor) ?? "once";
   const context: EditorContext = { apps: apps.data, channels: channels.data, accountZone };
+  const costLine = stepped ? stepsCostLine(previewSteps(editor.steps), lookup) : null;
 
-  const onSelect = useCallback((id: FlowStepId) => setSelected(id), []);
-  const changeStep = (step: FlowStepId) => (next: EditorParts) => {
+  const onSelect = useCallback((next: string) => setSelected(next), []);
+  const changeBox = (box: string) => (next: EditorParts) => {
     setEditor(next);
-    if (!touched.has(step)) setTouched(new Set([...touched, step]));
+    touch(box);
+  };
+
+  // ---------------------------------------------------------------- the steps' own editing
+
+  const setSteps = (next: EditorStep[]) => setEditor({ ...editor, steps: next });
+  const addStep = useCallback(
+    (at: number) => {
+      setEditor((current) => {
+        if (!canAddStep(current.steps)) return current;
+        const step = emptyStep("tex", newStepId(current.steps.map((item) => item.id)));
+        setSelected(stepKey(step.id));
+        return { ...current, steps: insertStep(current.steps, at, step) };
+      });
+    },
+    [],
+  );
+  const stepOps = (step: EditorStep, index: number) => ({
+    onChange: (next: EditorStep) => {
+      setSteps(replaceStep(editor.steps, next));
+      touch(stepKey(step.id));
+    },
+    onMove: (by: -1 | 1) => setSteps(moveStep(editor.steps, step.id, by)),
+    onRemove: () => {
+      const rest = removeStep(editor.steps, step.id);
+      setSteps(rest);
+      setSelected(rest.length === 0 ? "trigger" : stepKey(rest[Math.min(index, rest.length - 1)].id));
+      if (rest.length === 0) toast({ title: "No steps left", body: "It runs as one instruction again: write what Tex does in its box." });
+    },
+    onAcknowledge: () => setSteps(acknowledgeCondition(editor.steps, step.id)),
+  });
+  const intoSteps = () => {
+    const next = toStepped(editor);
+    setEditor(next);
+    setSelected(stepKey(next.steps[0].id));
+  };
+  const backToOne = () => {
+    setEditor(toOneInstruction(editor));
+    setSelected("instruction");
   };
 
   // One key per attempt at these parts: a double click, or a retry, makes one automation.
@@ -142,9 +243,9 @@ export function AutomationEditor({
     const found = error instanceof ApiError ? problemsOfError(error.details) : null;
     if (found?.length) {
       setSaveProblems({ key, problems: found });
-      setTouched(new Set(FLOW_STEP_IDS));
-      const first = found.find((problem) => problem.step);
-      if (first?.step) setSelected(first.step);
+      touchAll();
+      const first = firstProblemKey(found);
+      if (first) setSelected(first);
     }
     if (error instanceof ApiError && error.planLimit) toastError(title, error.message, { label: "See plans", href: PRICING_PATH });
     else if (found?.length) toastError(title, "Fix the boxes in red, then save again.");
@@ -153,13 +254,20 @@ export function AutomationEditor({
 
   const title = editor.title.trim() || "the automation";
   const pending = create.isPending || change.isPending || draftSave.pending;
+  const blocked = warnings.size > 0;
 
   function save(enabled?: boolean) {
-    setTouched(new Set(FLOW_STEP_IDS));
+    touchAll();
+    if (blocked) {
+      const first = editor.steps.find((step) => warnings.has(step.id));
+      if (first) setSelected(stepKey(first.id));
+      toastError(`Couldn’t save “${title}” yet`, "A step’s “only if” now looks at another step. Check the steps in red, then save again.");
+      return;
+    }
     const body = toParts(editor);
     // Tex's draft, saved as it is: the draft's own Save.
     if (target.draft && target.draft.status === "open" && !dirty) {
-      draftSave.save(target.draft, enabled !== false);
+      draftSave.save(target.draft, { paused: enabled === false });
       return;
     }
     const draftId = target.draft?.status === "open" ? target.draft.id : null;
@@ -204,8 +312,49 @@ export function AutomationEditor({
     );
   }
 
-  const open = steps.find((step) => step.id === selected) ?? steps[0];
+  const open = steps.find((step) => step.key === selected) ?? steps[0];
   const runs = runsLine(editor, check.data?.nextRuns);
+  const openStep = open.step ? editor.steps.findIndex((step) => step.id === open.step!.id) : -1;
+
+  /** The settings of a box: a step's own panel, or one of the other boxes' forms. */
+  const boxForm = (box: FlowStep) => {
+    const index = box.step ? editor.steps.findIndex((step) => step.id === box.step!.id) : -1;
+    if (index >= 0) {
+      const step = editor.steps[index];
+      const ops = stepOps(step, index);
+      return (
+        <OneStepForm
+          step={step}
+          index={index}
+          count={editor.steps.length}
+          onChange={ops.onChange}
+          onMove={ops.onMove}
+          onRemove={ops.onRemove}
+          problems={isTouched(box.key) ? (read.byStepId.get(step.id) ?? []) : []}
+          warning={warnings.get(step.id) ?? null}
+          previousId={index > 0 ? editor.steps[index - 1].id : null}
+          apps={apps.data}
+        />
+      );
+    }
+    return <StepForm step={box.id} editor={editor} onChange={changeBox(box.id)} problems={shown.get(box.key) ?? []} context={context} />;
+  };
+
+  /** One instruction or steps: the way from one to the other. */
+  const shapeSwitch = stepped ? (
+    <ConfirmButton label="Back to one instruction" confirmLabel="Remove the steps" ariaLabel="Back to one instruction: the steps are removed" onConfirm={backToOne} />
+  ) : (
+    <Button size="sm" onClick={intoSteps} title={`Split the work into up to ${MAX_STEPS} steps, done one at a time`}>
+      Split into steps
+    </Button>
+  );
+
+  /** With steps: the title and purpose, above the steps (they have no box of their own). */
+  const purpose = stepped && (
+    <section aria-label="Title and purpose" className={cn("flex flex-col gap-3 rounded-xl border bg-surface p-4", shown.has("instruction") ? "border-danger/50" : "border-line")}>
+      <InstructionForm editor={editor} onChange={changeBox("instruction")} problems={shown.get("instruction") ?? []} context={context} />
+    </section>
+  );
 
   return (
     <section aria-label="Edit the automation" className="flex min-w-0 flex-col gap-4">
@@ -217,54 +366,77 @@ export function AutomationEditor({
           </Link>
         </p>
       )}
+      {read.stepsList.length > 0 && <Problems problems={read.stepsList} className="rounded-xl bg-danger-soft px-4 py-3" />}
+
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="min-w-0 flex-1 basis-[260px] text-[12.5px] text-muted">
+          {stepped
+            ? `${editor.steps.length} of ${MAX_STEPS} steps, done one at a time, in order. ${costLine ?? ""}`
+            : "One instruction for Tex. For a job in parts (find, decide, then act), split it into steps."}
+        </p>
+        {shapeSwitch}
+      </div>
 
       {wide ? (
-        <div className="flex min-w-0 gap-4 max-[1560px]:flex-col">
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="text-[12.5px] text-muted">Pick a box to change it. A box in red has something to fix.</p>
-            <FlowCanvas steps={steps} kind={kind} selected={selected} changed={changed} problems={shown} editing panelId={panelId} onSelect={onSelect} />
-          </div>
-          <aside
-            id={panelId}
-            aria-label={`${open.label}: its settings`}
-            className={cn(
-              "flex w-[380px] shrink-0 flex-col gap-3 rounded-xl border bg-surface p-4 max-[1560px]:w-full",
-              shown.has(open.id) ? "border-danger/50" : "border-line",
-            )}
-          >
-            <div className="flex items-start gap-3">
-              <StepMark step={open} kind={kind} size={34} />
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="flex items-center gap-1.5 text-[12px] text-muted">
-                  {open.label}
-                  {changed?.has(open.id) && <ChangedTag />}
-                </span>
-                <h3 className="text-[15px] leading-snug font-semibold break-words">{open.title}</h3>
-              </div>
+        <>
+          {purpose}
+          <div className="flex min-w-0 gap-4 max-[1560px]:flex-col">
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <p className="text-[12.5px] text-muted">
+                {stepped ? "Pick a box to change it; “+” on an arrow adds a step there. A box in red has something to fix." : "Pick a box to change it. A box in red has something to fix."}
+              </p>
+              {stepped ? (
+                <StepsCanvas
+                  steps={steps}
+                  kind={kind}
+                  selected={selected}
+                  changed={changed}
+                  problems={shown}
+                  editing
+                  count={editor.steps.length}
+                  onInsert={addStep}
+                  panelId={panelId}
+                  onSelect={onSelect}
+                />
+              ) : (
+                <FlowCanvas steps={steps} kind={kind} selected={selected} changed={changed} problems={shown} editing panelId={panelId} onSelect={onSelect} />
+              )}
             </div>
-            <StepForm step={open.id} editor={editor} onChange={changeStep(open.id)} problems={shown.get(open.id) ?? []} context={context} />
-          </aside>
-        </div>
-      ) : (
-        <ol aria-label="The five parts, in order" className="flex flex-col gap-3">
-          {steps.map((step, index) => (
-            <li key={step.id}>
-              <section
-                aria-label={step.label}
-                className={cn("flex flex-col gap-3 rounded-xl border bg-surface p-4", shown.has(step.id) ? "border-danger/50" : "border-line")}
-              >
-                <div className="flex items-start gap-3">
-                  <StepMark step={step} kind={kind} size={30} />
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="flex items-center gap-1.5 text-[12px] text-muted">
-                      <span className="tabular-nums">{index + 1}.</span> {step.label}
-                      {changed?.has(step.id) && <ChangedTag />}
-                    </span>
-                    <h3 className="text-[14.5px] leading-snug font-semibold break-words">{step.title}</h3>
-                  </div>
+            <aside
+              id={panelId}
+              aria-label={`${open.label}: its settings`}
+              className={cn(
+                "flex w-[380px] shrink-0 flex-col gap-3 rounded-xl border bg-surface p-4 max-[1560px]:w-full",
+                shown.has(open.key) ? "border-danger/50" : "border-line",
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <StepMark step={open} kind={kind} size={34} />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="flex items-center gap-1.5 text-[12px] text-muted">
+                    {open.label}
+                    {changed?.has(open.key) && <ChangedTag />}
+                  </span>
+                  <h3 className="text-[15px] leading-snug font-semibold break-words">{open.title}</h3>
                 </div>
-                <StepForm step={step.id} editor={editor} onChange={changeStep(step.id)} problems={shown.get(step.id) ?? []} context={context} />
-              </section>
+              </div>
+              {openStep >= 0 || !open.step ? boxForm(open) : null}
+            </aside>
+          </div>
+        </>
+      ) : (
+        <ol aria-label={stepped ? "The trigger, the steps and the results, in order" : "The five parts, in order"} className="flex flex-col gap-3">
+          {stepped && <li>{purpose}</li>}
+          {steps.map((step, index) => (
+            <li key={step.key} className="flex flex-col gap-2">
+              {stepped && step.id === "results" && (
+                <Button className="w-full" disabled={!canAddStep(editor.steps)} onClick={() => addStep(editor.steps.length)}>
+                  {canAddStep(editor.steps) ? "+ Add a step" : `Up to ${MAX_STEPS} steps`}
+                </Button>
+              )}
+              <PhoneCard step={step} index={index} kind={kind} changed={changed?.has(step.key) ?? false} problems={shown.get(step.key) ?? []} collapsible={Boolean(step.step)} startOpen={selected === step.key}>
+                {boxForm(step)}
+              </PhoneCard>
             </li>
           ))}
         </ol>
@@ -276,7 +448,7 @@ export function AutomationEditor({
             ? "Pick when it runs to begin, then fill in each box."
             : checking
               ? "Checking…"
-              : knownBad
+              : knownBad || blocked
                 ? "Some boxes need a fix before it can be saved."
                 : (runs ?? "Looks good.")}
           {!checking && knownBad && runs && <span className="block text-muted">{runs}</span>}
@@ -313,6 +485,56 @@ export function AutomationEditor({
           </Button>
         </div>
       </div>
+    </section>
+  );
+}
+
+/**
+ * One box on a phone: its mark, name and title, then its settings. A step's card opens and closes
+ * (its settings are long); the trigger and the results stay open.
+ */
+function PhoneCard({
+  step,
+  index,
+  kind,
+  changed,
+  problems,
+  collapsible,
+  startOpen,
+  children,
+}: {
+  step: FlowStep;
+  index: number;
+  kind: AutomationKind;
+  changed: boolean;
+  problems: readonly string[];
+  collapsible: boolean;
+  startOpen: boolean;
+  children: ReactNode;
+}) {
+  const [shut, setShut] = useState(!startOpen);
+  const closed = collapsible && shut;
+  const bodyId = useId();
+  return (
+    <section aria-label={step.label} className={cn("flex flex-col gap-3 rounded-xl border bg-surface p-4", problems.length ? "border-danger/50" : "border-line")}>
+      <div className="flex items-start gap-3">
+        <StepMark step={step} kind={kind} size={30} />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex items-center gap-1.5 text-[12px] text-muted">
+            <span className="tabular-nums">{index + 1}.</span> {step.label}
+            {changed && <ChangedTag />}
+          </span>
+          <h3 className="text-[14.5px] leading-snug font-semibold break-words">{step.title}</h3>
+          {step.step?.condition && <span className="text-[12px] text-fg-2">{step.step.condition}</span>}
+          {closed && problems[0] && <span className="text-[12px] font-medium text-danger">{problems[0]}</span>}
+        </div>
+        {collapsible && (
+          <Button size="sm" aria-expanded={!closed} aria-controls={bodyId} onClick={() => setShut(!shut)}>
+            {closed ? "Edit" : "Done"}
+          </Button>
+        )}
+      </div>
+      {!closed && <div id={bodyId}>{children}</div>}
     </section>
   );
 }

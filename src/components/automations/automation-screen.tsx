@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { Automation } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
-import { useAutomation, useDeleteAutomation, useMe, usePrReviews, useRunAutomationNow, useUpdateAutomation } from "@/lib/api/hooks";
+import { useAutomation, useAutomationRuns, useDeleteAutomation, useMe, usePrReviews, useRunAutomationNow, useUpdateAutomation } from "@/lib/api/hooks";
 import { editorFrom } from "@/lib/automation-editor";
-import { automationFlow } from "@/lib/automation-flow";
+import { automationFlow, hasSteps } from "@/lib/automation-flow";
+import { runSummary, runTrail } from "@/lib/automation-steps";
 import { describeAutomationStatus } from "@/lib/automations";
 import { AUTOMATIONS_CHAT_HREF } from "@/lib/conversations";
 import { PRICING_PATH } from "@/lib/pricing";
@@ -168,6 +169,10 @@ function Saved({ automation, editing: editingAtFirst = false }: { automation: Au
   const reviewRepo = usePrReviews().data?.find((item) => item.id === automation.id);
   const title = review && reviewRepo ? repoName(reviewRepo) : automation.title;
   const steps = useMemo(() => automationFlow(automation, me.data?.timezone), [automation, me.data?.timezone]);
+  // An automation with steps: its last run's trail on the boxes (kept fresh by the live stream).
+  const runs = useAutomationRuns(automation.id, { enabled: hasSteps(automation) });
+  const lastRun = hasSteps(automation) ? runs.data?.[0] : undefined;
+  const trail = useMemo(() => runTrail(lastRun), [lastRun]);
   const status = describeAutomationStatus(automation);
   const on = automation.enabled;
   const [editing, setEditing] = useState(editingAtFirst);
@@ -259,7 +264,7 @@ function Saved({ automation, editing: editingAtFirst = false }: { automation: Au
             />
             )}
           </div>
-          <FlowView steps={steps} kind={automation.kind} label={`${title}, step by step`} />
+          <FlowView steps={steps} kind={automation.kind} label={`${title}, step by step`} trail={trail} summary={lastRun ? runSummary(lastRun) : null} />
         </>
       )}
     </>

@@ -13,7 +13,7 @@
 import { Background, Controls, Handle, MarkerType, Position, ReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useMemo } from "react";
-import type { FlowStep, FlowStepId } from "@/lib/automation-flow";
+import type { FlowStep } from "@/lib/automation-flow";
 import type { AutomationKind } from "@/lib/automations";
 import { cn } from "@/lib/format";
 import { ChangedTag, StepMark } from "./flow-parts";
@@ -34,7 +34,7 @@ type StepData = {
   /** Editing: a click opens the box's settings rather than its details. */
   editing: boolean;
   panelId: string;
-  onSelect: (id: FlowStepId) => void;
+  onSelect: (key: string) => void;
 };
 type StepNode = Node<StepData, "step">;
 
@@ -46,7 +46,7 @@ function StepBox({ data }: NodeProps<StepNode>) {
       <Handle type="target" position={Position.Left} isConnectable={false} className="!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent" />
       <button
         type="button"
-        onClick={() => onSelect(step.id)}
+        onClick={() => onSelect(step.key)}
         aria-pressed={selected}
         aria-controls={panelId}
         aria-label={`Step ${index + 1}, ${step.label}: ${step.title}.${wrong ? ` Problem: ${problems.join(" ")}` : ""} ${editing ? "Edit it" : "Show its details"}`}
@@ -94,30 +94,33 @@ function StepBox({ data }: NodeProps<StepNode>) {
 const NODE_TYPES = { step: StepBox };
 const ARROW = "#b8b3a8";
 
-/** The boxes, left to right, and the arrows between them. */
+/**
+ * The boxes, left to right, and the arrows between them. Boxes are known by their key (the five's
+ * keys are their ids): selection, changes and problems use it.
+ */
 export function canvasElements(
   steps: readonly FlowStep[],
   kind: AutomationKind,
   options: {
-    selected: FlowStepId | null;
-    changed?: ReadonlySet<FlowStepId>;
-    problems?: ReadonlyMap<FlowStepId, readonly string[]>;
+    selected: string | null;
+    changed?: ReadonlySet<string>;
+    problems?: ReadonlyMap<string, readonly string[]>;
     editing?: boolean;
     panelId: string;
-    onSelect: (id: FlowStepId) => void;
+    onSelect: (key: string) => void;
   },
 ): { nodes: StepNode[]; edges: Edge[] } {
   const nodes: StepNode[] = steps.map((step, index) => ({
-    id: step.id,
+    id: step.key,
     type: "step",
     position: { x: index * (NODE_WIDTH + NODE_GAP), y: 0 },
     data: {
       step,
       kind,
       index,
-      selected: options.selected === step.id,
-      changed: options.changed?.has(step.id) ?? false,
-      problems: options.problems?.get(step.id) ?? [],
+      selected: options.selected === step.key,
+      changed: options.changed?.has(step.key) ?? false,
+      problems: options.problems?.get(step.key) ?? [],
       editing: options.editing ?? false,
       panelId: options.panelId,
       onSelect: options.onSelect,
@@ -128,9 +131,9 @@ export function canvasElements(
     focusable: false,
   }));
   const edges: Edge[] = steps.slice(1).map((step, index) => ({
-    id: `${steps[index].id}-${step.id}`,
-    source: steps[index].id,
-    target: step.id,
+    id: `${steps[index].key}-${step.key}`,
+    source: steps[index].key,
+    target: step.key,
     type: "straight",
     focusable: false,
     selectable: false,
@@ -152,12 +155,12 @@ export default function FlowCanvas({
 }: {
   steps: readonly FlowStep[];
   kind: AutomationKind;
-  selected: FlowStepId | null;
-  changed?: ReadonlySet<FlowStepId>;
-  problems?: ReadonlyMap<FlowStepId, readonly string[]>;
+  selected: string | null;
+  changed?: ReadonlySet<string>;
+  problems?: ReadonlyMap<string, readonly string[]>;
   editing?: boolean;
   panelId: string;
-  onSelect: (id: FlowStepId) => void;
+  onSelect: (key: string) => void;
 }) {
   const { nodes, edges } = useMemo(
     () => canvasElements(steps, kind, { selected, changed, problems, editing, panelId, onSelect }),
@@ -169,7 +172,7 @@ export default function FlowCanvas({
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
-        onNodeClick={(_event, node) => onSelect(node.id as FlowStepId)}
+        onNodeClick={(_event, node) => onSelect(node.id)}
         fitView
         fitViewOptions={{ padding: 0.06, maxZoom: 1.1 }}
         minZoom={0.35}

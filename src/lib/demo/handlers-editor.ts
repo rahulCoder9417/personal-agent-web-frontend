@@ -11,6 +11,7 @@ import { nowIso, type Handler } from "./context";
 import { postFromTex } from "./handlers-chat";
 import { automationsChat } from "./handlers-conversations";
 import { badRequest, HttpError, isRecord, json, notFound, outOfCredits, rateLimited, readJson, type JsonObject } from "./http";
+import { appsOfSteps, demoStepRun, savedSteps, stepProblems, stepsFrom, trailText } from "./handlers-steps";
 import { DRAFT_DAYS } from "./seed";
 import { balanceOf, chargeUsage, emit, logActivity, nextId, schedule, type DemoState } from "./store";
 
@@ -108,7 +109,7 @@ export const listAppEvents: Handler = ({ state, params }) => {
 
 // ---------------------------------------------------------------- the checks
 
-const STEPS = ["trigger", "instruction", "apps", "asks", "results"] as const;
+const STEPS = ["trigger", "instruction", "apps", "asks", "steps", "results"] as const;
 
 /** The parts from a body, with only the kinds of values the contract allows. */
 function partsFrom(body: JsonObject): AutomationParts {
@@ -130,6 +131,7 @@ function partsFrom(body: JsonObject): AutomationParts {
     apps: (body.apps as string[] | undefined) ?? [],
     askFirst,
     copyTo,
+    steps: stepsFrom(body),
   };
 }
 
@@ -145,10 +147,12 @@ const PLAN_NAME: Record<string, string> = { free: "Free", pro: "Pro", max: "Max"
 /** Every problem with the parts, each on its box, as the backend's check finds them. */
 export function demoProblems(state: DemoState, parts: AutomationParts, automationId: string | null, now = Date.now()): AutomationProblem[] {
   const problems: AutomationProblem[] = [];
-  const add = (step: AutomationProblem["step"], message: string, code: AutomationProblem["code"] = "invalid") => problems.push({ step, code, message });
+  const add = (step: AutomationProblem["step"], message: string, code: AutomationProblem["code"] = "invalid") => problems.push({ step, stepId: null, code, message });
 
+  const stepped = (parts.steps ?? []).length > 0;
   if (!parts.title?.trim()) add("instruction", "Give it a title, a few words to know it by.");
-  if (!parts.instruction?.trim()) add("instruction", "Write what Tex should do each time it runs.");
+  if (!parts.instruction?.trim())
+    add("instruction", stepped ? "Write its purpose in one line, for example “Reply fast to urgent mail from my boss”." : "Write what Tex should do each time it runs.");
 
   const zone = parts.timezone || state.user.timezone;
   const kind = kindOfParts(parts);
@@ -177,8 +181,9 @@ export function demoProblems(state: DemoState, parts: AutomationParts, automatio
     }
   }
 
-  if ((parts.apps ?? []).length > 10) add("apps", "At most 10 apps.");
-  for (const slug of new Set(parts.apps ?? [])) {
+  if (stepped) problems.push(...stepProblems(state, parts.steps!));
+  if (!stepped && (parts.apps ?? []).length > 10) add("apps", "At most 10 apps.");
+  for (const slug of new Set(stepped ? [] : (parts.apps ?? []))) {
     const app = state.apps.find((item) => item.slug === slug);
     if (!app) add("apps", `There is no app “${slug}”.`);
     else if (!app.availableOnPlan) add("apps", `${app.name} isn’t on your plan.`);
@@ -234,7 +239,9 @@ function openDraft(state: DemoState, draftId: unknown, changeOf: string | null):
 function fill(automation: Automation, parts: AutomationParts, state: DemoState): Automation {
   const kind = kindOfParts(parts)!;
   const zone = parts.timezone || state.user.timezone;
+  const steps = savedSteps(parts.steps ?? [], () => nextId(state, "s").replace(/[^a-z0-9_]/g, "").slice(0, 24));
   return Object.assign(automation, {
+    steps,
     kind,
     title: parts.title!.trim(),
     instruction: parts.instruction!.trim(),
@@ -242,7 +249,7 @@ function fill(automation: Automation, parts: AutomationParts, state: DemoState):
     cron: parts.cron ?? null,
     timezone: kind === "event" ? (automation.timezone ?? zone) : zone,
     trigger: parts.trigger ? { app: parts.trigger.app, event: parts.trigger.event, config: parts.trigger.config ?? {} } : null,
-    apps: [...new Set(parts.apps ?? [])],
+    apps: steps.length ? appsOfSteps(steps) : [...new Set(parts.apps ?? [])],
     askFirst: parts.askFirst ?? "risky",
     copyTo: parts.copyTo ?? null,
     nextRunAt: nextRunsOf(state, parts)[0] ?? null,
@@ -329,6 +336,18 @@ export const runAutomationNow: Handler = async ({ state, request, params }) => {
   const chat = automationsChat(state);
   postFromTex(state, chat.id, `🧪 Test run of “${automation.title}”, started by you. It runs once now, as a real run would; the schedule doesn’t move.`);
   schedule(state, TEST_RUN_ANSWER_MS, () => {
+    if (automation.steps?.length) {
+      // With steps: each step in turn, until one that asks first; the trail follows on the canvas.
+      const run = demoStepRun(state, automation);
+      const waiting = run.state === "waiting";
+      postFromTex(
+        state,
+        automationsChat(state).id,
+        `Test run: ${waiting ? "one email is urgent, and I drafted a reply. It waits for your OK before it is sent." : "every step ran."}\n\n${trailText(run)}`,
+      );
+      chargeUsage(state, { awake: 1 });
+      return;
+    }
     const answer =
       automation.kind === "event"
         ? `Test run: nothing happened in ${titleCase(automation.trigger?.app ?? "the app")} just now, so I used the latest one I could find. ${automation.instruction}`
@@ -354,6 +373,7 @@ export const createDraft: Handler = async ({ state, request }) => {
   const replaces = typeof body.replacesDraftId === "string" ? state.drafts.find((draft) => draft.id === body.replacesDraftId) : undefined;
   if (open.filter((draft) => draft.id !== replaces?.id).length >= 20) throw new HttpError(409, "conflict", "20 drafts are open already. Save or discard some first.");
   const createdAt = nowIso();
+  const draftSteps = savedSteps((parts.steps ?? []).slice(0, 6), () => nextId(state, "s").slice(0, 24));
   const draft: AutomationDraft = {
     id: nextId(state, "drf"),
     status: "open",
@@ -366,8 +386,9 @@ export const createDraft: Handler = async ({ state, request }) => {
     cron: parts.cron ?? null,
     timezone: parts.timezone || state.user.timezone,
     trigger: parts.trigger ? { app: parts.trigger.app, event: parts.trigger.event, config: parts.trigger.config ?? {} } : null,
-    apps: [...new Set(parts.apps ?? [])],
+    apps: draftSteps.length ? appsOfSteps(draftSteps) : [...new Set(parts.apps ?? [])],
     askFirst: parts.askFirst ?? "risky",
+    steps: draftSteps,
     copyTo: parts.copyTo ?? null,
     nextRunAt: nextRunsOf(state, parts)[0] ?? null,
     replacedBy: null,

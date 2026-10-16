@@ -7,6 +7,7 @@ import * as conversations from "./handlers-conversations";
 import * as crew from "./handlers-crew";
 import * as drafts from "./handlers-drafts";
 import * as editor from "./handlers-editor";
+import * as steps from "./handlers-steps";
 import * as memory from "./handlers-memory";
 import * as setup from "./handlers-setup";
 
@@ -39,6 +40,7 @@ const ROUTES: Route[] = [
   route("GET", "apps", setup.listApps),
   route("POST", "apps/:appSlug/connect", setup.connectApp),
   route("GET", "apps/:appSlug/events", editor.listAppEvents),
+  route("GET", "apps/:appSlug/actions", steps.listAppActions),
   route("DELETE", "connections/:connectionId", setup.disconnectApp),
 
   route("GET", "mcp-servers", setup.listMcpServers),
@@ -55,6 +57,7 @@ const ROUTES: Route[] = [
   route("POST", "automations/check", editor.checkAutomation),
   route("PUT", "automations/:automationId", editor.changeAutomation),
   route("POST", "automations/:automationId/run", editor.runAutomationNow),
+  route("GET", "automations/:automationId/runs", steps.listAutomationRuns),
   route("GET", "automations/:automationId", setup.getAutomation),
   route("PATCH", "automations/:automationId", setup.updateAutomation),
   route("DELETE", "automations/:automationId", setup.deleteAutomation),
