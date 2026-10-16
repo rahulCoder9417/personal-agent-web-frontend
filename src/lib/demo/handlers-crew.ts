@@ -117,8 +117,9 @@ export const enablePrReview: Handler = ({ state, params }) => {
     );
   }
 
-  const created = reviewAutomation(nextId(state, "aut"), name, state.user.timezone, nowIso());
-  const review: DemoPrReview = { automationId: created.id, ...repo, channel: verdictChannel(state) };
+  const channel = verdictChannel(state);
+  const created = reviewAutomation(nextId(state, "aut"), name, state.user.timezone, nowIso(), channel === "web" ? null : channel);
+  const review: DemoPrReview = { automationId: created.id, ...repo, channel };
   state.automations.push(created);
   state.prReviews.push(review);
   logActivity(state, { actor: "user", action: "pr_review_enabled", summary: `Turned on pull-request review for ${name}` });

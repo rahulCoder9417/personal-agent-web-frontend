@@ -61,6 +61,8 @@ export const qk = {
   mcpServers: ["mcp-servers"] as const,
   byok: ["byok"] as const,
   automations: ["automations"] as const,
+  /** One automation, for its own page (under `automations`, so refreshing the list refreshes it too). */
+  automation: (automationId: string) => ["automations", "one", automationId] as const,
   prReviews: ["pr-reviews"] as const,
   agentStatus: ["agent", "status"] as const,
   agentSettings: ["agent", "settings"] as const,
@@ -621,6 +623,21 @@ export function useAutomations({ enabled = true }: { enabled?: boolean } = {}) {
   });
 }
 
+/**
+ * One automation, for its own page. It starts from the list when the list is in the cache (the
+ * card that was clicked), and an automation that isn't there (deleted, or another account's) is
+ * the API's 404, which isn't asked again.
+ */
+export function useAutomation(automationId: string) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: qk.automation(automationId),
+    queryFn: () => unwrap(api.GET("/v1/automations/{automationId}", { params: { path: { automationId } } })),
+    initialData: () => qc.getQueryData<{ items: Automation[] }>(qk.automations)?.items.find((a) => a.id === automationId),
+    retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
+  });
+}
+
 export function useUpdateAutomation() {
   const qc = useQueryClient();
   return useMutation({
@@ -640,10 +657,14 @@ export function useUpdateAutomation() {
           ? { items: data.items.map((a) => (a.id === input.automationId ? { ...a, enabled: input.enabled } : a)) }
           : data,
       );
-      return { previous };
+      // The automation's own page flips at once too.
+      const one = qc.getQueryData<Automation>(qk.automation(input.automationId));
+      if (one) qc.setQueryData<Automation>(qk.automation(input.automationId), { ...one, enabled: input.enabled });
+      return { previous, one };
     },
-    onError: (_error, _input, context) => {
+    onError: (_error, input, context) => {
       if (context?.previous) qc.setQueryData(qk.automations, context.previous);
+      if (context?.one) qc.setQueryData(qk.automation(input.automationId), context.one);
     },
     onSettled: () => invalidateAutomations(qc),
   });

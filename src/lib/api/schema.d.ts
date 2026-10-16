@@ -576,7 +576,9 @@ export interface paths {
          *
          *     Every run answers in the Automations chat (`GET /v1/conversations?kind=automations`), never
          *     in the user's other conversations. An automation made in a Telegram chat also sends a copy
-         *     of each run's answer to that chat.
+         *     of each run's answer to that chat (`copyTo`).
+         *
+         *     A one-time reminder that has run is finished and left out of this list.
          */
         get: operations["listAutomations"];
         put?: never;
@@ -594,7 +596,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * One automation (its own page in the web app draws it as a flow)
+         * @description The same as an item of `GET /v1/automations`. A finished one-time reminder is still found
+         *     here by its id (`nextRunAt` null, `lastRunAt` set). Another user's automation, or one that
+         *     was deleted, is 404.
+         */
+        get: operations["getAutomation"];
         put?: never;
         post?: never;
         /** Delete (timer or trigger is removed too) */
@@ -2599,9 +2607,26 @@ export interface components {
             timezone?: string | null;
             /** @description kind=event */
             trigger?: {
-                app?: string;
-                event?: string;
+                /** @example gmail */
+                app: string;
+                /** @example GMAIL_NEW_GMAIL_MESSAGE */
+                event: string;
+                /**
+                 * @description The trigger's settings, as they were given when the automation was made: what the
+                 *     app watches, for example `{ "owner": "acme", "repo": "web" }` for a pull-request
+                 *     review. Empty when it has none. Their names are Composio's, per event.
+                 */
+                config: {
+                    [key: string]: unknown;
+                };
             } | null;
+            /**
+             * @description Where a copy of each run's answer goes, besides the Automations chat: the chat app the
+             *     automation was made in. Null: no copy (made in web chat, or from the web app with no
+             *     chat app linked).
+             * @enum {string|null}
+             */
+            copyTo: "telegram" | "whatsapp" | "imessage" | null;
             /**
              * @description `pr_review`: this automation is pull-request review for one repo (see `/v1/pr-reviews`).
              * @enum {string|null}
@@ -4799,6 +4824,30 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAutomation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                automationId: components["parameters"]["AutomationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Automation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     deleteAutomation: {

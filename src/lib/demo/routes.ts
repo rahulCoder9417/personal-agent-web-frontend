@@ -48,6 +48,7 @@ const ROUTES: Route[] = [
   route("DELETE", "byok/:provider", setup.deleteByokKey),
 
   route("GET", "automations", setup.listAutomations),
+  route("GET", "automations/:automationId", setup.getAutomation),
   route("PATCH", "automations/:automationId", setup.updateAutomation),
   route("DELETE", "automations/:automationId", setup.deleteAutomation),
 

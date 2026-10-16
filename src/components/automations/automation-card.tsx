@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Automation } from "@/lib/api/client";
 import { useDeleteAutomation, usePrReviews, useUpdateAutomation } from "@/lib/api/hooks";
+import { automationFlow, automationHref } from "@/lib/automation-flow";
 import { changeRequest, describeAutomationStatus, describeAutomationTimes, describeAutomationWhen } from "@/lib/automations";
 import { chatDraftHref } from "@/lib/chat-link";
 import { AUTOMATIONS_CHAT_HREF } from "@/lib/conversations";
@@ -14,6 +15,7 @@ import { ConfirmButton } from "../confirm-button";
 import { ChatIcon, ClockIcon, PencilIcon, WarningIcon } from "../icons";
 import { toastError } from "../toast";
 import { ButtonLink, Pill, Switch } from "../ui";
+import { FlowStrip } from "./flow-parts";
 import { KIND_TINT, KindIcon } from "./kind-icon";
 import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
 
@@ -91,6 +93,7 @@ function Card({
   const status = describeAutomationStatus(automation);
   const times = describeAutomationTimes(automation);
   const app = automation.kind === "event" ? automation.trigger?.app : undefined;
+  const steps = automationFlow(automation, timezone);
 
   return (
     <li
@@ -112,7 +115,12 @@ function Card({
             {app ? <BrandIcon name={app} size={18} /> : <KindIcon kind={automation.kind} size={18} />}
           </span>
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <h3 className={cn("text-[14.5px] leading-snug font-semibold break-words", !on && "text-nav")}>{title}</h3>
+            {/* The name opens the automation's own page, where its flow is drawn. */}
+            <h3 className={cn("text-[14.5px] leading-snug font-semibold break-words", !on && "text-nav")}>
+              <Link href={automationHref(automation.id)} className="rounded-sm transition-colors hover:text-accent-dark hover:underline">
+                {title}
+              </Link>
+            </h3>
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
               {kindLabel}
               {!on && <Pill tone={status.tone}>{status.label}</Pill>}
@@ -131,6 +139,11 @@ function Card({
           <span className="text-[11.5px] text-muted">What Tex does</span>
           <p className="line-clamp-3 text-[13px] text-fg-2">{task}</p>
         </div>
+
+        {/* The five steps it runs, small; its page draws them in full. */}
+        <Link href={automationHref(automation.id)} aria-label={`See how “${title}” runs, step by step`} className="-mx-1 rounded-lg px-1 py-0.5 transition-colors hover:bg-accent-soft/60">
+          <FlowStrip steps={steps} kind={automation.kind} />
+        </Link>
 
         <PausedNote automation={automation} />
 

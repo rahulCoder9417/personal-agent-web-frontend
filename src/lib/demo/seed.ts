@@ -531,11 +531,18 @@ const SEED_REVIEWS: readonly DemoPrReview[] = [
 ];
 
 /** A repo with review on is an automation like any other, with the preset that marks it. */
-export function reviewAutomation(id: string, name: string, timezone: string, createdAt: string): Automation {
+export function reviewAutomation(
+  id: string,
+  name: string,
+  timezone: string,
+  createdAt: string,
+  copyTo: Automation["copyTo"] = "telegram",
+): Automation {
+  const [owner, repo] = name.split("/");
   return {
     id, kind: "event", title: `Review pull requests in ${name}`, instruction: `Have Patch review each pull request in ${name}.`,
-    trigger: { app: "github", event: "GITHUB_PULL_REQUEST_EVENT" }, preset: "pr_review", timezone, enabled: true, pausedReason: null,
-    nextRunAt: null, lastRunAt: null, createdAt,
+    trigger: { app: "github", event: "GITHUB_PULL_REQUEST_EVENT", config: { owner, repo } }, preset: "pr_review", timezone, enabled: true, pausedReason: null,
+    nextRunAt: null, lastRunAt: null, createdAt, copyTo,
   };
 }
 
@@ -547,12 +554,12 @@ function seedAutomations(now: Date): Automation[] {
   return [
     {
       id: "aut_meetings", kind: "repeat", title: "Today’s meetings", instruction: "Send me today’s meetings with who’s in each one.",
-      cron: "0 8 * * 1-5", timezone, preset: null, enabled: true, pausedReason: null,
+      cron: "0 8 * * 1-5", timezone, preset: null, enabled: true, pausedReason: null, copyTo: "telegram",
       nextRunAt: nearestRun(now, 8, weekdays, 1), lastRunAt: nearestRun(now, 8, weekdays, -1), createdAt: created,
     },
     {
       id: "aut_invoice", kind: "once", title: "Chase the Acme invoice", instruction: "Remind me to chase invoice INV-2291.",
-      runAt: atDay(now, -1, 10), timezone, preset: null, enabled: true, pausedReason: null,
+      runAt: atDay(now, -1, 10), timezone, preset: null, enabled: true, pausedReason: null, copyTo: null,
       nextRunAt: atDay(now, -1, 10), lastRunAt: null, createdAt: atDay(now, 3, 12, 5),
     },
     { ...reviewAutomation("aut_pr_website", "northwind/website", timezone, atDay(now, 8, 10, 30)), lastRunAt: earlierToday(now, 93) },

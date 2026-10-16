@@ -34,7 +34,17 @@ export type McpServer = Schemas["McpServer"];
 export type McpServerCreate = Schemas["McpServerCreate"];
 export type ByokProvider = Schemas["ByokProvider"];
 export type ByokKey = Schemas["ByokKey"];
-export type Automation = Schemas["Automation"];
+type ApiAutomation = Schemas["Automation"];
+/** What an app-event automation waits for: the app, the event, and its settings (`config`, `{}` when none). */
+export type AutomationTrigger = Partial<Omit<NonNullable<ApiAutomation["trigger"]>, "config">> & { config?: Record<string, unknown> };
+/**
+ * A reminder or an automation. An older backend sends neither `copyTo` (where a copy of each run's
+ * answer goes besides the Automations chat) nor the trigger's settings: both read as none.
+ */
+export type Automation = Omit<ApiAutomation, "copyTo" | "trigger"> & {
+  copyTo?: ApiAutomation["copyTo"];
+  trigger?: AutomationTrigger | null;
+};
 export type PrReviewRepo = Schemas["PrReviewRepo"];
 export type AgentStatus = Schemas["AgentStatus"];
 export type AgentProgress = Schemas["AgentProgress"];
