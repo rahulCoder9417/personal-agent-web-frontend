@@ -179,9 +179,119 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
 }
 
 /**
- * Keeps one Server-Sent Events connection open and folds each event into the query cache,
- * so every screen updates live. `onEvent` also sees each event.
- * EventSource reconnects on its own; each reconnect catches up (`catchUpAfterReconnect`).
+ * The backend writes a `ping` after 25 seconds without an event. Nothing at all for this long, and
+ * the connection is taken to be dead though the browser still holds it open (it can stay that way
+ * for minutes, delivering nothing): it is replaced, and the new one catches up.
+ */
+export const SILENT_MS = 70_000;
+/** How often the connection's silence is looked at. */
+export const WATCH_EVERY_MS = 10_000;
+/**
+ * A stream that was refused (the proxy answered 401 or 502, say) is closed for good by the browser,
+ * which never tries it again. It is opened again after this long, then twice as long each time
+ * it is refused again, up to `REOPEN_MAX_MS`.
+ */
+export const REOPEN_FIRST_MS = 3_000;
+export const REOPEN_MAX_MS = 60_000;
+/** `EventSource.CLOSED`: the browser has given the connection up for good. */
+const CLOSED = 2;
+
+/** What the live connection needs of the browser, so it can be tried without one. */
+export type LiveSource = Pick<EventSource, "addEventListener" | "close" | "readyState">;
+export type LiveBrowser = {
+  open: () => LiveSource;
+  /** Whether the page is on screen. */
+  visible: () => boolean;
+  /** Calls `listener` each time the page is shown or hidden; returns how to stop. */
+  onVisibility: (listener: () => void) => () => void;
+};
+
+/**
+ * Keeps one Server-Sent Events connection open and folds each event into the query cache. Each
+ * connection after the first catches up as it opens (`catchUpAfterReconnect`): the browser's own
+ * reconnects after a dropped connection, and the ones made here, when a connection has gone silent
+ * (`SILENT_MS`; looked at again at once when the page is shown) or was refused for good. Returns how
+ * to close it.
+ */
+export function connectLive(qc: QueryClient, browser: LiveBrowser, onEvent?: StreamListener): () => void {
+  let source: LiveSource | null = null;
+  let opened = false;
+  let heardAt = Date.now();
+  let reopenMs = REOPEN_FIRST_MS;
+  let reopenTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const open = () => {
+    clearTimeout(reopenTimer);
+    reopenTimer = undefined;
+    source?.close();
+    const current = browser.open();
+    source = current;
+    heardAt = Date.now();
+    // Only the newest connection speaks: one replaced may still deliver something as it goes.
+    const heard = () => {
+      if (source !== current) return false;
+      heardAt = Date.now();
+      return true;
+    };
+    current.addEventListener("ready", () => {
+      if (!heard()) return;
+      reopenMs = REOPEN_FIRST_MS;
+      // A reconnect: anything sent while we were away is missing. (The first connect needs
+      // nothing: the lists are being asked for the first time.)
+      if (opened) catchUpAfterReconnect(qc, browser.visible());
+      opened = true;
+    });
+    current.addEventListener("ping", heard);
+    const onMessage = (raw: MessageEvent<string>) => {
+      if (!heard()) return;
+      let event: StreamEvent;
+      try {
+        event = JSON.parse(raw.data) as StreamEvent;
+      } catch {
+        return;
+      }
+      applyStreamEvent(qc, event);
+      onEvent?.(event);
+    };
+    for (const type of EVENT_TYPES) current.addEventListener(type, onMessage as EventListener);
+    current.addEventListener("error", () => {
+      // After a dropped connection the browser tries again by itself. Refused, it gives up.
+      if (source !== current || current.readyState !== CLOSED || reopenTimer) return;
+      reopenTimer = setTimeout(open, reopenMs);
+      reopenMs = Math.min(reopenMs * 2, REOPEN_MAX_MS);
+    });
+  };
+
+  const silent = () => !reopenTimer && Date.now() - heardAt > SILENT_MS;
+  const watch = setInterval(() => {
+    if (silent()) open();
+  }, WATCH_EVERY_MS);
+  // A page put away for a while: its timers may have slept too, so it is looked at as it comes back.
+  const stopVisibility = browser.onVisibility(() => {
+    if (browser.visible() && silent()) open();
+  });
+  open();
+  return () => {
+    clearInterval(watch);
+    clearTimeout(reopenTimer);
+    stopVisibility();
+    source?.close();
+    source = null;
+  };
+}
+
+const inBrowser: LiveBrowser = {
+  open: () => new EventSource("/api/v1/stream"),
+  visible: () => document.visibilityState === "visible",
+  onVisibility: (listener) => {
+    document.addEventListener("visibilitychange", listener);
+    return () => document.removeEventListener("visibilitychange", listener);
+  },
+};
+
+/**
+ * Keeps the live connection open (`connectLive`) while the app is on screen, so every screen
+ * updates live. `onEvent` also sees each event.
  */
 export function useEventStream(onEvent?: StreamListener) {
   const qc = useQueryClient();
@@ -190,30 +300,5 @@ export function useEventStream(onEvent?: StreamListener) {
     listener.current = onEvent;
   }, [onEvent]);
 
-  useEffect(() => {
-    const source = new EventSource("/api/v1/stream");
-    let opened = false;
-
-    const onReady = () => {
-      // A reconnect: anything sent while we were away is missing. (The first connect needs
-      // nothing: the lists are being asked for the first time.)
-      if (opened) catchUpAfterReconnect(qc, document.visibilityState === "visible");
-      opened = true;
-    };
-
-    const onMessage = (raw: MessageEvent<string>) => {
-      let event: StreamEvent;
-      try {
-        event = JSON.parse(raw.data) as StreamEvent;
-      } catch {
-        return;
-      }
-      applyStreamEvent(qc, event);
-      listener.current?.(event);
-    };
-
-    source.addEventListener("ready", onReady);
-    for (const type of EVENT_TYPES) source.addEventListener(type, onMessage as EventListener);
-    return () => source.close();
-  }, [qc]);
+  useEffect(() => connectLive(qc, inBrowser, (event) => listener.current?.(event)), [qc]);
 }
