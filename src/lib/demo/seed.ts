@@ -14,8 +14,6 @@ import type {
   ChannelType,
   Conversation,
   CreditGrant,
-  CrewJob,
-  GithubRepo,
   LedgerEntry,
   McpServer,
   Me,
@@ -45,9 +43,6 @@ const CREDIT_LIFETIME_DAYS = 90;
 export type DayUsage = { ai: number; awake: number; actions: number; tools: number };
 
 export const emptyDay = (): DayUsage => ({ ai: 0, awake: 0, actions: 0, tools: 0 });
-
-/** A crew job as the demo keeps it: the job, and the request id that made it (for idempotent sends). */
-export type DemoCrewJob = CrewJob & { clientRequestId: string | null };
 
 /** What the automation itself doesn't carry: which repo it watches and where the verdict goes. */
 export type DemoPrReview = { automationId: string; owner: string; repo: string; channel: ChannelType };
@@ -81,12 +76,6 @@ export type DemoData = {
   prReviews: DemoPrReview[];
   /** When review was last turned on, for the limit of 30 an hour. */
   prReviewCalls: number[];
-  /** The crew jobs, newest first: a brief for Patch or Byte, run as one turn, with its report. */
-  crewJobs: DemoCrewJob[];
-  /** When a job was last given, for the limit of 20 an hour. */
-  crewJobCalls: number[];
-  /** The connected GitHub account's repos, as `GET /v1/github/repos` lists them. */
-  githubRepos: GithubRepo[];
   agentStatus: AgentStatus;
   agentSettings: AgentSettings;
   /** Like the backend's AI_ACCESS_MODE: `platform` offers Textcrew AI, `own_only` requires the user's own AI. */
@@ -535,66 +524,6 @@ function seedApps(): App[] {
   ];
 }
 
-/** The GitHub account's repos, pushed to most recently first. */
-function seedGithubRepos(now: Date): GithubRepo[] {
-  const repo = (owner: string, name: string, isPrivate: boolean, daysAgo: number, defaultBranch = "main"): GithubRepo => ({
-    owner, name, fullName: `${owner}/${name}`, private: isPrivate, defaultBranch, pushedAt: atDay(now, daysAgo, 11, 20),
-  });
-  return [
-    repo("northwind", "website", false, 0),
-    repo("northwind", "api", true, 1),
-    repo("northwind", "mobile", true, 3, "develop"),
-    repo("northwind", "design-system", false, 9),
-    repo("aarav-shah", "dotfiles", false, 40, "master"),
-  ];
-}
-
-/** The report Patch wrote for the seeded job, in the report's shape. */
-export const SEED_JOB_REPORT = [
-  "**Verdict:** fix first",
-  "",
-  "**Findings**",
-  "1. [high] `lib/checkout/discount.ts:41`: a coupon and a plan change in the same order are both applied, so the customer pays too little.",
-  "2. [medium] `app/api/webhooks/route.ts:18`: the signature is checked after the body is parsed; a bad body throws before the check.",
-  "3. [low] `lib/checkout/discount.test.ts`: no test for a coupon together with a plan change.",
-  "",
-  "**Tests run**",
-  "- `pnpm install`: done",
-  "- `pnpm test`: passed (214 passed, 0 failed)",
-  "",
-  "**Not checked**",
-  "- The mobile layout of the checkout: it needs a browser.",
-].join("\n");
-
-/** One review Patch finished this morning, and one job of Byte's that failed yesterday. */
-function seedCrewJobs(now: Date): DemoCrewJob[] {
-  const base = {
-    instructions: "", acceptance: "", commands: "", conversationId: null, source: "app" as const, clientRequestId: null,
-  };
-  return [
-    {
-      ...base,
-      id: "crj_seed_review", member: "patch", status: "done", title: "Review northwind/website#131",
-      owner: "northwind", repo: "website", pullNumber: 131, branch: null,
-      instructions: "The discount code changed. Look hard at it.", focus: ["bugs", "security", "tests"],
-      commands: "pnpm install && pnpm test", finish: null,
-      reportTo: { channel: "web", pullRequest: true, issue: false },
-      report: SEED_JOB_REPORT, error: null,
-      createdAt: earlierToday(now, 70), startedAt: earlierToday(now, 70), finishedAt: earlierToday(now, 63),
-    },
-    {
-      ...base,
-      id: "crj_seed_fix", member: "byte", status: "failed", title: "Make the signup form remember the email in northwind/website",
-      owner: "northwind", repo: "website", pullNumber: null, branch: null,
-      instructions: "Make the signup form remember the email when the password is wrong.", focus: [],
-      acceptance: "A wrong password keeps the email in the field.", finish: "pull_request",
-      reportTo: { channel: "telegram", pullRequest: true, issue: false },
-      report: null, error: "The agent couldn't finish the job. The chat says why.",
-      createdAt: atDay(now, 1, 18, 5), startedAt: atDay(now, 1, 18, 5), finishedAt: atDay(now, 1, 18, 19),
-    },
-  ];
-}
-
 /** The repos with pull-request review on: one working, one paused after its reviews kept failing. */
 const SEED_REVIEWS: readonly DemoPrReview[] = [
   { automationId: "aut_pr_website", owner: REVIEWED.owner, repo: REVIEWED.repo, channel: "telegram" },
@@ -860,9 +789,6 @@ export function createNewAccount(now: Date, plan: PlanId = process.env.TEXTCREW_
     automations: [],
     prReviews: [],
     prReviewCalls: [],
-    crewJobs: [],
-    crewJobCalls: [],
-    githubRepos: seedGithubRepos(now),
     // Made at sign-up, not started yet.
     agentStatus: { state: "stopped", lastActiveAt: null },
     agentSettings: {
@@ -928,9 +854,6 @@ export function createSeed(now: Date, plan: PlanId = demoPlan(), account: DemoAc
     automations: seedAutomations(now),
     prReviews: SEED_REVIEWS.map((review) => ({ ...review })),
     prReviewCalls: [],
-    crewJobs: seedCrewJobs(now),
-    crewJobCalls: [],
-    githubRepos: seedGithubRepos(now),
     agentStatus: { state: "awake", lastActiveAt: earlierToday(now, 15) },
     agentSettings: {
       runtime: "hermes", effectiveRuntime: "hermes", aiAccess: "own_key",

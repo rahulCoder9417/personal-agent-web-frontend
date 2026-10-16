@@ -1,14 +1,29 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { HELP_SECTIONS } from "@/lib/help-content";
+import type { CrewMember } from "@/lib/api/client";
+import { qk } from "@/lib/api/hooks";
+import { CREW_EXAMPLES } from "@/lib/crew";
+import { handleDemoRequest } from "@/lib/demo";
+import { CREW_SECTION_ID, HELP_SECTIONS } from "@/lib/help-content";
 import { appRoutes, pathOf } from "@/test/app-routes";
 import HelpPage from "@/app/(app)/help/page";
 
 // The Help page as it is first drawn (no search typed): every topic and answer is on it, and every
-// link on it leads somewhere real.
+// link on it leads somewhere real. The crew's part starts with who is on the crew, as the backend
+// (here the demo's) lists it.
 
-const html = renderToStaticMarkup(createElement(HelpPage));
+const crewList = (await (await handleDemoRequest(new Request("http://localhost/api/v1/crew"), ["crew"])).json()) as { items: CrewMember[] };
+
+/** The page, with the crew list the backend gave (or none yet). */
+function drawHelp(crew: { items: CrewMember[] } | null = crewList): string {
+  const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
+  if (crew) client.setQueryData(qk.crew, crew);
+  return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(HelpPage)));
+}
+
+const html = drawHelp();
 const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map((match) => match[1].replaceAll("&amp;", "&"));
 const idsOnPage = new Set([...html.matchAll(/\bid="([^"]*)"/g)].map((match) => match[1]));
 
@@ -63,6 +78,43 @@ describe("the Help page", () => {
   it("offers to try each example in the chat, typed in and not sent", () => {
     expect(html).toContain('href="/?draft=Remember%20that%20Priya%20handles%20finance."');
     expect(html).toMatch(/aria-label="Try it in chat: Remember that Priya handles finance\."/);
+  });
+
+  it("explains the crew in a part of its own, the one /crew leads to, right after Getting started", () => {
+    expect(HELP_SECTIONS.map((section) => section.id).slice(0, 2)).toEqual(["start", CREW_SECTION_ID]);
+    const crew = /<section id="crew" [\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
+    expect(crew).toContain(">The crew</h2>");
+    for (const name of ["Tex", "Byte", "Patch", "Scout"]) expect(crew).toContain(`>${name}</strong>`);
+    // Byte and Patch are asked for in the chat, in plain words; there is no form or screen for them.
+    for (const example of [CREW_EXAMPLES.byte, CREW_EXAMPLES.patch, CREW_EXAMPLES.scout])
+      expect(crew).toContain(`href="/?draft=${encodeURIComponent(example)}"`);
+    expect(crew).toContain("Fix the typo in the README on my repo");
+    expect(crew).toContain("There is no form for the crew: you ask in plain words.");
+    // Reviewing every pull request in a repo is the one thing set up on a screen.
+    expect(crew).toContain('href="/automations/reviews"');
+    expect(html).not.toMatch(/Give (Patch a review|Byte a job|the crew a job)|Crew page|crew jobs?/i);
+  });
+
+  it("starts the crew's part with who is on the crew here, each leading to how to ask for it", () => {
+    const lineup = /<ul aria-label="Your crew"[\s\S]*?<\/ul>/.exec(html)?.[0] ?? "";
+    for (const [name, topic] of [["Tex", "crew-who"], ["Byte", "crew-byte"], ["Patch", "crew-patch"], ["Scout", "crew-scout"]]) {
+      expect(lineup).toMatch(new RegExp(`<a href="#${topic}"[^>]*>[\\s\\S]*?>${name}</span>`));
+      expect(idsOnPage).toContain(topic);
+    }
+    expect(lineup).not.toContain("Coming soon");
+  });
+
+  it("marks a specialist that isn't switched on here as coming soon", () => {
+    const page = drawHelp({ items: crewList.items.map((member) => (member.id === "scout" ? { ...member, available: false } : member)) });
+    const lineup = /<ul aria-label="Your crew"[\s\S]*?<\/ul>/.exec(page)?.[0] ?? "";
+    expect(lineup.match(/Coming soon/g)).toHaveLength(1);
+    expect(page).toContain("Scout isn’t switched on here yet.");
+  });
+
+  it("still explains the crew before the backend has said who is on it", () => {
+    const page = drawHelp(null);
+    expect(page).not.toContain('aria-label="Your crew"');
+    expect(page).toContain('<article id="crew-byte"');
   });
 
   it("opens the privacy policy in a new tab", () => {

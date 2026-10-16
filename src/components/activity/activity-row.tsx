@@ -6,7 +6,7 @@ import { AutomationsIcon, LockIcon } from "../icons";
 import { AgentFigure } from "../tex";
 import { describeActivity, memoryLink } from "./group";
 
-// The colour behind each specialist's face, as on the crew page.
+// The colour behind each specialist's face.
 const CREW_TINT: Record<SpecialistId, string> = { byte: "#F1ECFF", patch: "#FEF4E3", scout: "#E6F5F4" };
 
 /**

@@ -23,8 +23,6 @@ import {
   type ByokProvider,
   type ChannelType,
   type Conversation,
-  type CrewJob,
-  type CrewJobInput,
   type McpServerCreate,
   type Me,
   type MeUpdate,
@@ -67,8 +65,6 @@ export const qk = {
   agentSettings: ["agent", "settings"] as const,
   agentProgress: ["agent", "progress"] as const,
   crew: ["crew"] as const,
-  crewJobs: ["crew-jobs"] as const,
-  githubRepos: ["github", "repos"] as const,
   memories: ["memories"] as const,
   plans: ["billing", "plans"] as const,
   subscription: ["billing", "subscription"] as const,
@@ -731,56 +727,6 @@ export function useCrew(enabled = true) {
     queryFn: () => unwrap(api.GET("/v1/crew")),
     select: (data) => data.items,
     staleTime: 5 * 60_000,
-    enabled,
-  });
-}
-
-// ---------------------------------------------------------------- crew jobs
-
-/** How often the job list is asked for again while a job waits or works (there is no live event for it). */
-export const CREW_JOBS_POLL_MS = 4000;
-
-/**
- * The person's crew jobs, newest first (the first 30). Asked for again every few seconds while one
- * is waiting or working, so its state and its report show up without a reload. A server from before
- * crew jobs answers 404: the screen then hides them (`notOnServer` in lib/crew-jobs.ts).
- */
-export function useCrewJobs() {
-  return useQuery({
-    queryKey: qk.crewJobs,
-    queryFn: () => unwrap(api.GET("/v1/crew-jobs", { params: { query: { limit: PAGE } } })),
-    select: (data) => data.items,
-    refetchInterval: (query) =>
-      query.state.data?.items.some((job) => job.status === "queued" || job.status === "running") ? CREW_JOBS_POLL_MS : false,
-  });
-}
-
-/** Gives Patch a review or Byte a job. The same `clientRequestId` again returns the same job. */
-export function useCreateCrewJob() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: CrewJobInput) => unwrap(api.POST("/v1/crew-jobs", { body })),
-    onSuccess: (job: CrewJob) => {
-      qc.setQueryData<{ items: CrewJob[]; nextCursor: string | null }>(qk.crewJobs, (data) =>
-        data ? { ...data, items: [job, ...data.items.filter((item) => item.id !== job.id)] } : data,
-      );
-      void qc.invalidateQueries({ queryKey: qk.crewJobs });
-      void qc.invalidateQueries({ queryKey: qk.activity });
-    },
-  });
-}
-
-/**
- * The repos of the connected GitHub account, to pick one from. Kept a minute, like the server
- * does. 409 (GitHub isn't connected), 503 or a 404 from an older server: the repo is typed instead.
- */
-export function useGithubRepos(enabled = true) {
-  return useQuery({
-    queryKey: qk.githubRepos,
-    queryFn: () => unwrap(api.GET("/v1/github/repos")),
-    select: (data) => data.items,
-    staleTime: 60_000,
-    retry: false,
     enabled,
   });
 }

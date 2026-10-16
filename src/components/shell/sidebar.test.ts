@@ -81,6 +81,12 @@ describe("Sidebar, open", () => {
     expect(links(html, "/apps")).toEqual([]);
   });
 
+  it("has no Crew entry: the crew is explained in Help, and Byte and Patch are asked for in the chat", () => {
+    const html = draw();
+    expect(links(html, "/crew")).toEqual([]);
+    expect(html).not.toContain(">Crew</span>");
+  });
+
   it("shows the words, and the credits card rather than the rail's tile", () => {
     const html = draw();
     expect(html).toContain(">Approvals</span>");
@@ -96,11 +102,11 @@ describe("Sidebar, open", () => {
     expect(html).toContain(">Help</span>");
   });
 
-  it("leads to Pricing under Set up, after Crew and before Settings", () => {
+  it("leads to Pricing under Set up, after Integrations and before Settings", () => {
     const html = draw();
     expect(links(html, "/pricing")).toHaveLength(1);
     expect(html).toMatch(/<a [^>]*href="\/pricing"[^>]*>.*?>Pricing<\/span>/);
-    expect(html.indexOf('href="/pricing"')).toBeGreaterThan(html.indexOf('href="/crew"'));
+    expect(html.indexOf('href="/pricing"')).toBeGreaterThan(html.indexOf('href="/integrations"'));
     expect(html.indexOf('href="/pricing"')).toBeLessThan(html.indexOf('href="/settings"'));
     expect(links(html, "/settings/plans")).toEqual([]);
   });

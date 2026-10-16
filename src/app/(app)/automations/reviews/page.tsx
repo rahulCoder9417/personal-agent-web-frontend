@@ -6,6 +6,9 @@ import { PageBody } from "@/components/page";
 import { AgentFigure } from "@/components/tex";
 import { Card, EmptyState, ErrorState, Meta, SectionLabel, SkeletonRows } from "@/components/ui";
 import { useCrew, usePrReviews } from "@/lib/api/hooks";
+import { chatDraftHref } from "@/lib/chat-link";
+import { CREW_EXAMPLES } from "@/lib/crew";
+import { CREW_HELP_PATH } from "@/lib/crew-address";
 import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
 
 const NEEDS: { title: string; body: string; link?: { href: string; label: string } }[] = [
@@ -50,8 +53,8 @@ export default function PrReviewsPage() {
           {patch && !patch.available && (
             <p role="status" className="rounded-[10px] bg-surface-2 px-3.5 py-2.5 text-[13px] text-nav">
               Patch isn’t on the crew here yet, so reviews may not run until it is.{" "}
-              <Link href="/crew" className="font-medium text-accent hover:text-accent-dark">
-                See the crew
+              <Link href={CREW_HELP_PATH} className="font-medium text-accent hover:text-accent-dark">
+                About the crew
               </Link>
             </p>
           )}
@@ -110,6 +113,19 @@ export default function PrReviewsPage() {
                 </li>
               ))}
             </ul>
+          </Card>
+          {/* One review, once: asked of Tex in the chat. There is no form for it. */}
+          <Card role="group" aria-label="One pull request" className="flex flex-col gap-2 p-5 text-[13px] text-fg-2">
+            <SectionLabel as="h3">Just one pull request?</SectionLabel>
+            <p>Ask Tex in the chat, with the repo and the pull request’s number. Patch reviews it once and you get the verdict there.</p>
+            <p className="text-fg">“{CREW_EXAMPLES.patch}”</p>
+            <Link
+              href={chatDraftHref(CREW_EXAMPLES.patch)}
+              aria-label={`Try it in chat: ${CREW_EXAMPLES.patch}`}
+              className="self-start font-medium text-accent hover:text-accent-dark"
+            >
+              Try it in chat →
+            </Link>
           </Card>
         </div>
       </div>

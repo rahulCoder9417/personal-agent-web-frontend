@@ -4,13 +4,14 @@ import { useDeferredValue, useId, useMemo, useState, type ReactNode } from "reac
 import { chatDraftHref } from "@/lib/chat-link";
 import { cn } from "@/lib/format";
 import { countAnswers, PLACES, placeName, searchHelp, type HelpIconName, type HelpSection, type HelpTopic } from "@/lib/help";
-import { HELP_ASK_TEX, HELP_POPULAR, HELP_SECTIONS } from "@/lib/help-content";
+import { CREW_SECTION_ID, HELP_ASK_TEX, HELP_POPULAR, HELP_SECTIONS } from "@/lib/help-content";
 import { AppIcon } from "../brand-icon";
-import { ApprovalsIcon, AppsIcon, AutomationsIcon, ChevronRightIcon, CloseIcon, KeyIcon, LinkIcon, LockIcon, SearchIcon, WarningIcon } from "../icons";
+import { ApprovalsIcon, AppsIcon, AutomationsIcon, ChevronRightIcon, CloseIcon, CrewIcon, KeyIcon, LinkIcon, LockIcon, SearchIcon, WarningIcon } from "../icons";
 import { Columns, COLUMN_ITEM, Page, PageBody, PageHeader, READING } from "../page";
 import { AgentFigure } from "../tex";
 import { toast, toastError } from "../toast";
 import { Button, ButtonLink, EmptyState, IconButton, IconTile, inputClass } from "../ui";
+import { CrewLineup } from "./crew-lineup";
 import { HELP_LINK, HelpBlocks, HelpLink } from "./help-text";
 
 // The Help page: how Textcrew works, in short answers. A search at the top, the topics as cards,
@@ -25,6 +26,7 @@ function SectionIcon({ icon, size = 40 }: { icon: HelpIconName; size?: number })
   const glyph = Math.round(size * 0.48);
   const inner: Record<Exclude<HelpIconName, "telegram">, ReactNode> = {
     start: <AgentFigure who="tex" glyph size={Math.round(size * 0.78)} label="" />,
+    crew: <CrewIcon size={glyph} />,
     ai: <KeyIcon size={glyph} />,
     apps: <AppsIcon size={glyph} />,
     approvals: <ApprovalsIcon size={glyph} />,
@@ -166,7 +168,9 @@ function TopicCard({ topic }: { topic: HelpTopic }) {
 
 /**
  * A topic: its heading, the screens it is about, and its answers in as many columns as fit. While
- * searching, the topics at the top aren't there, so there is no way back to them.
+ * searching, the topics at the top aren't there, so there is no way back to them. The crew's topic
+ * starts with who is on the crew here (not while searching: its links lead to answers a search may
+ * have left out).
  */
 function Section({ section, searching }: { section: HelpSection; searching: boolean }) {
   return (
@@ -195,6 +199,7 @@ function Section({ section, searching }: { section: HelpSection; searching: bool
           )}
         </div>
       </div>
+      {section.id === CREW_SECTION_ID && !searching && <CrewLineup />}
       <Columns min={380}>
         {section.topics.map((topic) => (
           <div key={topic.id} className={COLUMN_ITEM}>

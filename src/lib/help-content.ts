@@ -7,22 +7,25 @@
 
 import { AUTOMATION_KINDS } from "./automations";
 import { CREDIT_COSTS } from "./credit-costs";
-import { CREW_GUIDE } from "./crew";
+import { CREW_EXAMPLES } from "./crew";
 import { ask, list, note, p, steps, table, type HelpSection } from "./help";
+
+/** The crew's part of the page (`/help#crew`), where the old Crew screen's address leads (crew-address.ts). */
+export const CREW_SECTION_ID = "crew";
 
 export const HELP_SECTIONS: readonly HelpSection[] = [
   {
     id: "start",
     title: "Getting started",
-    summary: "What Textcrew is, who is on the crew, and where to talk to Tex.",
+    summary: "What Textcrew is, the first steps, and where to talk to Tex.",
     icon: "start",
-    go: ["chat", "crew"],
+    go: ["chat"],
     topics: [
       {
         id: "start-what",
         title: "What is Textcrew?",
         blocks: [
-          p("Textcrew is a personal AI agent that you text. Its name is **Tex**. Tex works in your apps, researches the web, and can write and review code."),
+          p("Textcrew is a personal AI agent that you text. Its name is **Tex**. Tex works in your apps, and its crew researches the web and writes and reviews code. See [The crew](#crew)."),
           p("Tex runs in a private, locked workspace on our server, one per person. You talk to it in plain words, as you would to a person."),
           ask("What’s on my calendar tomorrow?"),
         ],
@@ -93,36 +96,106 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         ],
       },
       {
-        id: "start-crew",
-        title: "Who is on the crew?",
-        blocks: [
-          p("You only ever text Tex. Tex plans the job and hands each part to the specialist best at it."),
-          table(
-            ["Who", "What they do"],
-            ["**Tex**", "Leads. Answers you, works in your apps, and asks before anything risky."],
-            ["**Byte**", "Writes code and fixes bugs on a new branch, then opens a pull request for you to merge."],
-            ["**Patch**", "Reviews pull requests for bugs, security and tests, and posts one review. Never changes code, never merges."],
-            ["**Scout**", "Searches the web and reads pages. The only one on the web, with no way into your files or apps."],
-          ),
-          ask(CREW_GUIDE.scout.example),
-          note("A specialist marked “Coming soon” on {crew} isn’t working here yet."),
-        ],
-      },
-      {
-        id: "start-crew-jobs",
-        title: "Give the crew a job",
-        blocks: [
-          p("On {crew}, **Give Patch a review** or **Give Byte a job** opens a short brief: the GitHub repo, the pull request or branch, what to look for or fix, the commands to run, and where the report goes."),
-          p("The job runs in a folder of its own, deleted afterwards. The report comes to your chat and stays on the Crew page. You can also ask in chat:"),
-          ask(CREW_GUIDE.patch.example),
-          note("Crew jobs need GitHub connected in {apps}."),
-        ],
-      },
-      {
         id: "start-phone",
         title: "Put Textcrew on your phone’s home screen",
         blocks: [
           p("There is no store app. Open this web app in your phone’s browser and choose **Add to Home Screen** (on Android: **Install app**). It then opens in its own window, like an app."),
+        ],
+      },
+    ],
+  },
+
+  {
+    id: CREW_SECTION_ID,
+    title: "The crew",
+    summary: "Tex leads, and Byte, Patch and Scout take parts of a job. You ask for all of it in the chat.",
+    icon: "crew",
+    go: ["chat", "prReview"],
+    topics: [
+      {
+        id: "crew-who",
+        title: "Who is on the crew?",
+        blocks: [
+          p("You only ever text Tex, here or on Telegram. Tex plans the job and hands each part to the specialist best at it, so you never pick one yourself. There is no form for the crew: you ask in plain words."),
+          table(
+            ["Who", "What they do"],
+            ["**Tex**", "Leads. Answers you, works in your apps, does small jobs itself, and asks before anything risky."],
+            ["**Byte**", "Writes code and fixes bugs in your GitHub repos, on a new branch, never your main one. Opens a pull request for you to merge."],
+            ["**Patch**", "Reviews pull requests for bugs, security and tests. Never changes code, never merges, never approves."],
+            ["**Scout**", "Searches the web and reads pages. The only one on the web, with no way into your files or apps."],
+          ),
+          note("Up to three specialists can work on one job at once."),
+        ],
+      },
+      {
+        id: "crew-byte",
+        title: "Get code changed (Byte)",
+        blocks: [
+          p("Ask Tex in the chat: say what to change and in which repo. Tex hands it to Byte, however small the change is."),
+          ask(CREW_EXAMPLES.byte),
+          list(
+            "Byte makes the change on a new branch and runs the project’s tests when it has them.",
+            "It pushes the branch and opens a pull request that says what changed and why.",
+            "Tex answers with the pull request’s link, what changed and how the tests went. Merging is up to you.",
+            "Say more in the same message if it helps: the branch to start from, how to run the tests, or what must work when it’s done.",
+          ),
+          note("Byte needs GitHub connected in {apps}. Opening the pull request costs 1 credit, like any app action that changes something. Pushing to your main branch is always refused."),
+        ],
+      },
+      {
+        id: "crew-patch",
+        title: "Get a pull request reviewed (Patch)",
+        blocks: [
+          p("Ask Tex in the chat, with the repo and the pull request’s number or link. Tex hands it to Patch."),
+          ask(CREW_EXAMPLES.patch),
+          list(
+            "Patch reads the changes, runs the tests, and looks for bugs, security problems and missing tests. Say if it should look hard at something, or how to run the tests.",
+            "You get the verdict in the chat: ship, or fix first, with the main findings.",
+            "Patch can post its review on the pull request, as one comment. Tex asks for your OK first, unless pull-request review is on for that repo. See [Approvals](#approvals).",
+          ),
+          note("Patch needs GitHub connected in {apps}."),
+        ],
+      },
+      {
+        id: "crew-auto-review",
+        title: "Review every pull request in a repo",
+        blocks: [
+          p("To have Patch review each new pull request in a repo by itself, turn review on for that repo in {prReview}. This one is switched on there, not in the chat: Tex can’t turn it on for you, and sends you there."),
+          p("Patch then reviews every pull request that opens or gets new commits, posts one review on it, and sends a short verdict to {automationsChat}. See [Pull-request review](#automations-pr-review)."),
+        ],
+      },
+      {
+        id: "crew-brief",
+        title: "A bigger job, with the whole brief",
+        blocks: [
+          p("For Patch or Byte, you can give the whole brief in one message: the repo, the pull request or branch, what to look for or fix, the commands to install and test, and whether to post the report on the pull request or open an issue with it."),
+          ask("Patch, review pull request 42 in acme/website. Run pnpm install and pnpm test, and look hard at security."),
+          p("Tex runs it as a job of its own, right after it answers you. The work happens in a folder that is deleted afterwards, and the report comes back to the same chat: the verdict, each finding or change with its file and line, the tests run, and what wasn’t checked."),
+          note("Posting the report on the pull request waits for your OK first."),
+        ],
+      },
+      {
+        id: "crew-scout",
+        title: "Research on the web (Scout)",
+        blocks: [
+          p("Ask Tex anything that needs the web. Tex hands it to Scout, which searches, reads the pages and comes back with an answer and its links."),
+          ask(CREW_EXAMPLES.scout),
+          list(
+            "Reading a web page is free on every plan.",
+            "With your Claude plan, Scout uses Claude’s own web search, at no credits. Otherwise web search is part of the Max plan, at about 1 credit a search.",
+            "On the Max plan Scout can also drive a real browser, for pages that need clicking, at 2 credits a minute. {plans} says whether it is ready yet.",
+          ),
+        ],
+      },
+      {
+        id: "crew-at-work",
+        title: "See who is working",
+        blocks: [
+          list(
+            "While a specialist works, the web chat shows its face and what it is doing, such as “Scout · reading 4 pages”.",
+            "{activity} keeps those lines. Its **Crew** filter shows only them.",
+            "On Telegram you get only the finished answer.",
+          ),
         ],
       },
     ],
@@ -284,7 +357,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         title: "What Tex can do in your apps",
         blocks: [
           p("Ask in plain words:"),
-          ask(CREW_GUIDE.tex.example),
+          ask(CREW_EXAMPLES.tex),
           ask("List the pull requests waiting for my review."),
           list(
             "Reading and searching are free.",
@@ -452,6 +525,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         blocks: [
           p("In {prReview}, turn review on for a GitHub repo. When a pull request opens or gets new commits, Patch reviews it and posts one review on GitHub. You get a short verdict in the Automations chat. Patch never merges and never approves."),
           note("It needs GitHub connected in {apps}, and admin access to the repo."),
+          p("To have one pull request reviewed once, ask Tex in the chat. See [Get a pull request reviewed](#crew-patch)."),
         ],
       },
     ],

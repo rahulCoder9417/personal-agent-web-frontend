@@ -39,7 +39,7 @@ export function MobileTabBar() {
     { href: "/approvals", label: "Approvals", icon: <ApprovalsIcon size={22} />, badge: pending },
     { href: "/automations", label: "Automations", icon: <AutomationsIcon size={22} /> },
     { href: INTEGRATIONS_PATH, label: "Integrations", icon: <AppsIcon size={22} /> },
-    { href: "/more", label: "More", icon: <MoreIcon size={22} />, also: ["/settings", "/activity", "/crew", PRICING_PATH, "/help"] },
+    { href: "/more", label: "More", icon: <MoreIcon size={22} />, also: ["/settings", "/activity", PRICING_PATH, "/help"] },
   ];
   const isActive = (tab: Tab) =>
     tab.href === "/"

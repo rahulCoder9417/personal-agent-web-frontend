@@ -9,9 +9,7 @@ import type {
   ChannelLink,
   Conversation,
   CreditBalance,
-  CrewJob,
   CrewMember,
-  GithubRepo,
   LedgerEntry,
   Me,
   Memory,
@@ -1331,87 +1329,6 @@ describe("routing", () => {
     expect(unknown.status).toBe(404);
     expect(unknown.body).toEqual({ error: { code: "not_found", message: "Not found" } });
     expect(wrongMethod.status).toBe(404);
-  });
-});
-
-describe("crew jobs", () => {
-  const review = (n: number, over: Record<string, unknown> = {}) => ({
-    member: "patch",
-    owner: "northwind",
-    repo: "website",
-    pullNumber: 140,
-    focus: ["bugs", "security"],
-    commands: "pnpm test",
-    reportTo: { channel: "web", pullRequest: true },
-    clientRequestId: uuid(n),
-    ...over,
-  });
-
-  it("lists the GitHub repos, and only while GitHub is connected", async () => {
-    const repos = await call<{ items: GithubRepo[] }>("GET", "github/repos");
-    expect(repos.status).toBe(200);
-    expect(repos.body.items[0]).toMatchObject({ fullName: "northwind/website", defaultBranch: "main" });
-    const github = getStore().apps.find((app) => app.slug === "github")!;
-    github.connections = [];
-    expect((await call<ErrorBody>("GET", "github/repos")).status).toBe(409);
-  });
-
-  it("seeds a finished review with its report and a failed job", async () => {
-    const list = await call<Page<CrewJob>>("GET", "crew-jobs");
-    expect(list.body.items.map((job) => [job.member, job.status])).toEqual([
-      ["patch", "done"],
-      ["byte", "failed"],
-    ]);
-    expect(list.body.items[0].report).toContain("**Verdict:** fix first");
-    expect(hasMarkdown(list.body.items[0].report ?? "")).toBe(true);
-    expect(list.body.items[1].error).toMatch(/couldn't finish/);
-  });
-
-  it("runs a review: waiting, working with Patch's lines, then done with the report in a web conversation of its own", async () => {
-    const events: StreamEvent[] = [];
-    subscribe(getStore(), (event) => events.push(event));
-    const made = await call<CrewJob>("POST", "crew-jobs", review(1));
-    expect(made.status).toBe(201);
-    expect(made.body).toMatchObject({ status: "queued", title: "Review northwind/website#140", reportTo: { channel: "web", pullRequest: true, issue: false } });
-    expect("clientRequestId" in made.body).toBe(false);
-    // The same request again: the same job.
-    const again = await call<CrewJob>("POST", "crew-jobs", review(1));
-    expect(again.status).toBe(200);
-    expect(again.body.id).toBe(made.body.id);
-
-    vi.advanceTimersByTime(1000);
-    expect((await call<CrewJob>("GET", `crew-jobs/${made.body.id}`)).body.status).toBe("running");
-    vi.advanceTimersByTime(10_000);
-    const done = (await call<CrewJob>("GET", `crew-jobs/${made.body.id}`)).body;
-    expect(done.status).toBe("done");
-    expect(done.report).toContain("**Findings**");
-    expect(done.report).toContain("`pnpm test`: passed");
-    const lines = events.filter((event) => event.type === "agent.progress").map((event) => (event.data as AgentProgress).text);
-    expect(lines).toContain("Patch: stopped 1 program and deleted the job folder");
-    const own = getStore().conversations.find((conversation) => conversation.id === done.conversationId);
-    expect(own).toMatchObject({ title: "Review northwind/website#140", active: false, channel: "web" });
-    expect(getStore().messages.find((message) => message.conversationId === own?.id)?.text).toBe(done.report);
-  });
-
-  it("refuses what the backend refuses", async () => {
-    const cases: Array<[Record<string, unknown>, number]> = [
-      [review(2, { pullNumber: null }), 400],
-      [review(3, { member: "byte", instructions: "" }), 400],
-      [review(4, { member: "byte", instructions: "Fix it", finish: "branch" }), 400],
-      [review(5, { branch: "not a branch", pullNumber: null, reportTo: {} }), 400],
-      [review(6, { member: "scout" }), 400],
-      [review(7, { clientRequestId: "nope" }), 400],
-    ];
-    for (const [body, status] of cases) expect((await call<ErrorBody>("POST", "crew-jobs", body)).status, JSON.stringify(body)).toBe(status);
-    const github = getStore().apps.find((app) => app.slug === "github")!;
-    const saved = github.connections;
-    github.connections = [];
-    expect((await call<ErrorBody>("POST", "crew-jobs", review(8))).body.error.message).toBe("Connect GitHub first");
-    github.connections = saved;
-    for (let i = 0; i < 5; i++) expect((await call("POST", "crew-jobs", review(20 + i))).status).toBe(201);
-    const full = await call<ErrorBody>("POST", "crew-jobs", review(30));
-    expect(full.status).toBe(409);
-    expect(full.body.error.message).toMatch(/5 crew jobs are already waiting/);
   });
 });
 

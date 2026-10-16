@@ -1,18 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CrewMember } from "./api/client";
-import {
-  addProgress,
-  CREW_GUIDE,
-  CREW_STEPS,
-  crewBrowser,
-  crewHeadline,
-  crewNavNote,
-  describeAvailability,
-  describeBrowser,
-  progressLine,
-  splitCrew,
-  splitCrewLine,
-} from "./crew";
+import { addProgress, comingSoon, CREW_COLOUR, CREW_EXAMPLES, crewBrowser, crewWash, progressLine, splitCrewLine } from "./crew";
 
 function crew(available: CrewMember["id"][], browserBuilt = false): CrewMember[] {
   const member = (id: CrewMember["id"], name: string, role: string, kind: CrewMember["kind"] = "specialist"): CrewMember => ({
@@ -27,62 +15,30 @@ function crew(available: CrewMember["id"][], browserBuilt = false): CrewMember[]
   return [member("tex", "Tex", "Lead", "lead"), member("byte", "Byte", "Coding"), member("patch", "Patch", "Code review"), member("scout", "Scout", "Research")];
 }
 
-describe("splitCrew", () => {
-  it("separates the lead, who works now and who is coming", () => {
-    const split = splitCrew(crew(["byte", "scout"]));
-    expect(split.lead?.id).toBe("tex");
-    expect(split.working.map((m) => m.id)).toEqual(["byte", "scout"]);
-    expect(split.coming.map((m) => m.id)).toEqual(["patch"]);
-  });
-
-  it("copes with an empty list", () => {
-    expect(splitCrew([])).toEqual({ lead: undefined, working: [], coming: [] });
+describe("comingSoon", () => {
+  it("names the specialists not switched on here yet, never the lead", () => {
+    expect(comingSoon(crew(["byte", "scout"])).map((m) => m.id)).toEqual(["patch"]);
+    expect(comingSoon(crew(["byte", "patch", "scout"]))).toEqual([]);
+    expect(comingSoon(crew([])).map((m) => m.id)).toEqual(["byte", "patch", "scout"]);
+    expect(comingSoon([])).toEqual([]);
   });
 });
 
-describe("crewHeadline", () => {
-  it("names who works and who is on the way", () => {
-    expect(crewHeadline(crew(["byte", "patch", "scout"]))).toBe("Tex leads and hands work to Byte, Patch and Scout.");
-    expect(crewHeadline(crew(["byte"]))).toBe("Tex leads and hands work to Byte. Patch and Scout are on the way.");
-    expect(crewHeadline(crew(["byte", "patch"]))).toBe("Tex leads and hands work to Byte and Patch. Scout is on the way.");
-    expect(crewHeadline(crew([]))).toBe("Tex is on the job today. Byte, Patch and Scout are on the way.");
-  });
-});
-
-describe("the crew page's own words", () => {
-  it("says three things each member does, and gives a request to try", () => {
-    for (const member of crew(["byte", "patch", "scout"])) {
-      const guide = CREW_GUIDE[member.id];
-      expect(guide.does).toHaveLength(3);
-      expect(guide.does.every((line) => line.length > 0 && line.length <= 70)).toBe(true);
-      expect(guide.example.length).toBeGreaterThan(10);
-    }
+describe("the crew's own words", () => {
+  it("gives each member a request to try in the chat", () => {
+    for (const member of crew(["byte", "patch", "scout"])) expect(CREW_EXAMPLES[member.id].length).toBeGreaterThan(10);
   });
 
-  it("keeps the promises the crew is built on", () => {
-    expect(CREW_GUIDE.byte.does.join(" ")).toMatch(/new branch/);
-    expect(CREW_GUIDE.patch.does.join(" ")).toMatch(/never merges/);
-    expect(CREW_GUIDE.scout.does.join(" ")).toMatch(/only one on the web/);
+  it("asks Byte for a change and Patch for a review in plain words, with the repo named", () => {
+    expect(CREW_EXAMPLES.byte).toMatch(/^Fix the typo in the README on my repo [\w-]+\/[\w-]+\.$/);
+    expect(CREW_EXAMPLES.patch).toMatch(/^Review pull request \d+ in [\w-]+\/[\w-]+\.$/);
+    // Byte's request doesn't say "pull request" or "review", so it can't be read as one for Patch.
+    expect(CREW_EXAMPLES.byte).not.toMatch(/pull request|review/i);
   });
 
-  it("says who works here, who leads and who is still to come", () => {
-    const [tex, byte, patch] = crew(["byte"]);
-    expect(describeAvailability(tex)).toEqual({ label: "Leads your crew", tone: "done" });
-    expect(describeAvailability(byte)).toEqual({ label: "On your crew", tone: "done" });
-    expect(describeAvailability(patch)).toEqual({ label: "Coming soon", tone: "muted" });
-  });
-
-  it("explains how a job moves through the crew in a few steps", () => {
-    expect(CREW_STEPS.length).toBeGreaterThanOrEqual(3);
-    expect(CREW_STEPS[0].title).toBe("You text Tex");
-  });
-});
-
-describe("crewNavNote", () => {
-  it("says soon only while no specialist works", () => {
-    expect(crewNavNote(undefined)).toBeUndefined();
-    expect(crewNavNote(crew([]))).toBe("soon");
-    expect(crewNavNote(crew(["scout"]))).toBeUndefined();
+  it("gives each member its own colour from the design tokens", () => {
+    expect(CREW_COLOUR).toEqual({ tex: "var(--accent)", byte: "var(--byte)", patch: "var(--patch)", scout: "var(--scout)" });
+    expect(crewWash("byte", 16)).toEqual({ background: "color-mix(in srgb, var(--byte) 16%, var(--surface))" });
   });
 });
 
@@ -91,15 +47,6 @@ describe("the browser", () => {
     expect(crewBrowser(crew([]))).toEqual({ requiresPlan: "max", available: false, enabled: false });
     expect(crewBrowser(undefined)).toBeNull();
     expect(crewBrowser(crew([]).filter((m) => m.id !== "scout"))).toBeNull();
-  });
-
-  it("keeps 'built yet' apart from 'on your plan'", () => {
-    const built = { requiresPlan: "max" as const, available: true, enabled: false };
-    const notBuilt = { requiresPlan: "max" as const, available: false, enabled: false };
-    expect(describeBrowser(notBuilt, "Max", false)).toEqual({ text: "A real browser isn’t ready yet. It will need the Max plan.", upgrade: false });
-    expect(describeBrowser(notBuilt, "Max", true).text).toBe("A real browser isn’t ready yet. It comes with your Max plan when it is.");
-    expect(describeBrowser(built, "Max", false)).toEqual({ text: "A real browser needs the Max plan.", upgrade: true });
-    expect(describeBrowser(built, "Max", true)).toEqual({ text: "A real browser is part of your Max plan, at 2 credits per minute.", upgrade: false });
   });
 });
 

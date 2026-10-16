@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { decideAuthMode } from "./src/lib/auth-mode";
+import { OLD_CREW_ADDRESSES } from "./src/lib/crew-address";
 import { OLD_ADDRESSES } from "./src/lib/integrations";
 import { OLD_PRICING_ADDRESSES } from "./src/lib/pricing";
 
@@ -10,9 +11,10 @@ const nextConfig: NextConfig = {
   // don't read the environment per request, so they can be prerendered and served from the CDN.
   // The proxy still checks the session on every request. See builtAuthMode() in src/lib/auth-mode.ts.
   env: { NEXT_PUBLIC_TEXTCREW_AUTH_MODE: decideAuthMode(process.env) },
-  // The apps moved under Integrations, and Settings → Plans became Pricing; the old addresses lead
-  // there, with the query as it was.
-  redirects: async () => [...OLD_ADDRESSES, ...OLD_PRICING_ADDRESSES].map((redirect) => ({ ...redirect })),
+  // The apps moved under Integrations, Settings → Plans became Pricing, and the Crew screen is gone
+  // (/crew leads to the crew's part of Help); the old addresses lead there, with the query as it was.
+  redirects: async () =>
+    [...OLD_ADDRESSES, ...OLD_PRICING_ADDRESSES, ...OLD_CREW_ADDRESSES].map((redirect) => ({ ...redirect })),
 };
 
 export default nextConfig;
