@@ -28,7 +28,7 @@ export function InspectorHeader({ logo, iconUrl, label, title, status }: { logo:
   return (
     <div className="flex items-start gap-3">
       <AppLogo slug={logo} size={40} iconUrl={iconUrl} />
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className={cn(T3, "text-muted")}>{label}</span>
         <h2 className={cn(T2, "font-semibold break-words")}>{title}</h2>
       </span>

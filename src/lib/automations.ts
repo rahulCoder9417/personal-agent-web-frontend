@@ -1,9 +1,8 @@
-// Automations in plain words: the three kinds, the ready-made requests, and what one automation
-// says about itself (when it runs, whether it is on, its last and next run, what it costs).
-// The API gives a kind, a cron line or a trigger name; nobody should have to read those.
+// Automations in plain words: the three kinds, and what one automation says about itself (when it
+// runs, whether it is on, its last and next run, what it costs). The API gives a kind, a cron line
+// or a trigger name; nobody should have to read those.
 
 import type { Automation } from "./api/client";
-import { chatDraftHref } from "./chat-link";
 import { AUTOMATION_KIND_LABEL, formatAgo, formatDateTime, formatDay, formatTime, humanizeEvent, listNames, titleCase } from "./format";
 
 export type AutomationKind = Automation["kind"];
@@ -40,53 +39,6 @@ export const AUTOMATION_KINDS: readonly KindGuide[] = [
     example: "When an email from my manager arrives, tell me right away.",
   },
 ];
-
-// ---------------------------------------------------------------- ready-made requests
-
-export type AutomationTemplate = {
-  id: string;
-  kind: AutomationKind;
-  title: string;
-  /** The request, as it is typed into the chat. */
-  ask: string;
-  /** The app Tex needs connected for it, by slug. */
-  app?: string;
-  /** Set up on a screen of its own instead of by asking (pull-request review). */
-  href?: string;
-};
-
-export const AUTOMATION_TEMPLATES: readonly AutomationTemplate[] = [
-  { id: "morning-email", kind: "repeat", app: "gmail", title: "Morning email summary", ask: "Every morning at 9, summarise my unread email." },
-  { id: "weekly-report", kind: "repeat", title: "Weekly report reminder", ask: "Remind me every Friday at 5pm to send the weekly report." },
-  {
-    id: "pr-review",
-    kind: "event",
-    app: "github",
-    title: "Review every pull request",
-    ask: "When a pull request opens in a repo, review it.",
-    href: "/automations/reviews",
-  },
-  { id: "important-email", kind: "event", app: "gmail", title: "Flag an important email", ask: "When an email from my manager arrives, tell me right away." },
-  { id: "one-reminder", kind: "once", title: "A one-time reminder", ask: "Remind me tomorrow at 10am to call the bank." },
-  { id: "waiting-prs", kind: "repeat", app: "github", title: "Pull requests waiting on you", ask: "Every weekday at 10am, list the pull requests waiting for my review." },
-  { id: "follow-up", kind: "once", app: "gmail", title: "Follow up on an email", ask: "In three days, check whether Maya replied to my last email and tell me." },
-  { id: "monthly-invoices", kind: "repeat", title: "Monthly reminder", ask: "On the 1st of every month at 10am, remind me to send invoices." },
-];
-
-/** Where a template leads: the chat with its request typed in, or the screen that sets it up. */
-export function templateHref(template: AutomationTemplate): string {
-  return template.href ?? chatDraftHref(template.ask);
-}
-
-/**
- * The templates worth showing. One that needs an app is left out when that app can't be used
- * here (`usable` holds the slugs that are connected or can be connected); while the app list is
- * still loading (`usable` undefined) every template shows.
- */
-export function templatesToOffer(templates: readonly AutomationTemplate[], usable: ReadonlySet<string> | undefined): AutomationTemplate[] {
-  if (!usable) return [...templates];
-  return templates.filter((template) => !template.app || usable.has(template.app));
-}
 
 // ---------------------------------------------------------------- when it runs
 
@@ -341,20 +293,6 @@ export function describeAutomationTimes(
   const ago = automation.lastRunAt ? formatAgo(automation.lastRunAt, now) : null;
   const last = ago ? ago.charAt(0).toUpperCase() + ago.slice(1) : "Not yet";
   return { next, last, ran: Boolean(automation.lastRunAt) };
-}
-
-/** How the person's automations stand, for the overview above the list. */
-export function summarizeAutomations(automations: readonly Pick<Automation, "enabled" | "pausedReason">[]): {
-  on: number;
-  paused: number;
-  /** Paused by the system (out of credits, after failures): these wait for the person. */
-  needYou: number;
-} {
-  const on = automations.filter((automation) => automation.enabled).length;
-  const needYou = automations.filter(
-    (automation) => !automation.enabled && (automation.pausedReason === "failures" || automation.pausedReason === "out_of_credits"),
-  ).length;
-  return { on, paused: automations.length - on, needYou };
 }
 
 /**

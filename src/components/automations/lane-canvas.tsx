@@ -156,7 +156,7 @@ function BoxNode({ data }: NodeProps<Node<BoxData, "box">>) {
         <span className={cn(box.dim && "opacity-50")}>
           <AppLogo slug={box.logo} size={36} iconUrl={box.iconUrl} />
         </span>
-        <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="flex min-w-0 flex-col gap-1">
           <span className={cn(T3, "truncate text-muted")}>{box.label}</span>
           <span className={cn(T2, "line-clamp-2 font-semibold break-words", box.dim ? "text-muted" : "text-fg")}>{box.title}</span>
         </span>
@@ -164,7 +164,9 @@ function BoxNode({ data }: NodeProps<Node<BoxData, "box">>) {
       {box.line && <span className={cn(T3, "line-clamp-2 break-words text-fg-2")}>{box.line}</span>}
       {box.problem && (
         <span className={cn(T3, "flex items-start gap-1 font-medium text-warn")}>
-          <WarningIcon size={12} className="mt-0.5 shrink-0" />
+          <span className="flex h-4 shrink-0 items-center">
+            <WarningIcon size={12} />
+          </span>
           <span className="line-clamp-2 break-words">{box.problem}</span>
         </span>
       )}

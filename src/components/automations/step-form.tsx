@@ -180,11 +180,11 @@ function InputsForm({ step, onChange, id }: { step: EditorStep; onChange: (input
   const action = all.data?.find((item) => item.slug === step.action);
   if (!action) {
     const set = Object.keys(step.inputs);
-    return set.length ? <p className="text-[12.5px] text-fg-2">Fixed: {set.join(", ")}. The action’s inputs load with its list.</p> : null;
+    return set.length ? <p className="text-[12px] text-fg-2">Fixed: {set.join(", ")}. The action’s inputs load with its list.</p> : null;
   }
   const fixable = action.inputs.filter(fixableInput).sort((a, b) => Number(b.required) - Number(a.required));
   const others = action.inputs.filter((input) => !fixableInput(input));
-  if (action.inputs.length === 0) return <p className="text-[12.5px] text-muted">This action takes no inputs.</p>;
+  if (action.inputs.length === 0) return <p className="text-[12px] text-muted">This action takes no inputs.</p>;
   return (
     <div className="flex flex-col gap-3 rounded-[10px] bg-surface-2 p-3">
       <span className="text-[12px] leading-relaxed text-muted">
@@ -224,7 +224,7 @@ function AskFirst({ step, onChange }: { step: EditorStep; onChange: (on: boolean
 function OnlyIf({ step, index, onChange, id }: { step: EditorStep; index: number; onChange: (onlyIf: EditorStep["onlyIf"]) => void; id: string }) {
   if (index === 0)
     return (
-      <p className="text-[12.5px] text-muted">{step.onlyIf.kind === "always" ? "Step 1 always runs when the trigger fires." : FIRST_STEP_NOTE}</p>
+      <p className="text-[12px] text-muted">{step.onlyIf.kind === "always" ? "Step 1 always runs when the trigger fires." : FIRST_STEP_NOTE}</p>
     );
   const words = conditionWords(step.onlyIf.words);
   return (
@@ -307,7 +307,7 @@ function ReadApps({ step, apps, onChange, id }: { step: EditorStep; apps: readon
         onChange={(next) => onChange(next.slice(0, MAX_READ_APPS))}
       />
       {choices.usable.length === 0 && (
-        <p className="text-[12.5px] text-muted">
+        <p className="text-[12px] text-muted">
           No app is connected yet.{" "}
           <Link href={INTEGRATIONS_APPS_PATH} className={LINK}>
             Connect one
@@ -383,7 +383,7 @@ export function StepForm({ step, index, lane, onChange, onMoveUp, onMoveDown, pr
               onChange={(app) => set({ app, action: "", inputs: {}, risky: false })}
             />
             {choices.usable.length === 0 && (
-              <p className="text-[12.5px] text-muted">
+              <p className="text-[12px] text-muted">
                 No app is connected yet.{" "}
                 <Link href={INTEGRATIONS_APPS_PATH} className={LINK}>
                   Connect one

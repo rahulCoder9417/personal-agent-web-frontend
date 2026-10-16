@@ -364,9 +364,11 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
     }
     const lane = block.group as Lane;
     const place = at ?? pending?.find((insert) => insert.lane === lane)?.index ?? endOfLane(diagram.lanes, lane);
-    const step = blockStep(block, newStepId(editor.steps.map((item) => item.id)));
+    // One instruction becomes its first step first, so the new step's id is unlike that one's too.
+    const base = editor.steps.length ? editor : toStepped(editor);
+    const step = blockStep(block, newStepId(base.steps.map((item) => item.id)));
     if (!step) return;
-    const result = addStepAt(editor, place, step, toStepped);
+    const result = addStepAt(base, place, step, toStepped);
     if (!result.added) {
       toastError(`An automation has up to ${MAX_STEPS} steps`, "Remove one to add another.");
       return;
@@ -683,8 +685,15 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
           className={T2}
           parts={[{ href: "/automations", label: "Automations" }]}
           current={
-            <button type="button" onClick={() => select("about")} title="Name and purpose" className={cn("max-w-full truncate rounded-md text-left", shown.has("instruction") && stepped && "text-warn")}>
-              {name}
+            <button
+              type="button"
+              onClick={() => select("about")}
+              title="Name and purpose"
+              aria-label={`${name}: its name and purpose`}
+              className={cn("group/name inline-flex max-w-full items-center gap-2 rounded-md text-left", shown.has("instruction") && stepped && "text-warn")}
+            >
+              <span className="truncate">{name}</span>
+              {editing && <PencilIcon size={12} className="shrink-0 text-faint transition-colors group-hover/name:text-fg" />}
             </button>
           }
         />

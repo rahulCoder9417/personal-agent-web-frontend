@@ -255,7 +255,7 @@ function appsStep(source: FlowSource): FlowStep {
     apps,
     details: [{ label: "Apps", value: names.length ? listNames(names, "and") : NO_APPS }],
     note: names.length
-      ? "During a run Tex may use only these apps, and the trigger’s app: an action in any other app is refused. Each must stay connected under Integrations → Apps."
+      ? "During a run Tex may use only these apps, and the trigger’s app: an action in any other app is refused. Each must stay connected, under Integrations, in Apps."
       : "No apps are named, so Tex uses whichever of your connected apps the instruction needs. Name some to keep its runs to those.",
     tone: "default",
   };

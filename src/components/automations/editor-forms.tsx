@@ -106,7 +106,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <fieldset className="flex min-w-0 flex-col gap-3 rounded-xl border border-line bg-surface-2/50 p-3">
       <legend className="sr-only">{title}</legend>
-      <span aria-hidden className="text-[11.5px] font-semibold tracking-[0.02em] text-muted uppercase">
+      <span aria-hidden className="text-[12px] font-semibold tracking-[0.02em] text-muted uppercase">
         {title}
       </span>
       {children}
@@ -117,7 +117,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 /** "Every weekday at 8:30 AM, by the clock below": what the choices make, read back. */
 function ReadBack({ children }: { children: ReactNode }) {
   return (
-    <p className="flex items-start gap-2 rounded-xl bg-accent-soft/70 px-3 py-2 text-[12.5px] text-fg-2">
+    <p className="flex items-start gap-2 rounded-xl bg-accent-soft/70 px-3 py-2 text-[12px] text-fg-2">
       <ClockIcon size={14} className="mt-px shrink-0 text-accent-dark" />
       <span className="min-w-0">{children}</span>
     </p>
@@ -190,7 +190,7 @@ function DaysField({ days, onChange, labelId }: { days: readonly number[]; onCha
               aria-pressed={on}
               onClick={() => toggle(day)}
               className={cn(
-                "h-9 min-w-0 rounded-[10px] text-[12.5px] font-medium transition-colors outline-none focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]",
+                "h-9 min-w-0 rounded-[10px] text-[12px] font-medium transition-colors outline-none focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]",
                 on ? "bg-accent text-white shadow-[0_1px_2px_rgb(21_21_21/0.15)]" : "bg-surface text-nav ring-1 ring-line-strong ring-inset hover:text-fg",
               )}
             >
@@ -394,7 +394,7 @@ function EventFields({ editor, onChange, context, id }: { editor: EditorParts; o
           onChange={(next) => setEvent({ app: next, event: "", config: {} })}
         />
         {choices.usable.length === 0 && (
-          <p className="text-[12.5px] text-muted">
+          <p className="text-[12px] text-muted">
             No app is connected yet.{" "}
             <Link href={INTEGRATIONS_APPS_PATH} className={LINK}>
               Connect one
@@ -409,7 +409,7 @@ function EventFields({ editor, onChange, context, id }: { editor: EditorParts; o
             What happens
           </Label>
           {events.isError ? (
-            <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-fg-2">Couldn’t load {titleCase(app)}’s events just now. Try again in a moment.</p>
+            <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12px] text-fg-2">Couldn’t load {titleCase(app)}’s events just now. Try again in a moment.</p>
           ) : (
             <Combobox
               id={`${id}-event`}
@@ -423,7 +423,7 @@ function EventFields({ editor, onChange, context, id }: { editor: EditorParts; o
               onChange={(next) => setEvent({ event: next, config: {} })}
             />
           )}
-          {events.isSuccess && events.data.length === 0 && <p className="text-[12.5px] text-muted">{titleCase(app)} has no events an automation can start on.</p>}
+          {events.isSuccess && events.data.length === 0 && <p className="text-[12px] text-muted">{titleCase(app)} has no events an automation can start on.</p>}
         </FieldBlock>
       )}
       {chosen && chosen.settings.length > 0 && (
@@ -508,7 +508,7 @@ export function InstructionForm({ editor, onChange, problems }: FormProps) {
           placeholder="List my open pull requests, oldest first, with who is waiting on whom."
           onChange={(event) => onChange({ ...editor, instruction: event.target.value })}
         />
-        <span aria-hidden className="self-end text-[11.5px] text-muted tabular-nums">
+        <span aria-hidden className="self-end text-[12px] text-muted tabular-nums">
           {editor.instruction.length} / 4000
         </span>
       </FieldBlock>
@@ -582,7 +582,7 @@ export function AppsForm({ editor, onChange, problems, context }: FormProps) {
         />
       </FieldBlock>
       {watched && (
-        <p className="flex items-center gap-2 text-[12.5px] text-fg-2">
+        <p className="flex items-center gap-2 text-[12px] text-fg-2">
           <BrandIcon name={watched} size={14} />
           {titleCase(watched)} is the trigger’s app, so Tex may always use it.
         </p>
@@ -662,7 +662,7 @@ export function ResultsForm({ editor, onChange, problems, context }: FormProps) 
           description={telegram ? `To your linked chat, ${telegram.displayId}.` : "No Telegram chat is linked now."}
         />
       ) : (
-        <p className="rounded-xl border border-dashed border-line-strong px-3 py-2 text-[12.5px] text-muted">
+        <p className="rounded-xl border border-dashed border-line-strong px-3 py-2 text-[12px] text-muted">
           Want a copy of each answer on Telegram?{" "}
           <Link href={linkChatHref("telegram")} className={LINK}>
             Link your Telegram

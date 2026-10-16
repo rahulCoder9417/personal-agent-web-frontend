@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { allTemplates } from "@/components/automations/templates";
+import { EDITOR_TEMPLATES, emptyEditor } from "./automation-editor";
 import type { Automation } from "./api/client";
 import {
   AUTOMATION_KINDS,
-  AUTOMATION_TEMPLATES,
   changeRequest,
   clock12,
   describeAutomationCost,
@@ -14,9 +15,6 @@ import {
   describeTrigger,
   describeZone,
   nextRunLine,
-  summarizeAutomations,
-  templateHref,
-  templatesToOffer,
 } from "./automations";
 import { formatTime } from "./format";
 
@@ -221,27 +219,16 @@ describe("the guide and the templates", () => {
     }
   });
 
-  it("has a template of every kind, with ids that don't repeat", () => {
-    const ids = AUTOMATION_TEMPLATES.map((template) => template.id);
+  it("has canvas templates with ids that don't repeat, each starting on a trigger, and pull-request review among them", () => {
+    const cards = allTemplates();
+    const ids = cards.map((card) => card.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(new Set(AUTOMATION_TEMPLATES.map((template) => template.kind))).toEqual(new Set(["once", "repeat", "event"]));
-  });
-
-  it("opens the chat with the request typed in, and sends pull-request review to its own screen", () => {
-    const email = AUTOMATION_TEMPLATES.find((template) => template.id === "morning-email");
-    expect(email && templateHref(email)).toBe("/?draft=Every%20morning%20at%209%2C%20summarise%20my%20unread%20email.");
-    const review = AUTOMATION_TEMPLATES.find((template) => template.id === "pr-review");
-    expect(review && templateHref(review)).toBe("/automations/reviews");
-  });
-
-  it("leaves out a template whose app can't be used here, and shows them all while the apps load", () => {
-    expect(templatesToOffer(AUTOMATION_TEMPLATES, undefined)).toHaveLength(AUTOMATION_TEMPLATES.length);
-    const gmailOnly = templatesToOffer(AUTOMATION_TEMPLATES, new Set(["gmail"]));
-    expect(gmailOnly.some((template) => template.app === "github")).toBe(false);
-    expect(gmailOnly.some((template) => template.app === "gmail")).toBe(true);
-    // The ones that need no app are always there.
-    expect(templatesToOffer(AUTOMATION_TEMPLATES, new Set()).every((template) => !template.app)).toBe(true);
-    expect(templatesToOffer(AUTOMATION_TEMPLATES, new Set()).length).toBeGreaterThan(0);
+    expect(ids[0]).toBe("pr-review");
+    for (const template of EDITOR_TEMPLATES) expect(template.fill(emptyEditor("UTC")).mode).not.toBeNull();
+    for (const card of cards) expect(card.href).toMatch(/^\/automations\/new\?template=/);
+    // Each card shows what it uses, Tex last but for pull-request review (Patch).
+    expect(cards.find((card) => card.id === "weekly-reminder")?.marks).toEqual(["schedule", "tex"]);
+    expect(cards.find((card) => card.id === "morning-email")?.marks).toEqual(["schedule", "gmail", "tex"]);
   });
 });
 
@@ -268,21 +255,6 @@ describe("describeAutomationTimes", () => {
 
   it("starts the last run with a capital", () => {
     expect(describeAutomationTimes({ ...base, lastRunAt: "2026-10-01T14:29:50" }, NOW).last).toBe("Just now");
-  });
-});
-
-describe("summarizeAutomations", () => {
-  it("counts the ones on, the paused ones and those paused by the system", () => {
-    expect(
-      summarizeAutomations([
-        { enabled: true, pausedReason: null },
-        { enabled: true },
-        { enabled: false, pausedReason: "user" },
-        { enabled: false, pausedReason: "failures" },
-        { enabled: false, pausedReason: "out_of_credits" },
-      ]),
-    ).toEqual({ on: 2, paused: 3, needYou: 2 });
-    expect(summarizeAutomations([])).toEqual({ on: 0, paused: 0, needYou: 0 });
   });
 });
 

@@ -26,7 +26,7 @@ function DiscardButton({ draft }: { draft: AutomationDraft }) {
     );
   return (
     <span className="flex items-center gap-1">
-      <Btn size="sm" variant="remove" className="bg-danger-soft text-danger" pending={discard.isPending} onClick={go}>
+      <Btn size="sm" variant="remove" className="bg-surface-2" pending={discard.isPending} onClick={go}>
         Discard draft
       </Btn>
       {!discard.isPending && (

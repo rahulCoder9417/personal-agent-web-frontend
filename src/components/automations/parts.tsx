@@ -324,7 +324,7 @@ export function MoreMenu({ label, items, className }: { label: string; items: re
                 <Btn
                   size="sm"
                   variant="remove"
-                  className="bg-danger-soft text-danger"
+                  className="bg-surface-2"
                   pending={confirming.pending}
                   onClick={() => {
                     confirming.onSelect?.();

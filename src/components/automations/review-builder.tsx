@@ -280,7 +280,7 @@ function RepoSettings({ automation }: { automation: Automation }) {
       <div className="flex flex-wrap items-center gap-2">
         {armed ? (
           <>
-            <Btn size="sm" variant="remove" className="bg-danger-soft text-danger" pending={remove.isPending} onClick={turnOff}>
+            <Btn size="sm" variant="remove" className="bg-surface-2" pending={remove.isPending} onClick={turnOff}>
               Turn off review
             </Btn>
             <Btn size="sm" variant="ghost" onClick={() => setArmed(false)}>
