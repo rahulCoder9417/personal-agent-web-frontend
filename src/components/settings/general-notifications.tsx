@@ -18,7 +18,7 @@ import {
 import { SettingRow, SettingsGroup } from "./settings-rows";
 
 /**
- * "Tell me on Telegram when…": three switches and quiet hours. Only once Telegram is linked: before
+ * "Tell me on Telegram when…": four switches and quiet hours. Only once Telegram is linked: before
  * that there is nowhere to tell. Each change is saved at once and said in a toast; one the backend
  * refuses is put back.
  */
@@ -41,7 +41,7 @@ export function TelegramNoticesSection({ me }: { me: Me }) {
     <SettingsGroup
       id={TELEGRAM_NOTICES_ID}
       title="Tell me on Telegram when…"
-      description="Always in addition to the chat you asked in, never instead. Approvals reach Telegram too, whatever these say."
+      description="Always in addition to the chat you asked in, never instead."
     >
       <Card>
         {NOTICE_SWITCHES.map(({ key, label, help }) => (

@@ -245,7 +245,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         blocks: [
           list(
             "Replies are plain text. A table becomes one line per row, and a long reply comes as several messages.",
-            "When Tex needs your OK, Tex says what it wants to do, with **Approve** and **Deny** buttons. Tap one, or type yes or no. A question Tex asks in the web app comes to Telegram too. See [Approve in Telegram](#approvals-telegram).",
+            "When Tex needs your OK, Tex says what it wants to do, with **Approve** and **Deny** buttons. Tap one, or type yes or no. A question an automation asks comes to Telegram too; one you get in the web app stays there. See [Approve in Telegram](#approvals-telegram).",
             "Progress lines (“Scout · reading 4 pages”) show only in the web chat. On Telegram you get the finished answer.",
             "The bot never sends a payment link. Plans and credits are bought in the web app.",
           ),
@@ -263,12 +263,13 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         id: "telegram-notices",
         title: "Hear on Telegram when work is done",
         blocks: [
-          p("Once Telegram is linked, {telegramNotices} has three switches. A notice always comes in addition to the chat you asked in, never instead of it."),
+          p("Once Telegram is linked, {telegramNotices} has four switches. A notice always comes in addition to the chat you asked in, never instead of it."),
           table(
             ["Switch", "What you get on Telegram"],
             ["**Byte or Patch finishes a job** (on at first)", "A short line when Patch or Byte finishes a job you gave in the web app, such as “✅ Byte finished: Fix login in acme/web. PR #43 opened. Tests passed.”, with a link to the report"],
             ["**Pull-request reviews finish** (on)", "A copy of each review’s verdict"],
             ["**Automation runs finish** (off)", "A copy of each answer of an automation you made in the web app. The ones you made on Telegram always answer there"],
+            ["**An automation needs my OK** (on)", "The question an automation asks, with **Approve** and **Deny** buttons. See [Approve in Telegram](#approvals-telegram)"],
           ),
           p("**Quiet hours**, 10:00 PM to 8:00 AM in your time zone at first: Telegram messages still arrive at once, but without a sound. Change the times or switch them off in the same place."),
         ],
@@ -452,7 +453,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         title: "Approve in Telegram",
         blocks: [
           p("Tex says what it wants to do, with two buttons. Tap **Approve** or **Deny**, or type yes or no. A typed answer goes to the newest approval asked in that chat."),
-          p("A question Tex asks in the web app, or during an automation’s run, comes to Telegram too, with the same buttons. Answer wherever you see it first: the first answer counts. The buttons then go from Telegram, and the message says how it ended, such as “✅ Approved on web”. Tex carries on in the chat where it asked."),
+          p("A question an automation asks while it runs comes to Telegram too, with the same buttons, while **An automation needs my OK** is on in {telegramNotices} (it is at first). A question you get while you work in the web app, in a chat, from Byte or Patch, or in a test run (**Run once now**), stays in the web app. Answer wherever you see it first: the first answer counts. The buttons then go from Telegram, and the message says how it ended, such as “✅ Approved on web”. Tex carries on in the chat where it asked."),
         ],
       },
       {
