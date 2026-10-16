@@ -8,7 +8,7 @@
 import { AUTOMATION_KINDS } from "./automations";
 import { CREDIT_COSTS } from "./credit-costs";
 import { CREW_EXAMPLES } from "./crew";
-import { ask, list, note, p, steps, table, type HelpSection } from "./help";
+import { ask, list, note, p, steps, table, type HelpSection, type HelpTopic } from "./help";
 
 /** The crew's part of the page (`/help#crew`), where the old Crew screen's address leads (crew-address.ts). */
 export const CREW_SECTION_ID = "crew";
@@ -598,6 +598,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
           ),
           p("Prices and the rest are in {plans}. Plans and top-ups are bought in the web app, never in Telegram."),
           p("To cancel, press **Cancel plan** in {plans}. You keep the plan until the end of the period you’ve paid for, then move to Free. The credits you have stay until they expire."),
+          p("Changed your mind before then? Press **Keep my plan** in {plans}. The plan renews as before, and nothing is charged that day."),
           note("To move between Pro and Max, cancel the plan you have first, then pick the other."),
         ],
       },
@@ -763,6 +764,44 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
 ];
 
 /** The answers people look for first, linked from the top of the page by their address. */
+/** Help's answer on auto top-up. Only shown while the server allows it (see `helpSectionsFor`). */
+const AUTO_TOPUP_TOPIC: HelpTopic = {
+  id: "credits-auto-topup",
+  title: "Auto top-up",
+  blocks: [
+    p("On Pro and Max you can let Polar add credits by itself before you run out, in {plans} under **Auto top-up**. You pick the line (under 100 credits, for example), the pack, and the most per month, and tick the box that allows the charges."),
+    list(
+      "Each time, Polar charges the card it keeps for your plan, for example $10 for 800 credits. The credits arrive once Polar confirms the payment.",
+      "It never charges more than the number of times a month you picked, and waits at least an hour between two top-ups.",
+      "If your card is declined twice in a row, it switches itself off and Tex tells you in the chat.",
+      "Switch it off in {plans} at any time. Without it, nothing is charged at zero: Tex just pauses.",
+    ),
+  ],
+};
+
+/**
+ * The Help page's sections, with what the server has switched on. With auto top-up allowed,
+ * "At zero credits" no longer reads as if a card is never charged, and the answer above is added.
+ */
+export function helpSectionsFor(options: { autoTopUp: boolean }): readonly HelpSection[] {
+  if (!options.autoTopUp) return HELP_SECTIONS;
+  return HELP_SECTIONS.map((section) => ({
+    ...section,
+    topics: section.topics.flatMap((topic) => {
+      if (topic.id === "credits-zero") {
+        return [
+          {
+            ...topic,
+            blocks: [...topic.blocks, note("With auto top-up on, Polar adds credits before you reach zero, up to your monthly limit. See [Auto top-up](#credits-auto-topup).")],
+          },
+          AUTO_TOPUP_TOPIC,
+        ];
+      }
+      return [topic];
+    }),
+  }));
+}
+
 export const HELP_POPULAR: readonly { topic: string; label: string }[] = [
   { topic: "telegram-link", label: "Link Telegram" },
   { topic: "telegram-commands", label: "Telegram commands, like /new" },
