@@ -566,7 +566,8 @@ function seedAutomations(now: Date): Automation[] {
     },
     {
       id: "aut_invoice", kind: "once", title: "Chase the Acme invoice", instruction: "Remind me to chase invoice INV-2291.",
-      runAt: atDay(now, -1, 10), timezone, preset: null, enabled: true, pausedReason: null, copyTo: null,
+      // Gmail, and the invoice in Google Drive, whose sign-in has expired: its card asks to reconnect.
+      runAt: atDay(now, -1, 10), timezone, preset: null, enabled: true, pausedReason: null, copyTo: null, apps: ["gmail", "googledrive"],
       nextRunAt: atDay(now, -1, 10), lastRunAt: null, createdAt: atDay(now, 3, 12, 5),
     },
     { ...reviewAutomation("aut_pr_website", "northwind/website", timezone, atDay(now, 8, 10, 30)), lastRunAt: earlierToday(now, 93) },

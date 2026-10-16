@@ -14,13 +14,14 @@ import { useAppActions } from "@/lib/api/hooks";
 import { appChoices } from "@/lib/automation-editor";
 import { LOCKED_LINE, TEX_STEP_NOTE } from "@/lib/automation-flow";
 import { conditionWords, FIRST_STEP_NOTE, MAX_READ_APPS, type ConditionKind, type EditorStep, type StepType } from "@/lib/automation-steps";
-import { cn, titleCase } from "@/lib/format";
+import { titleCase } from "@/lib/format";
 import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
-import { BrandIcon } from "../brand-icon";
 import { LockIcon } from "../icons";
+import { MultiSelect } from "../multi-select";
+import { RadioCards, SegmentedControl } from "../segmented-control";
 import { Combobox, Select, type ListItem, type ListOption } from "../select";
-import { Button, FilterPills, inputClass, Switch } from "../ui";
-import { Label, Problems, SettingField, textareaClass } from "./editor-forms";
+import { Button, inputClass, SwitchRow } from "../ui";
+import { appOptions as appListOptions, Label, Problems, SettingField, textareaClass } from "./editor-forms";
 
 const LINK = "font-medium text-accent hover:text-accent-dark";
 
@@ -196,20 +197,14 @@ function AskFirst({ step, onChange }: { step: EditorStep; onChange: (on: boolean
   const locked = step.risky;
   const on = locked || step.askFirst;
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-start gap-3">
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex items-center gap-1.5 text-[12.5px] font-medium">
-            {locked && <LockIcon size={13} className="text-muted" />}
-            Ask me first
-          </span>
-          <span className="text-[12px] text-muted">
-            {locked ? LOCKED_LINE : "Tex stops before this action and asks you in the chat (and on Telegram). The run goes on after your OK."}
-          </span>
-        </span>
-        <Switch on={on} disabled={locked} label={locked ? "Ask me first: always on for this action" : "Ask me first"} onToggle={() => onChange(!on)} />
-      </div>
-    </div>
+    <SwitchRow
+      on={on}
+      locked={locked}
+      onToggle={() => onChange(!on)}
+      icon={<LockIcon size={15} className="text-[color-mix(in_srgb,var(--patch)_72%,var(--fg))]" />}
+      title="Ask me first"
+      description={locked ? LOCKED_LINE : "Tex stops before this action and asks you in the chat (and on Telegram). The run goes on after your OK."}
+    />
   );
 }
 
@@ -222,30 +217,24 @@ function OnlyIf({ step, index, onChange, id }: { step: EditorStep; index: number
   const words = conditionWords(step.onlyIf.words);
   return (
     <div className="flex flex-col gap-2">
-      <div role="radiogroup" aria-label={`When step ${index + 1} runs`} className="flex flex-col gap-1.5">
-        {CONDITIONS.map((choice) => {
-          const on = step.onlyIf.kind === choice.kind;
-          return (
-            <button
-              key={choice.kind}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              onClick={() => onChange({ ...step.onlyIf, kind: choice.kind })}
-              className={cn("flex flex-col gap-0.5 rounded-[10px] border px-3 py-2 text-left transition-colors", on ? "border-fg bg-surface" : "border-line bg-surface hover:border-line-strong")}
-            >
-              <span className="flex items-center gap-2 text-[13px] font-semibold">
-                <span aria-hidden className={cn("grid size-4 shrink-0 place-items-center rounded-full border", on ? "border-fg" : "border-line-strong")}>
-                  {on && <span className="size-2 rounded-full bg-fg" />}
-                </span>
-                {choice.title}
-                {choice.kind === "tex" && <span className="rounded bg-surface-2 px-1.5 text-[10.5px] leading-[16px] font-semibold text-nav">Tex’s judgement</span>}
-              </span>
-              <span className="pl-6 text-[12px] text-muted">{choice.line}</span>
-            </button>
-          );
-        })}
-      </div>
+      <RadioCards<ConditionKind>
+        label={`When step ${index + 1} runs`}
+        value={step.onlyIf.kind}
+        onChange={(kind) => onChange({ ...step.onlyIf, kind })}
+        options={CONDITIONS.map((choice) => ({
+          value: choice.kind,
+          label: choice.title,
+          description:
+            choice.kind === "tex" ? (
+              <>
+                <span className="mr-1.5 rounded bg-surface-2 px-1.5 text-[10.5px] leading-[16px] font-semibold text-nav">Tex’s judgement</span>
+                {choice.line}
+              </>
+            ) : (
+              choice.line
+            ),
+        }))}
+      />
       {step.onlyIf.kind === "mentions" && (
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${id}-words`} hint="Separate them with commas. Any one of them is enough.">
@@ -285,38 +274,26 @@ function OnlyIf({ step, index, onChange, id }: { step: EditorStep; index: number
   );
 }
 
-/** The apps a Tex step may read: connected ones, at most 5. */
-function ReadApps({ step, apps, onChange }: { step: EditorStep; apps: readonly App[] | undefined; onChange: (readApps: string[]) => void }) {
+/** The apps a Tex step may read: connected ones, at most 5, as chips. */
+function ReadApps({ step, apps, onChange, id }: { step: EditorStep; apps: readonly App[] | undefined; onChange: (readApps: string[]) => void; id: string }) {
   const choices = appChoices(apps);
-  const stale = step.readApps.filter((slug) => !choices.usable.some((app) => app.slug === slug));
   const full = step.readApps.length >= MAX_READ_APPS;
-  const toggle = (slug: string) => onChange(step.readApps.includes(slug) ? step.readApps.filter((item) => item !== slug) : [...step.readApps, slug]);
+  // Full: the ones not chosen yet are shown, but can't be picked.
+  const options = appListOptions(apps, step.readApps).map((item) =>
+    "options" in item || !full || step.readApps.includes(item.value) ? item : { ...item, disabled: true, hint: `At most ${MAX_READ_APPS}` },
+  );
   return (
-    <div className="flex flex-col gap-1">
-      <ul className="flex flex-col gap-0.5">
-        {choices.usable.map((app) => {
-          const on = step.readApps.includes(app.slug);
-          return (
-            <li key={app.slug}>
-              <label className={cn("flex h-9 items-center gap-2.5 rounded-lg px-2 text-[13.5px] hover:bg-surface-2", !on && full ? "cursor-not-allowed text-muted" : "cursor-pointer")}>
-                <input type="checkbox" className="size-4 accent-[var(--fg)]" checked={on} disabled={!on && full} onChange={() => toggle(app.slug)} />
-                <BrandIcon name={app.slug} size={16} />
-                <span className="min-w-0 flex-1 truncate">{app.name}</span>
-              </label>
-            </li>
-          );
-        })}
-        {stale.map((slug) => (
-          <li key={slug}>
-            <label className="flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-[13.5px] text-danger hover:bg-surface-2">
-              <input type="checkbox" className="size-4" checked onChange={() => toggle(slug)} />
-              <BrandIcon name={slug} size={16} />
-              <span className="min-w-0 flex-1 truncate">{titleCase(slug)}</span>
-              <span className="text-[12px]">Not connected or not on your plan</span>
-            </label>
-          </li>
-        ))}
-      </ul>
+    <div className="flex flex-col gap-1.5">
+      <MultiSelect
+        id={`${id}-read`}
+        label="Apps Tex may read"
+        values={step.readApps}
+        options={options}
+        placeholder={choices.usable.length ? "No app: search to pick some" : "No app is connected yet"}
+        minListWidth={260}
+        emptyText={(query) => `None of your apps matches “${query}”.`}
+        onChange={(next) => onChange(next.slice(0, MAX_READ_APPS))}
+      />
       {choices.usable.length === 0 && (
         <p className="text-[12.5px] text-muted">
           No app is connected yet.{" "}
@@ -325,7 +302,7 @@ function ReadApps({ step, apps, onChange }: { step: EditorStep; apps: readonly A
           </Link>
         </p>
       )}
-      <span className="text-[12px] text-muted">{full ? `At most ${MAX_READ_APPS} apps.` : `None ticked: Tex works only with what the steps before found. Up to ${MAX_READ_APPS}.`}</span>
+      <span className="text-[12px] text-muted">{full ? `At most ${MAX_READ_APPS} apps.` : `None picked: Tex works only with what the steps before found. Up to ${MAX_READ_APPS}.`}</span>
     </div>
   );
 }
@@ -371,15 +348,6 @@ export function StepForm({ step, index, count, onChange, onMove, onRemove, probl
   const choices = appChoices(apps);
   const set = (next: Partial<EditorStep>) => onChange({ ...step, ...next });
 
-  const appOptions: ListItem[] = [
-    ...choices.usable.map((item) => ({ value: item.slug, label: item.name })),
-    ...(choices.notOnPlan.length ? [{ label: "Not on your plan", options: choices.notOnPlan.map((item) => ({ value: item.slug, label: item.name, disabled: true, hint: "Upgrade" })) }] : []),
-    ...(choices.notConnected.length
-      ? [{ label: "Not connected", options: choices.notConnected.map((item) => ({ value: item.slug, label: item.name, disabled: true, hint: "Connect first" })) }]
-      : []),
-  ];
-  if (step.app && !choices.usable.some((item) => item.slug === step.app)) appOptions.unshift({ value: step.app, label: titleCase(step.app), hint: "Not usable now" });
-
   return (
     <div
       className="flex flex-col gap-3.5"
@@ -407,10 +375,11 @@ export function StepForm({ step, index, count, onChange, onMove, onRemove, probl
       )}
 
       <Section title="What this step does" hint={step.type === "action" ? "One action in one of your apps, such as sending an email." : "Words for Tex: read, pick, sum up or draft. It can’t change anything."}>
-        <FilterPills<StepType>
+        <SegmentedControl<StepType>
           label="Kind of step"
           options={TYPES}
           value={step.type}
+          fill
           onChange={(type) => set({ type, showResult: type === "tex" ? true : step.showResult })}
         />
       </Section>
@@ -418,12 +387,14 @@ export function StepForm({ step, index, count, onChange, onMove, onRemove, probl
       {step.type === "action" ? (
         <>
           <Section title="App" hint="One of your connected apps.">
-            <Select
+            <Combobox
               id={`${id}-app`}
               label="App"
               value={step.app || null}
-              placeholder="Pick an app"
-              options={appOptions}
+              placeholder="Search your apps"
+              options={appListOptions(apps, [step.app])}
+              minListWidth={260}
+              emptyText={(query) => `None of your apps matches “${query}”.`}
               onChange={(app) => set({ app, action: "", inputs: {}, risky: false })}
             />
             {choices.usable.length === 0 && (
@@ -473,7 +444,7 @@ export function StepForm({ step, index, count, onChange, onMove, onRemove, probl
             <p className="text-[12px] leading-relaxed text-muted">{TEX_STEP_NOTE}</p>
           </Section>
           <Section title="Apps Tex may read" hint="Only reading: looking up, searching, listing.">
-            <ReadApps step={step} apps={apps} onChange={(readApps) => set({ readApps })} />
+            <ReadApps id={id} step={step} apps={apps} onChange={(readApps) => set({ readApps })} />
           </Section>
         </>
       )}
@@ -483,13 +454,12 @@ export function StepForm({ step, index, count, onChange, onMove, onRemove, probl
       </Section>
 
       <Section title="The result">
-        <label className="flex items-start gap-2.5 text-[13.5px]">
-          <input type="checkbox" className="mt-0.5 size-4 accent-[var(--fg)]" checked={step.showResult} onChange={(event) => set({ showResult: event.target.checked })} />
-          <span className="flex flex-col gap-0.5">
-            <span className="font-medium">Show me this</span>
-            <span className="text-[12px] text-muted">Its result also goes into the run’s answer. Either way it goes on to the next step.</span>
-          </span>
-        </label>
+        <SwitchRow
+          on={step.showResult}
+          onToggle={() => set({ showResult: !step.showResult })}
+          title="Show me this"
+          description="Its result also goes into the run’s answer. Either way it goes on to the next step."
+        />
       </Section>
 
       <Section title="Name" hint="Optional. Left empty, the box is named after the action or the instruction.">

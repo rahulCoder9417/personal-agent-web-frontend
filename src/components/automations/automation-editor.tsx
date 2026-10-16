@@ -57,13 +57,15 @@ import { useMediaQuery, SHOWN_AT } from "@/lib/media-query";
 import { PRICING_PATH } from "@/lib/pricing";
 import { toast, toastError } from "../toast";
 import { ConfirmButton } from "../confirm-button";
+import { ChevronRightIcon, LockIcon, WarningIcon } from "../icons";
 import { Button } from "../ui";
 import { InstructionForm, Problems, StepForm, type EditorContext } from "./editor-forms";
-import { ChangedTag, StepMark } from "./flow-parts";
+import { StepBadge } from "./flow-chain";
+import { ChangedTag } from "./flow-parts";
 import { StepForm as OneStepForm } from "./step-form";
 import { useDraftSave } from "./use-draft-save";
 
-const CanvasLoading = () => <div aria-hidden className="h-[260px] w-full animate-pulse rounded-xl border border-line bg-surface-2" />;
+const CanvasLoading = () => <div aria-hidden className="h-[256px] w-full animate-pulse rounded-2xl border border-line bg-surface-2" />;
 const FlowCanvas = dynamic(() => import("./flow-canvas"), { ssr: false, loading: CanvasLoading });
 /** The canvas of an automation with steps, with dagre: its own chunk (steps-canvas.tsx). */
 const StepsCanvas = dynamic(() => import("./steps-canvas"), { ssr: false, loading: CanvasLoading });
@@ -315,6 +317,9 @@ export function AutomationEditor({
   const open = steps.find((step) => step.key === selected) ?? steps[0];
   const runs = runsLine(editor, check.data?.nextRuns);
   const openStep = open.step ? editor.steps.findIndex((step) => step.id === open.step!.id) : -1;
+  const openAt = steps.indexOf(open);
+  const prev = steps[openAt - 1];
+  const next = steps[openAt + 1];
 
   /** The settings of a box: a step's own panel, or one of the other boxes' forms. */
   const boxForm = (box: FlowStep) => {
@@ -351,7 +356,7 @@ export function AutomationEditor({
 
   /** With steps: the title and purpose, above the steps (they have no box of their own). */
   const purpose = stepped && (
-    <section aria-label="Title and purpose" className={cn("flex flex-col gap-3 rounded-xl border bg-surface p-4", shown.has("instruction") ? "border-danger/50" : "border-line")}>
+    <section aria-label="Title and purpose" className={cn("flex flex-col gap-3 rounded-2xl border bg-surface p-4 sm:p-5", shown.has("instruction") ? "border-danger/50" : "border-line")}>
       <InstructionForm editor={editor} onChange={changeBox("instruction")} problems={shown.get("instruction") ?? []} context={context} />
     </section>
   );
@@ -360,6 +365,7 @@ export function AutomationEditor({
     <section aria-label="Edit the automation" className="flex min-w-0 flex-col gap-4">
       {read.planLimit && (
         <p role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-danger-soft px-4 py-3 text-[13.5px] text-fg">
+          <WarningIcon size={15} className="shrink-0 text-danger" />
           <span className="min-w-0 flex-1">{read.general.find((problem) => problem.code === "plan_limit")?.message}</span>
           <Link href={PRICING_PATH} className="font-medium text-accent hover:text-accent-dark">
             See plans
@@ -368,8 +374,8 @@ export function AutomationEditor({
       )}
       {read.stepsList.length > 0 && <Problems problems={read.stepsList} className="rounded-xl bg-danger-soft px-4 py-3" />}
 
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <p className="min-w-0 flex-1 basis-[260px] text-[12.5px] text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-line bg-surface px-4 py-2.5">
+        <p className="min-w-0 flex-1 basis-[260px] text-[12.5px] text-fg-2">
           {stepped
             ? `${editor.steps.length} of ${MAX_STEPS} steps, done one at a time, in order. ${costLine ?? ""}`
             : "One instruction for Tex. For a job in parts (find, decide, then act), split it into steps."}
@@ -406,29 +412,56 @@ export function AutomationEditor({
               id={panelId}
               aria-label={`${open.label}: its settings`}
               className={cn(
-                "flex w-[380px] shrink-0 flex-col gap-3 rounded-xl border bg-surface p-4 max-[1560px]:w-full",
+                "flex w-[400px] shrink-0 flex-col rounded-2xl border bg-surface max-[1560px]:w-full",
                 shown.has(open.key) ? "border-danger/50" : "border-line",
               )}
             >
-              <div className="flex items-start gap-3">
-                <StepMark step={open} kind={kind} size={34} />
+              <div className="flex items-start gap-3 border-b border-line px-4 py-3.5 sm:px-5">
+                <StepBadge step={open} kind={kind} size={36} />
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="flex items-center gap-1.5 text-[12px] text-muted">
+                  <span className="flex items-center gap-1.5 text-[12px] font-medium text-muted">
+                    {/* A step is named "Step 2 · Gmail" already; the other boxes get their place. */}
+                    {!stepped && (
+                      <>
+                        <span className="tabular-nums">
+                          Step {openAt + 1} of {steps.length}
+                        </span>
+                        <span aria-hidden>·</span>
+                      </>
+                    )}
                     {open.label}
+                    {open.step?.askFirst && <LockIcon size={12} />}
                     {changed?.has(open.key) && <ChangedTag />}
                   </span>
                   <h3 className="text-[15px] leading-snug font-semibold break-words">{open.title}</h3>
+                  {open.step?.condition && <span className="text-[12.5px] text-fg-2">{open.step.condition}</span>}
                 </div>
               </div>
-              {openStep >= 0 || !open.step ? boxForm(open) : null}
+              <div className="w-full max-w-[680px] px-4 py-4 sm:px-5">{openStep >= 0 || !open.step ? boxForm(open) : null}</div>
+              <div className="mt-auto flex items-center gap-2 border-t border-line px-3 py-2">
+                {prev && (
+                  <Button variant="ghost" size="sm" onClick={() => setSelected(prev.key)}>
+                    <ChevronRightIcon size={14} className="rotate-180" />
+                    {prev.label}
+                  </Button>
+                )}
+                {next && (
+                  <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelected(next.key)}>
+                    Next: {next.label}
+                    <ChevronRightIcon size={14} />
+                  </Button>
+                )}
+              </div>
             </aside>
           </div>
         </>
       ) : (
-        <ol aria-label={stepped ? "The trigger, the steps and the results, in order" : "The five parts, in order"} className="flex flex-col gap-3">
-          {stepped && <li>{purpose}</li>}
+        <ol aria-label={stepped ? "The trigger, the steps and the results, in order" : "The five parts, in order"} className="flex flex-col">
+          {stepped && <li className="pb-3">{purpose}</li>}
           {steps.map((step, index) => (
-            <li key={step.key} className="flex flex-col gap-2">
+            <li key={step.key} className={cn("relative flex flex-col gap-2", index < steps.length - 1 && "pb-3")}>
+              {/* The line between two boxes, down their badges. */}
+              {index < steps.length - 1 && <span aria-hidden className="absolute bottom-0 left-[31px] h-3 w-px -translate-x-1/2 bg-line-strong" />}
               {stepped && step.id === "results" && (
                 <Button className="w-full" disabled={!canAddStep(editor.steps)} onClick={() => addStep(editor.steps.length)}>
                   {canAddStep(editor.steps) ? "+ Add a step" : `Up to ${MAX_STEPS} steps`}
@@ -442,8 +475,13 @@ export function AutomationEditor({
         </ol>
       )}
 
-      <div className="z-10 -mx-1 flex md:sticky md:bottom-0 flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-line bg-surface/95 px-4 py-3 shadow-[var(--shadow-raised)] backdrop-blur">
-        <p aria-live="polite" className="min-w-0 flex-1 basis-[260px] text-[12.5px] text-fg-2">
+      <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-line bg-surface/95 px-4 py-3 shadow-[var(--shadow-pop)] backdrop-blur">
+        <p aria-live="polite" className="flex min-w-0 flex-1 basis-[260px] items-start gap-2 text-[12.5px] text-fg-2">
+          <span
+            aria-hidden
+            className={cn("mt-[5px] size-2 shrink-0 rounded-full", checking ? "animate-pulse bg-line-strong" : knownBad || blocked ? "bg-danger" : editor.mode ? "bg-online" : "bg-line-strong")}
+          />
+          <span className="min-w-0">
           {!editor.mode && touched.size === 0
             ? "Pick when it runs to begin, then fill in each box."
             : checking
@@ -452,6 +490,7 @@ export function AutomationEditor({
                 ? "Some boxes need a fix before it can be saved."
                 : (runs ?? "Looks good.")}
           {!checking && knownBad && runs && <span className="block text-muted">{runs}</span>}
+          </span>
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {target.kind === "new" ? (
@@ -516,12 +555,19 @@ function PhoneCard({
   const closed = collapsible && shut;
   const bodyId = useId();
   return (
-    <section aria-label={step.label} className={cn("flex flex-col gap-3 rounded-xl border bg-surface p-4", problems.length ? "border-danger/50" : "border-line")}>
+    <section aria-label={step.label} className={cn("flex flex-col gap-4 rounded-2xl border bg-surface p-4", problems.length ? "border-danger/50" : "border-line")}>
       <div className="flex items-start gap-3">
-        <StepMark step={step} kind={kind} size={30} />
+        <StepBadge step={step} kind={kind} size={30} />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex items-center gap-1.5 text-[12px] text-muted">
-            <span className="tabular-nums">{index + 1}.</span> {step.label}
+          <span className="flex items-center gap-1.5 text-[12px] font-medium text-muted">
+            {!step.step && (
+              <>
+                <span className="tabular-nums">{index + 1}</span>
+                <span aria-hidden>·</span>
+              </>
+            )}
+            {step.label}
+            {step.step?.askFirst && <LockIcon size={12} />}
             {changed && <ChangedTag />}
           </span>
           <h3 className="text-[14.5px] leading-snug font-semibold break-words">{step.title}</h3>

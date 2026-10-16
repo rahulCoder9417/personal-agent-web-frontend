@@ -2,14 +2,17 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useId, useState } from "react";
+import type { AppHealth } from "@/lib/automation-apps";
 import { flowStep, type FlowStep } from "@/lib/automation-flow";
 import type { TrailMark } from "@/lib/automation-steps";
 import type { AutomationKind } from "@/lib/automations";
+import { cn } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { storedFlag, useStoredFlag } from "@/lib/stored-flag";
-import { cn } from "@/lib/format";
-import { FilterPills } from "../ui";
-import { FlowList, StepDetails, StepMark, TRAIL_TAG } from "./flow-parts";
+import { SegmentedControl } from "../segmented-control";
+import { LockIcon } from "../icons";
+import { FlowSteps, StepBadge, StepFacts } from "./flow-chain";
+import { TRAIL_TAG } from "./flow-parts";
 
 // An automation (or a draft) drawn as its flow: on a wide screen the canvas with the open step's
 // details beside it, on a phone the steps as a list of cards. The canvas library is a chunk of its
@@ -28,7 +31,7 @@ const StepsCanvas = dynamic(() => import("./steps-canvas"), {
 
 /** Where the canvas will be, while its chunk loads (or the screen's width isn't known yet). */
 function CanvasPlaceholder() {
-  return <div aria-hidden className="h-[260px] w-full animate-pulse rounded-xl border border-line bg-surface-2" />;
+  return <div aria-hidden className="h-[256px] w-full animate-pulse rounded-2xl border border-line bg-surface-2" />;
 }
 
 /** "List view", chosen on a wide screen, is remembered by this browser. */
@@ -46,6 +49,7 @@ export function FlowView({
   steps,
   kind,
   changed,
+  health,
   label,
   trail,
   summary,
@@ -53,6 +57,8 @@ export function FlowView({
   steps: readonly FlowStep[];
   kind: AutomationKind;
   changed?: ReadonlySet<string>;
+  /** How each app stands, so a disconnected one is marked where it is named. */
+  health?: ReadonlyMap<string, AppHealth>;
   label: string;
   trail?: ReadonlyMap<string, TrailMark>;
   summary?: { line: string; tone: TrailMark["tone"] } | null;
@@ -74,8 +80,9 @@ export function FlowView({
         </p>
         {/* A phone always has the list, so the choice is offered only where the canvas fits. */}
         <div className="max-md:hidden">
-          <FilterPills<View>
+          <SegmentedControl<View>
             label="How to show it"
+            size="sm"
             options={[
               { value: "canvas", label: "Canvas" },
               { value: "list", label: "List view" },
@@ -93,23 +100,33 @@ export function FlowView({
       )}
 
       {view === "list" ? (
-        <FlowList steps={steps} kind={kind} changed={changed} trail={trail} />
+        <FlowSteps steps={steps} kind={kind} changed={changed} health={health} trail={trail} />
       ) : (
         <>
           <div className="md:hidden">
-            <FlowList steps={steps} kind={kind} changed={changed} trail={trail} />
+            <FlowSteps steps={steps} kind={kind} changed={changed} health={health} trail={trail} />
           </div>
           <div className="flex min-w-0 gap-4 max-md:hidden max-[1560px]:flex-col">
             <div className="min-w-0 flex-1">
               {!wide ? (
                 <CanvasPlaceholder />
               ) : stepped ? (
-                <StepsCanvas steps={steps} kind={kind} selected={selected} changed={changed} trail={trail} panelId={panelId} onSelect={onSelect} />
+                <StepsCanvas steps={steps} kind={kind} selected={selected} changed={changed} trail={trail} health={health} panelId={panelId} onSelect={onSelect} />
               ) : (
-                <FlowCanvas steps={steps} kind={kind} selected={selected} changed={changed} panelId={panelId} onSelect={onSelect} />
+                <FlowCanvas steps={steps} kind={kind} selected={selected} changed={changed} health={health} panelId={panelId} onSelect={onSelect} />
               )}
             </div>
-            <StepPanel id={panelId} step={open} kind={kind} changed={changed?.has(open.key) ?? false} trail={open.step ? trail?.get(open.step.id) : undefined} />
+            <StepPanel
+              id={panelId}
+              step={open}
+              index={steps.indexOf(open)}
+              total={steps.length}
+              kind={kind}
+              changed={changed?.has(open.key) ?? false}
+              health={health}
+              trail={open.step ? trail?.get(open.step.id) : undefined}
+              numbered={!stepped}
+            />
           </div>
         </>
       )}
@@ -118,29 +135,67 @@ export function FlowView({
 }
 
 /**
- * The open step's details: under the canvas, which then has the whole width for its five boxes, and
+ * The open step's details: under the canvas, which then has the whole width for its boxes, and
  * beside it on a very wide screen.
  */
-function StepPanel({ id, step, kind, changed, trail }: { id: string; step: FlowStep; kind: AutomationKind; changed: boolean; trail?: TrailMark }) {
+function StepPanel({
+  id,
+  step,
+  index,
+  total,
+  kind,
+  changed,
+  health,
+  trail,
+  numbered,
+}: {
+  /** The boxes are named by place ("Step 2 of 5"); a flow with steps names its steps itself. */
+  numbered: boolean;
+  id: string;
+  step: FlowStep;
+  index: number;
+  total: number;
+  kind: AutomationKind;
+  changed: boolean;
+  health?: ReadonlyMap<string, AppHealth>;
+  trail?: TrailMark;
+}) {
   return (
     <aside
       id={id}
       aria-live="polite"
       aria-label={`${step.label}, in full`}
-      className="flex w-[340px] shrink-0 flex-col gap-3 rounded-xl border border-line bg-surface p-4 max-[1560px]:w-full"
+      className="flex w-[360px] shrink-0 flex-col gap-4 rounded-2xl border border-line bg-surface p-4 max-[1560px]:w-full sm:p-5"
     >
       <div className="flex items-start gap-3">
-        <StepMark step={step} kind={kind} size={34} />
+        <StepBadge step={step} kind={kind} size={36} />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-[12px] text-muted">
+          <span className="flex items-center gap-1.5 text-[12px] font-medium text-muted">
+            {/* A step of an automation with steps is named "Step 2 · Gmail" already. */}
+            {numbered && (
+              <>
+                <span className="tabular-nums">
+                  Step {index + 1} of {total}
+                </span>
+                <span aria-hidden>·</span>
+              </>
+            )}
             {step.label}
-            {changed && <span className="font-medium text-accent-dark"> · changed</span>}
+            {step.step?.askFirst && (
+              <span title={step.step.locked ? "Always asks you first" : "Asks you first"} className="inline-flex">
+                <LockIcon size={12} />
+                <span className="sr-only">{step.step.locked ? "Always asks you first" : "Asks you first"}</span>
+              </span>
+            )}
+            {/* In words here: the box on the canvas wears the "Changed" tag. */}
+            {changed && <span className="font-semibold text-accent-dark">· changed</span>}
           </span>
           <h3 className="text-[15px] leading-snug font-semibold break-words">{step.title}</h3>
+          {step.step?.condition && <span className="text-[12.5px] text-fg-2">{step.step.condition}</span>}
         </div>
       </div>
-      {trail && <span className={cn("w-fit rounded px-1.5 text-[11.5px] leading-[18px] font-semibold", TRAIL_TAG[trail.tone])}>Last run: {trail.label}</span>}
-      <StepDetails step={step} />
+      {trail && <span className={cn("w-fit rounded-md px-1.5 text-[11.5px] leading-[18px] font-semibold", TRAIL_TAG[trail.tone])}>Last run: {trail.label}</span>}
+      <StepFacts step={step} health={health} />
     </aside>
   );
 }

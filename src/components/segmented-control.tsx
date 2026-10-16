@@ -50,6 +50,7 @@ export function SegmentedControl<T extends string>({
   onChange,
   size = "md",
   fill = false,
+  wrap = false,
   className,
   "aria-labelledby": labelledBy,
 }: {
@@ -62,6 +63,8 @@ export function SegmentedControl<T extends string>({
   size?: "sm" | "md";
   /** Stretch across the width, each segment as wide as the others. */
   fill?: boolean;
+  /** Let a label take two lines where the row is narrow (a phone), rather than cut it short. */
+  wrap?: boolean;
   className?: string;
   "aria-labelledby"?: string;
 }) {
@@ -91,9 +94,10 @@ export function SegmentedControl<T extends string>({
             onClick={() => !on && onChange(option.value)}
             onKeyDown={group.onKeyDown(index)}
             className={cn(
-              "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[7px] font-medium whitespace-nowrap transition-[color,background-color,box-shadow] outline-none",
+              "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[7px] font-medium transition-[color,background-color,box-shadow] outline-none",
               "focus-visible:shadow-[0_0_0_2px_var(--accent)] disabled:opacity-50",
-              size === "sm" ? "h-7 px-2.5 text-[12.5px]" : "h-8 px-3 text-[13px]",
+              wrap ? "py-1 text-center leading-tight max-sm:flex-col max-sm:gap-0.5" : "whitespace-nowrap",
+              size === "sm" ? (wrap ? "min-h-7 px-2 text-[12.5px]" : "h-7 px-2.5 text-[12.5px]") : wrap ? "min-h-8 px-2 text-[13px]" : "h-8 px-3 text-[13px]",
               fill && "flex-1",
               on ? "bg-surface text-fg shadow-[var(--shadow-raised)]" : "text-nav hover:text-fg",
             )}
@@ -103,7 +107,7 @@ export function SegmentedControl<T extends string>({
                 {option.icon}
               </span>
             )}
-            <span className="truncate">{option.label}</span>
+            <span className={wrap ? "min-w-0" : "truncate"}>{option.label}</span>
             {option.count !== undefined && <span className="text-[12px] font-normal text-muted tabular-nums">{option.count}</span>}
           </button>
         );
