@@ -9,13 +9,14 @@ import { cn } from "@/lib/format";
 import { READING } from "../page";
 import { AgentFigure } from "../tex";
 import { Button, inputClass } from "../ui";
-import { KIND_TINT, KindIcon } from "./kind-icon";
+import { KindBadge } from "./kind-icon";
 
 /**
  * The top of the Automations screen, for someone who has never made one: what an automation is,
  * how one is made (by asking Tex: the box opens the chat with the request typed in, nothing is
- * sent until Send; or by hand, with New automation), and the three kinds, each with a request that makes it. `compact` (someone who
- * has automations already) leaves the kinds out on a phone, so their list comes sooner.
+ * sent until Send; or by hand, with New automation), and the three kinds, each with a request that
+ * makes it. `compact` (someone who has automations already) leaves the kinds out on a phone, so
+ * their list comes sooner.
  */
 export function AutomationsIntro({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
@@ -70,10 +71,11 @@ export function AutomationsIntro({ compact = false }: { compact?: boolean }) {
             className={cn("grid grid-cols-[repeat(auto-fit,minmax(min(240px,100%),1fr))] gap-2.5", compact && "max-md:hidden")}
           >
             {AUTOMATION_KINDS.map((guide) => (
-              <li key={guide.kind} className="relative flex gap-3 rounded-xl bg-surface-2 p-3 transition-colors focus-within:bg-line hover:bg-line">
-                <span className={cn("grid size-8 shrink-0 place-items-center rounded-[10px]", KIND_TINT[guide.kind])}>
-                  <KindIcon kind={guide.kind} size={16} />
-                </span>
+              <li
+                key={guide.kind}
+                className="relative flex gap-3 rounded-xl border border-line bg-surface-2/50 p-3 transition-colors focus-within:border-line-strong hover:border-line-strong hover:bg-surface-2"
+              >
+                <KindBadge kind={guide.kind} size={32} />
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-[13.5px] font-semibold">{guide.name}</span>
                   <span className="text-[12.5px] text-muted">{guide.when}</span>

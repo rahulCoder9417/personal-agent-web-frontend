@@ -42,21 +42,21 @@ import { CheckIcon, ChevronRightIcon } from "./icons";
 export type { ListGroup, ListItem, ListOption } from "@/lib/listbox";
 
 /** Below this width a Select opens as a sheet from the bottom of the screen, with big rows. */
-const SHEET_BELOW = "(max-width: 639px)";
+export const SHEET_BELOW = "(max-width: 639px)";
 /** How tall the list may be, at most. */
-const LIST_HEIGHT = 320;
+export const LIST_HEIGHT = 320;
 /** Letters typed within this long are one type-ahead word. */
 const TYPE_AHEAD_MS = 600;
 
 /** The look of the closed control: a field, like `inputClass`, with the open state of a focused one. */
-const FIELD =
+export const FIELD =
   "flex h-9 w-full min-w-0 items-center gap-2 rounded-[9px] border border-line-strong bg-surface px-3 text-left text-[13.5px] transition-shadow outline-none";
-const FIELD_FOCUS = "border-accent shadow-[0_0_0_3px_var(--accent-soft)]";
-const FIELD_FOCUS_VISIBLE = "focus-visible:border-accent focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]";
-const FIELD_FOCUS_WITHIN = "focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--accent-soft)]";
-const FIELD_DISABLED = "bg-surface-2 text-muted";
+export const FIELD_FOCUS = "border-accent shadow-[0_0_0_3px_var(--accent-soft)]";
+export const FIELD_FOCUS_VISIBLE = "focus-visible:border-accent focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]";
+export const FIELD_FOCUS_WITHIN = "focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--accent-soft)]";
+export const FIELD_DISABLED = "bg-surface-2 text-muted";
 
-function Chevron({ open }: { open: boolean }) {
+export function Chevron({ open }: { open: boolean }) {
   return <ChevronRightIcon size={14} className={cn("shrink-0 text-muted transition-transform", open ? "-rotate-90" : "rotate-90")} />;
 }
 
@@ -71,6 +71,7 @@ export function OptionList({
   id,
   items,
   value,
+  values,
   active,
   label,
   roomy = false,
@@ -80,6 +81,8 @@ export function OptionList({
   id: string;
   items: readonly ListItem[];
   value: string | null;
+  /** Several chosen at once (`MultiSelect`): each is ticked, and the list says it takes more than one. */
+  values?: readonly string[];
   /** The option the keys are on, counted through the groups. */
   active: number;
   /** What a screen reader calls the list. */
@@ -90,7 +93,7 @@ export function OptionList({
   onPick?: (index: number) => void;
 }) {
   const option = (choice: ListOption, at: number) => {
-    const chosen = choice.value === value;
+    const chosen = values ? values.includes(choice.value) : choice.value === value;
     return (
       <div
         key={`${choice.value}-${at}`}
@@ -113,6 +116,11 @@ export function OptionList({
           at === active && !choice.disabled && "bg-surface-2",
         )}
       >
+        {choice.icon && (
+          <span aria-hidden className={cn("grid shrink-0 place-items-center", roomy ? "mt-px size-5" : "size-[18px]")}>
+            {choice.icon}
+          </span>
+        )}
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className={cn("leading-snug", chosen && "font-medium")}>{choice.label}</span>
           {choice.description && <span className={cn("leading-snug text-muted", roomy ? "text-[13px]" : "text-[12.5px]")}>{choice.description}</span>}
@@ -124,7 +132,7 @@ export function OptionList({
   };
 
   return (
-    <div id={id} role="listbox" aria-label={label} className="flex flex-col">
+    <div id={id} role="listbox" aria-label={label} aria-multiselectable={values ? true : undefined} className="flex flex-col">
       {numbered(items).map((row, g) =>
         "group" in row ? (
           <div key={`group-${g}`} role="group" aria-labelledby={`${id}-group-${g}`} className="flex flex-col [&+&]:mt-1 [&+&]:border-t [&+&]:border-line [&+&]:pt-1">
@@ -155,12 +163,12 @@ function numbered(items: readonly ListItem[]): (Numbered | { group: ListGroup; o
   );
 }
 
-function optionId(listId: string, index: number) {
+export function optionId(listId: string, index: number) {
   return `${listId}-option-${index}`;
 }
 
 /** Scrolls the list just enough to show the active option, or puts it in the middle as the list opens. */
-function reveal(scroller: HTMLElement | null, listId: string, index: number, middle: boolean): boolean {
+export function reveal(scroller: HTMLElement | null, listId: string, index: number, middle: boolean): boolean {
   if (!scroller) return false;
   const row = index >= 0 ? document.getElementById(optionId(listId, index)) : null;
   if (!row) return true;
@@ -184,9 +192,9 @@ function visibleView() {
  * Keeps the open list next to its field: placed as it opens, and again as the page scrolls or the
  * window changes size. It closes on a press anywhere but the field and the list.
  */
-type Spot = Placement & { top?: number; bottom?: number };
+export type Spot = Placement & { top?: number; bottom?: number };
 
-function usePopover(open: boolean, anchor: RefObject<HTMLElement | null>, popover: RefObject<HTMLElement | null>, close: () => void, minWidth: number) {
+export function usePopover(open: boolean, anchor: RefObject<HTMLElement | null>, popover: RefObject<HTMLElement | null>, close: () => void, minWidth: number) {
   const [place, setPlace] = useState<Spot | null>(null);
 
   useLayoutEffect(() => {
@@ -234,7 +242,7 @@ function usePopover(open: boolean, anchor: RefObject<HTMLElement | null>, popove
 }
 
 /** The floating panel the list sits in, beside its field. */
-function Floating({
+export function Floating({
   place,
   popRef,
   scrollRef,
@@ -272,7 +280,7 @@ function Floating({
 }
 
 /** On a phone: the list as a sheet from the bottom of the screen, over a dimmed page. */
-function Sheet({
+export function Sheet({
   title,
   popRef,
   scrollRef,
@@ -417,6 +425,11 @@ export function Select({ id, value, options, onChange, placeholder = "Choose…"
         }}
         className={cn(FIELD, FIELD_FOCUS_VISIBLE, open && FIELD_FOCUS, disabled && FIELD_DISABLED, className)}
       >
+        {chosen?.icon && (
+          <span aria-hidden className="grid size-[18px] shrink-0 place-items-center">
+            {chosen.icon}
+          </span>
+        )}
         <span className={cn("min-w-0 flex-1 truncate", !chosen && "text-muted")}>{chosen ? chosen.label : value || placeholder}</span>
         {chosen?.hint && <span className="shrink-0 text-[12px] text-muted tabular-nums">{chosen.hint}</span>}
         <Chevron open={open} />
@@ -547,6 +560,11 @@ export function Combobox({
           openAt(openingIndex(flat, value));
         }}
       >
+        {query === null && chosen?.icon && (
+          <span aria-hidden className="pointer-events-none grid size-[18px] shrink-0 place-items-center">
+            {chosen.icon}
+          </span>
+        )}
         <input
           ref={input}
           id={id}

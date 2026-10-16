@@ -8,13 +8,13 @@ import { AUTOMATION_KIND_LABEL } from "@/lib/format";
 import { ConfirmButton } from "../confirm-button";
 import { toast, toastError } from "../toast";
 import { ButtonLink, Meta, SectionLabel } from "../ui";
-import { FlowStrip } from "./flow-parts";
+import { FlowChain } from "./flow-chain";
 
 /** One open draft: its name and kind, its five steps, how long it is kept, and the ways on. */
 function DraftRow({ draft, timezone }: { draft: AutomationDraft; timezone: string | null | undefined }) {
   const discard = useDiscardAutomationDraft();
   return (
-    <li className="flex min-w-0 flex-col gap-3 rounded-xl border border-dashed border-accent/40 bg-surface p-4">
+    <li className="flex min-w-0 flex-col gap-3.5 rounded-2xl border border-dashed border-accent/45 bg-surface p-4">
       <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h3 className="text-[14.5px] leading-snug font-semibold break-words">
@@ -27,7 +27,7 @@ function DraftRow({ draft, timezone }: { draft: AutomationDraft; timezone: strin
           </span>
         </div>
       </div>
-      <FlowStrip steps={automationFlow(draft, timezone)} kind={draft.kind} />
+      <FlowChain steps={automationFlow(draft, timezone)} kind={draft.kind} />
       <div className="flex flex-wrap items-center gap-2">
         <ButtonLink href={draftHref(draft)} size="sm" variant="primary" aria-label={`Open the draft ${draft.title} to check and save it`}>
           Open and save

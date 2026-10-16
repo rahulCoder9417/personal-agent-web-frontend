@@ -26,17 +26,20 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useMemo } from "react";
+import type { AppHealth } from "@/lib/automation-apps";
 import type { FlowStep } from "@/lib/automation-flow";
 import { ACROSS_QUERY, MAX_STEPS, type TrailMark } from "@/lib/automation-steps";
 import type { AutomationKind } from "@/lib/automations";
 import { cn } from "@/lib/format";
 import { useMediaQuery } from "@/lib/media-query";
 import { BOX_HEIGHT, BOX_WIDTH, layoutGraph, stepGraph, type Direction } from "@/lib/step-layout";
-import { LockIcon } from "../icons";
-import { ChangedTag, StepMark, TRAIL_TAG } from "./flow-parts";
+import { LockIcon, WarningIcon } from "../icons";
+import { AppChips, StepBadge } from "./flow-chain";
+import { ChangedTag, TRAIL_TAG } from "./flow-parts";
 
-const ARROW = "#b8b3a8";
-const EXIT_LINE = "#cfcabf";
+/** The arrows' colours, from the design tokens (as on the five-box canvas, flow-canvas.tsx). */
+const ARROW = "color-mix(in srgb, var(--muted) 55%, transparent)";
+const EXIT_LINE = "var(--line-strong)";
 
 
 type BoxData = {
@@ -49,6 +52,7 @@ type BoxData = {
   trail: TrailMark | null;
   editing: boolean;
   panelId: string;
+  health?: ReadonlyMap<string, AppHealth>;
   onSelect: (key: string) => void;
 };
 type ExitData = { label: string; direction: Direction };
@@ -68,7 +72,7 @@ type StepEdgeT = Edge<EdgeData, "step">;
 const HIDDEN_HANDLE = "!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent";
 
 function Box({ data }: NodeProps<BoxNode>) {
-  const { step, kind, direction, selected, changed, problems, trail, editing, panelId, onSelect } = data;
+  const { step, kind, direction, selected, changed, problems, trail, editing, panelId, health, onSelect } = data;
   const wrong = problems.length > 0;
   const info = step.step;
   const across = direction === "across";
@@ -83,26 +87,34 @@ function Box({ data }: NodeProps<BoxNode>) {
         aria-label={`${step.label}: ${step.title}.${info?.condition ? ` Runs ${info.condition.replace(/^only if:? /, "only if ")}.` : ""}${trail ? ` Last run: ${trail.label}.` : ""}${wrong ? ` Problem: ${problems.join(" ")}` : ""} ${editing ? "Edit it" : "Show its details"}`}
         style={{ width: BOX_WIDTH, height: BOX_HEIGHT }}
         className={cn(
-          "flex flex-col gap-1.5 overflow-hidden rounded-xl border bg-surface p-3 text-left transition-shadow outline-none",
-          "focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]",
-          selected ? "border-accent shadow-[0_0_0_1px_var(--accent),0_10px_30px_-16px_rgb(51_85_245/0.5)]" : "border-line hover:border-line-strong",
+          "flex flex-col gap-1.5 overflow-hidden rounded-[14px] border bg-surface p-3 text-left transition-[border-color,box-shadow] outline-none",
+          "shadow-[0_1px_2px_rgb(21_21_21/0.05)] focus-visible:shadow-[0_0_0_3px_var(--accent-soft)]",
+          selected ? "border-accent shadow-[0_0_0_1px_var(--accent),0_12px_28px_-18px_var(--accent)]" : "border-line hover:border-line-strong",
           step.tone === "danger" && !selected && "border-danger/40",
           wrong && (selected ? "border-danger shadow-[0_0_0_1px_var(--danger)]" : "border-danger bg-danger-soft/40"),
         )}
       >
         <span className="flex items-center gap-2">
-          <StepMark step={step} kind={kind} size={24} />
+          <StepBadge step={step} kind={kind} size={26} />
           <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-muted">{step.label}</span>
           {info?.askFirst && (
-            <span title={info.locked ? "Always asks you first" : "Asks you first"} className="text-muted">
+            <span title={info.locked ? "Always asks you first" : "Asks you first"} className="text-[color-mix(in_srgb,var(--patch)_72%,var(--fg))]">
               <LockIcon size={13} />
             </span>
           )}
           {changed && <ChangedTag />}
+          {/* A step's box says "Step 2" already; a box with a problem gets the warning mark. */}
+          {wrong && (
+            <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-full bg-danger text-white">
+              <WarningIcon size={11} />
+            </span>
+          )}
         </span>
         <span className={cn("line-clamp-2 text-[13.5px] leading-snug font-semibold break-words", step.tone === "paused" ? "text-nav" : "text-fg")}>{step.title}</span>
         {wrong ? (
           <span className="line-clamp-2 text-[12px] leading-snug font-medium break-words text-danger">{problems[0]}</span>
+        ) : step.apps.length > 0 && (info || step.id === "trigger") ? (
+          <AppChips apps={step.apps.slice(0, 2)} health={health} small className="max-h-[22px] overflow-hidden" />
         ) : (
           step.lines.length > 0 && <span className="line-clamp-1 text-[12px] leading-snug break-words text-muted">{step.lines[step.lines.length - 1]}</span>
         )}
@@ -120,7 +132,7 @@ function Exit({ data }: NodeProps<ExitNode>) {
   return (
     <>
       <Handle type="target" position={data.direction === "across" ? Position.Top : Position.Left} isConnectable={false} className={HIDDEN_HANDLE} />
-      <span className="flex h-full w-full items-center justify-center rounded-full border border-dashed border-line-strong bg-surface-2 text-[11.5px] font-medium text-muted">
+      <span className="flex h-full w-full items-center justify-center rounded-full border border-dashed border-line-strong bg-surface text-[11.5px] font-medium text-muted">
         {data.label}
       </span>
     </>
@@ -141,7 +153,7 @@ function StepEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
             className="nodrag nopan absolute flex max-w-[108px] flex-col items-center gap-1"
           >
             {data?.label && (
-              <span className="line-clamp-3 rounded-md bg-surface px-1.5 py-0.5 text-center text-[10.5px] leading-snug font-medium text-fg-2 shadow-[0_0_0_1px_var(--line)]">
+              <span className="line-clamp-3 rounded-full bg-surface px-2 py-0.5 text-center text-[10.5px] leading-snug font-medium text-fg-2 shadow-[0_0_0_1px_var(--line-strong)]">
                 {data.label}
               </span>
             )}
@@ -152,7 +164,7 @@ function StepEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
                 onClick={() => data!.onInsert!(insertAt!)}
                 title={data!.canAdd ? "Add a step here" : `Up to ${MAX_STEPS} steps`}
                 aria-label={data!.canAdd ? `Add a step here, as step ${insertAt! + 1}` : `Up to ${MAX_STEPS} steps`}
-                className="grid size-6 place-items-center rounded-full border border-line-strong bg-surface text-[14px] leading-none font-semibold text-fg-2 hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                className="grid size-6 place-items-center rounded-full border border-line-strong bg-surface text-[14px] leading-none font-semibold text-fg-2 shadow-[var(--shadow-raised)] transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-dark disabled:cursor-not-allowed disabled:opacity-40"
               >
                 +
               </button>
@@ -181,6 +193,8 @@ export type StepsCanvasProps = {
   /** How many steps there are (for the "+" at 6). */
   count?: number;
   panelId: string;
+  /** How each app stands, so a disconnected one is marked on its box. */
+  health?: ReadonlyMap<string, AppHealth>;
   onSelect: (key: string) => void;
   /** Left out: from the window's width. */
   direction?: Direction;
@@ -209,6 +223,7 @@ export function stepsElements(props: StepsCanvasProps & { direction: Direction }
         trail: step.step ? (props.trail?.get(step.step.id) ?? null) : null,
         editing: props.editing ?? false,
         panelId: props.panelId,
+        health: props.health,
         onSelect: props.onSelect,
       },
     };
@@ -221,8 +236,8 @@ export function stepsElements(props: StepsCanvasProps & { direction: Direction }
     focusable: false,
     selectable: false,
     data: { kind: edge.kind, label: edge.label, insertAt: edge.insertAt, editing: props.editing ?? false, canAdd, ...(props.onInsert ? { onInsert: props.onInsert } : {}) },
-    style: edge.kind === "exit" ? { stroke: EXIT_LINE, strokeWidth: 1.25, strokeDasharray: "4 4" } : { stroke: ARROW, strokeWidth: 1.5 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: edge.kind === "exit" ? EXIT_LINE : ARROW, width: 16, height: 16 },
+    style: edge.kind === "exit" ? { stroke: EXIT_LINE, strokeWidth: 1.25, strokeDasharray: "4 4" } : { stroke: ARROW, strokeWidth: 1.75 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: edge.kind === "exit" ? EXIT_LINE : ARROW, width: 14, height: 14 },
   }));
   return { nodes, edges, height: placed.height };
 }
@@ -234,7 +249,7 @@ export default function StepsCanvas(props: StepsCanvasProps) {
   // Tall enough for the flow at a readable size: wider screens fit it in a band, narrower ones grow.
   const boxHeight = direction === "across" ? Math.max(300, Math.min(520, height + 90)) : Math.max(320, Math.min(1100, height * 0.75 + 80));
   return (
-    <div className="automation-canvas w-full min-w-0 overflow-hidden rounded-xl border border-line bg-surface-2/60" style={{ height: boxHeight }}>
+    <div className="automation-canvas w-full min-w-0 overflow-hidden rounded-2xl border border-line bg-surface-2/70" style={{ height: boxHeight }}>
       <ReactFlow
         // A new shape (another direction, a step added or removed) is fitted to the view again.
         key={`${direction}:${props.steps.map((step) => step.key).join(",")}`}
@@ -259,7 +274,7 @@ export default function StepsCanvas(props: StepsCanvasProps) {
         preventScrolling={false}
         aria-label="The automation's steps as a flow"
       >
-        <Background gap={18} size={1} color="#dcd8cf" />
+        <Background gap={18} size={1} color="var(--line-strong)" />
         <Controls showInteractive={false} position="bottom-left" orientation="horizontal" />
       </ReactFlow>
     </div>

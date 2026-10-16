@@ -1,5 +1,6 @@
 import type { AutomationKind } from "@/lib/automations";
 import { cn } from "@/lib/format";
+import { BrandIcon } from "../brand-icon";
 
 /** A glyph per kind of automation: a clock for once, a loop for on repeat, a bolt for when something happens. */
 export function KindIcon({ kind, size = 18, className }: { kind: AutomationKind; size?: number; className?: string }) {
@@ -35,9 +36,26 @@ export function KindIcon({ kind, size = 18, className }: { kind: AutomationKind;
   );
 }
 
-/** The colour each kind wears, from the design tokens: a tinted tile and the glyph in the full colour. */
-export const KIND_TINT: Record<AutomationKind, string> = {
-  once: "bg-accent-soft text-accent-dark",
-  repeat: "bg-[color-mix(in_srgb,var(--scout)_14%,transparent)] text-scout",
-  event: "bg-[color-mix(in_srgb,var(--tock)_16%,transparent)] text-tock",
+/** The glyph's colour of each kind on a plain badge (the badges of the steps have the same look). */
+const KIND_GLYPH: Record<AutomationKind, string> = {
+  once: "text-accent-dark",
+  repeat: "text-scout",
+  event: "text-tock",
 };
+
+/**
+ * An automation's badge: a plain tile with the kind's glyph in its colour, or the logo of the app
+ * its trigger watches. The same look as each step's badge, so the page has one kind of badge.
+ */
+export function KindBadge({ kind, app, size = 40, dim = false, className }: { kind: AutomationKind; app?: string | null; size?: number; dim?: boolean; className?: string }) {
+  const glyph = Math.round(size * 0.5);
+  return (
+    <span
+      aria-hidden
+      className={cn("grid shrink-0 place-items-center bg-surface shadow-[0_0_0_1px_var(--line-strong)]", KIND_GLYPH[kind], dim && "opacity-60 grayscale", className)}
+      style={{ width: size, height: size, borderRadius: Math.round(size * 0.3) }}
+    >
+      {app ? <BrandIcon name={app} size={glyph} /> : <KindIcon kind={kind} size={glyph} />}
+    </span>
+  );
+}

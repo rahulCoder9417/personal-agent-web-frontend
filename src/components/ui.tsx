@@ -113,16 +113,40 @@ export function Pill({ tone = "muted", className, children }: { tone?: PillTone;
   );
 }
 
+/** The track and knob of a switch, drawn for `Switch` and `SwitchRow`. */
+function SwitchTrack({ on, small }: { on: boolean; small?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "relative block shrink-0 rounded-full transition-colors",
+        small ? "h-5 w-[34px]" : "h-6 w-10",
+        on ? "bg-accent" : "bg-line-strong",
+      )}
+    >
+      <span
+        className={cn(
+          "absolute top-0.5 left-0 block rounded-full bg-white shadow transition-transform duration-200 ease-out",
+          small ? "size-4" : "size-5",
+          on ? (small ? "translate-x-4" : "translate-x-[18px]") : "translate-x-0.5",
+        )}
+      />
+    </span>
+  );
+}
+
 export function Switch({
   on,
   onToggle,
   label,
   disabled,
+  size = "md",
 }: {
   on: boolean;
   onToggle: () => void;
   label: string;
   disabled?: boolean;
+  size?: "sm" | "md";
 }) {
   return (
     <button
@@ -132,17 +156,66 @@ export function Switch({
       aria-label={label}
       disabled={disabled}
       onClick={onToggle}
+      className="block shrink-0 rounded-full disabled:opacity-60"
+    >
+      <SwitchTrack on={on} small={size === "sm"} />
+    </button>
+  );
+}
+
+/**
+ * A setting that is on or off, as a row: its name, a line on what it does, and the switch at the
+ * end. The whole row is the switch, so a click anywhere on it turns it over. `locked` keeps it as
+ * it is and says why (the Automations chat always gets the results).
+ */
+export function SwitchRow({
+  on,
+  onToggle,
+  title,
+  description,
+  icon,
+  locked,
+  disabled,
+  className,
+}: {
+  on: boolean;
+  onToggle: () => void;
+  title: ReactNode;
+  description?: ReactNode;
+  icon?: ReactNode;
+  /** Can't be changed: shown, with the switch faded. */
+  locked?: boolean;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const off = disabled || locked;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-disabled={off || undefined}
+      onClick={() => !off && onToggle()}
       className={cn(
-        "relative h-6 w-10 shrink-0 rounded-full transition-colors disabled:opacity-60",
-        on ? "bg-accent" : "bg-line-strong",
+        "flex w-full items-start gap-3 rounded-xl border border-line bg-surface p-3 text-left transition-colors",
+        !off && "hover:border-line-strong",
+        locked && "cursor-default bg-surface-2/60",
+        disabled && "cursor-default opacity-60",
+        className,
       )}
     >
-      <span
-        className={cn(
-          "absolute top-0.5 left-0 size-5 rounded-full bg-white shadow transition-transform duration-200 ease-out",
-          on ? "translate-x-[18px]" : "translate-x-0.5",
-        )}
-      />
+      {icon && (
+        <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2">
+          {icon}
+        </span>
+      )}
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-[13.5px] leading-snug font-medium">{title}</span>
+        {description && <span className="text-[12.5px] leading-snug text-muted">{description}</span>}
+      </span>
+      <span className={cn("mt-0.5", locked && "opacity-60")}>
+        <SwitchTrack on={on} small />
+      </span>
     </button>
   );
 }

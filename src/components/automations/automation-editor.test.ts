@@ -67,7 +67,8 @@ describe("editing a saved automation", () => {
     expect(html).toContain(`value="${automation.title}"`);
     expect(words).toContain("On a schedule");
     expect(words).toContain("On days");
-    expect(html).toContain('value="08:00"');
+    // The time picker shows the time as people read it.
+    expect(html).toContain('value="8:00 AM"');
     expect(words).toContain("Also a copy to Telegram");
     expect(words).toContain("Save changes");
     expect(words).toContain("Cancel");

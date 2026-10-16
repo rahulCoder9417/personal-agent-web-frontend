@@ -427,3 +427,25 @@ html[data-onboarded] .welcome-cover { display: none; }
   .auth-float-b,
   .auth-float-c { animation: none; }
 }
+
+/* The automation canvas (React Flow): its zoom buttons and its corner link in the app's own
+   colours, from the design tokens, rather than the library's white. */
+.automation-canvas .react-flow {
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--surface-2);
+  --xy-controls-button-color: var(--nav);
+  --xy-controls-button-color-hover: var(--fg);
+  --xy-controls-button-border-color: var(--line);
+  --xy-controls-box-shadow: var(--shadow-raised);
+  --xy-attribution-background-color: transparent;
+  --xy-background-color: transparent;
+}
+
+.automation-canvas .react-flow__controls {
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.automation-canvas .react-flow__attribution a {
+  color: var(--muted);
+}

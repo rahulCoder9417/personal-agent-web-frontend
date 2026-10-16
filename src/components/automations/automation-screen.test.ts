@@ -151,13 +151,17 @@ describe("the canvas", () => {
 });
 
 describe("the card", () => {
-  it("opens the automation's page from its name and its strip of five steps", async () => {
+  it("opens the automation's page from its name and its connected boxes", async () => {
     const automation = (await demo<Automation>("automations/aut_meetings")).body;
     const html = draw(client(), createElement("ul", null, createElement(AutomationCard, { automation, timezone: "Asia/Kolkata" })));
     expect(html.match(/href="\/automations\/aut_meetings"/g)?.length).toBe(2);
     expect(html).toContain('aria-label="How it runs"');
     const words = text(html);
-    for (const short of ["Schedule", "Tex", "Your apps", "Asks first", "Chat + Telegram"]) expect(words).toContain(short);
+    // When it runs → what Tex does (with the apps, and the rule for asking) → where the results go.
+    const order = ["When", "Tex does", "Results"].map((label) => words.indexOf(` ${label} `));
+    expect(order.every((at) => at > 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    for (const part of ["Any of your connected apps", "Asks first", "Automations chat", "Telegram"]) expect(words).toContain(part);
     // Screen readers hear each step in full.
     expect(words).toContain("Trigger: Every weekday at 8:00 AM, your time");
   });
