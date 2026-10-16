@@ -19,6 +19,7 @@ import { AgentFigure } from "../tex";
 import { Button, ButtonLink, EmptyState, ErrorState, Spinner } from "../ui";
 import { AgentBubble } from "./agent-bubble";
 import { ApprovalQuestion, useApproval } from "./approval-card";
+import { DraftQuestion } from "./draft-card";
 
 const STATUS_WORDS: Partial<Record<Message["status"], string>> = {
   queued: "sending",
@@ -96,6 +97,9 @@ function BubbleBody({ message, stepsToggle }: { message: Message; stepsToggle?: 
       <div className="flex min-w-0 flex-1 flex-col items-start gap-[5px]">
         {message.approvalId ? (
           <ApprovalQuestion text={message.text} approvalId={message.approvalId} />
+        ) : message.automationDraftId ? (
+          // Tex proposed an automation: its card, with Save.
+          <DraftQuestion message={message} draftId={message.automationDraftId} />
         ) : (
           // What Tex wrote may be Markdown; what the person wrote, above, is always shown as typed.
           <AgentBubble text={message.text}>

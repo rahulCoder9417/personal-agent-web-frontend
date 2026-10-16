@@ -7,9 +7,9 @@
 // and results (`../beckend/docs/automations-flow-proposal.md`, section 3). Nothing here draws; the
 // views only lay these steps out.
 
-import type { Automation, AutomationTrigger } from "./api/client";
+import type { Automation, AutomationDraft, AutomationTrigger } from "./api/client";
 import { describeAutomationStatus, describeAutomationTimes, describeAutomationWhen, type AutomationStatus } from "./automations";
-import { AUTOMATION_KIND_LABEL, CHANNEL_LABEL, humanizeEvent, listNames, PR_REVIEW_LABEL, titleCase } from "./format";
+import { AUTOMATION_KIND_LABEL, CHANNEL_LABEL, formatDateTime, humanizeEvent, listNames, PR_REVIEW_LABEL, titleCase } from "./format";
 
 export type FlowStepId = "trigger" | "instruction" | "apps" | "asks" | "results";
 
@@ -49,6 +49,8 @@ export type FlowSource = Pick<Automation, "kind" | "title" | "instruction" | "ru
   apps?: readonly string[] | null;
   enabled?: boolean;
   pausedReason?: Automation["pausedReason"];
+  /** A draft that is no longer open: what became of it (`draftState`), in place of "Not saved yet". */
+  settled?: { label: string; line: string };
 };
 
 const STEP_LABEL: Record<FlowStepId, string> = {
@@ -113,7 +115,7 @@ export function flowApps(source: Pick<FlowSource, "trigger" | "apps" | "preset">
 
 /** How a source stands: on, paused (and why), or, for a draft, not saved yet. */
 export function flowStatus(source: FlowSource): AutomationStatus {
-  if (source.enabled === undefined) return { label: "Not saved yet", tone: "muted" };
+  if (source.enabled === undefined) return { label: source.settled?.label ?? "Not saved yet", tone: "muted" };
   return describeAutomationStatus({ enabled: source.enabled, pausedReason: source.pausedReason });
 }
 
@@ -140,8 +142,11 @@ function triggerStep(source: FlowSource, accountZone: string | null | undefined,
   if (saved) {
     const times = describeAutomationTimes({ ...source, enabled: source.enabled ?? true }, now);
     details.push({ label: "Status", value: status.label }, { label: "Next run", value: times.next }, { label: "Last run", value: times.last });
+  } else if (source.settled) {
+    details.push({ label: "Status", value: source.settled.line });
   } else {
     details.push({ label: "Status", value: "Not saved yet: nothing runs until you save it" });
+    if (source.kind !== "event" && source.nextRunAt) details.push({ label: "First run", value: `${formatDateTime(source.nextRunAt, now)}, once saved` });
   }
 
   const app = source.trigger?.app ? titleCase(source.trigger.app) : "App";
@@ -269,4 +274,78 @@ export function flowStep(steps: readonly FlowStep[], id: FlowStepId): FlowStep {
 /** The address of an automation's own page, where its flow is drawn. */
 export function automationHref(automationId: string): string {
   return `/automations/${encodeURIComponent(automationId)}`;
+}
+
+// ---------------------------------------------------------------- drafts
+
+/** A draft as the flow needs it: the parts of an automation, and whether it changes one. */
+export type DraftLike = Pick<AutomationDraft, "id" | "changeOf">;
+
+/**
+ * Where a draft opens on the canvas: `/automations/new?draft=…`, or for a change
+ * `/automations/<the automation>?draft=…`, which marks the steps that change.
+ */
+export function draftHref(draft: DraftLike): string {
+  const id = encodeURIComponent(draft.id);
+  return draft.changeOf ? `${automationHref(draft.changeOf)}?draft=${id}` : `/automations/new?draft=${id}`;
+}
+
+/** The parts each step is drawn from, to tell what a change alters (state and run times aside). */
+function stepParts(source: FlowSource): Record<FlowStepId, string> {
+  const trigger = source.trigger ? { app: source.trigger.app ?? null, event: source.trigger.event ?? null, config: source.trigger.config ?? {} } : null;
+  return {
+    trigger: JSON.stringify([source.kind, source.runAt ?? null, source.cron ?? null, source.kind === "event" ? null : (source.timezone ?? null), trigger]),
+    instruction: JSON.stringify([source.title, source.instruction]),
+    apps: JSON.stringify(flowApps(source)),
+    asks: JSON.stringify(source.preset ?? null),
+    results: JSON.stringify(source.copyTo ?? null),
+  };
+}
+
+/** The steps a draft would change in the automation it changes. */
+export function changedSteps(draft: FlowSource, current: FlowSource): Set<FlowStepId> {
+  const next = stepParts(draft);
+  const now = stepParts(current);
+  return new Set(FLOW_STEP_IDS.filter((id) => next[id] !== now[id]));
+}
+
+export type DraftState = {
+  /** A word or two, for a pill: "Not saved yet", "Saved". */
+  label: string;
+  tone: "waiting" | "done" | "muted";
+  /** What it means, in a sentence. */
+  line: string;
+};
+
+/** How a draft stands, in words. An open draft past its expiry reads as expired, as the API counts it. */
+export function draftState(draft: Pick<AutomationDraft, "status" | "expiresAt">, now = new Date()): DraftState {
+  const status = draft.status === "open" && Date.parse(draft.expiresAt) <= now.getTime() ? "expired" : draft.status;
+  switch (status) {
+    case "open":
+      return { label: "Not saved yet", tone: "waiting", line: "Nothing runs until you save it." };
+    case "saved":
+      return { label: "Saved", tone: "done", line: "Saved. It runs from now on." };
+    case "replaced":
+      return { label: "Replaced", tone: "muted", line: "Tex made a newer version of this draft." };
+    case "discarded":
+      return { label: "Discarded", tone: "muted", line: "You discarded this draft. Nothing was set up." };
+    default:
+      return { label: "Expired", tone: "muted", line: "This draft expired. Ask Tex again." };
+  }
+}
+
+/** When a draft would first run if saved now: "First run: Mon 19 Oct, 9:00 AM", or "Runs each time it happens". */
+export function draftFirstRun(draft: Pick<AutomationDraft, "kind" | "nextRunAt">, now = new Date()): string | null {
+  if (draft.kind === "event") return "Runs each time it happens";
+  return draft.nextRunAt ? `First run: ${formatDateTime(draft.nextRunAt, now)}` : null;
+}
+
+/** How long an open draft is kept: "Expires in 6 days", "Expires in 5 hours", "Expires in 20 minutes". */
+export function draftExpiry(draft: Pick<AutomationDraft, "expiresAt">, now = new Date()): string {
+  const minutes = Math.floor((Date.parse(draft.expiresAt) - now.getTime()) / 60_000);
+  if (minutes <= 0) return "Expired";
+  if (minutes < 60) return `Expires in ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `Expires in ${hours} hour${hours === 1 ? "" : "s"}`;
+  return `Expires in ${Math.ceil(hours / 24)} days`;
 }

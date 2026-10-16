@@ -3,6 +3,11 @@ import type { Automation } from "./api/client";
 import {
   ASKS_FIRST,
   automationFlow,
+  changedSteps,
+  draftExpiry,
+  draftFirstRun,
+  draftHref,
+  draftState,
   automationHref,
   FLOW_STEP_IDS,
   flowApps,
@@ -198,5 +203,52 @@ describe("the strip's short words", () => {
       "Comments only",
       "Automations chat",
     ]);
+  });
+});
+
+describe("drafts", () => {
+  it("open on the canvas: a new one at /automations/new, a change on the automation's own page", () => {
+    expect(draftHref({ id: "drf_1", changeOf: null })).toBe("/automations/new?draft=drf_1");
+    expect(draftHref({ id: "drf_1", changeOf: "aut_7" })).toBe("/automations/aut_7?draft=drf_1");
+  });
+
+  it("say how they stand; an open one past its 7 days reads as expired", () => {
+    const open = { status: "open" as const, expiresAt: "2026-10-08T14:30:00" };
+    expect(draftState(open, NOW)).toEqual({ label: "Not saved yet", tone: "waiting", line: "Nothing runs until you save it." });
+    expect(draftState(open, new Date("2026-10-09T00:00:00")).label).toBe("Expired");
+    expect(draftState({ ...open, status: "saved" }, NOW).label).toBe("Saved");
+    expect(draftState({ ...open, status: "replaced" }, NOW).line).toBe("Tex made a newer version of this draft.");
+    expect(draftState({ ...open, status: "discarded" }, NOW).line).toBe("You discarded this draft. Nothing was set up.");
+    expect(draftState({ ...open, status: "expired" }, NOW).line).toBe("This draft expired. Ask Tex again.");
+  });
+
+  it("say when they would first run, and how long they are kept", () => {
+    expect(draftFirstRun({ kind: "repeat", nextRunAt: "2026-10-05T09:00:00" }, NOW)).toBe("First run: Mon 5 Oct, 9:00 AM");
+    expect(draftFirstRun({ kind: "event", nextRunAt: null }, NOW)).toBe("Runs each time it happens");
+    expect(draftFirstRun({ kind: "once", nextRunAt: null }, NOW)).toBeNull();
+    expect(draftExpiry({ expiresAt: "2026-10-08T14:30:00" }, NOW)).toBe("Expires in 7 days");
+    expect(draftExpiry({ expiresAt: "2026-10-02T09:30:00" }, NOW)).toBe("Expires in 19 hours");
+    expect(draftExpiry({ expiresAt: "2026-10-01T14:31:00" }, NOW)).toBe("Expires in 1 minute");
+    expect(draftExpiry({ expiresAt: "2026-10-01T14:00:00" }, NOW)).toBe("Expired");
+  });
+
+  it("mark the steps a change alters, and only those", () => {
+    expect([...changedSteps(base, base)]).toEqual([]);
+    expect([...changedSteps({ ...base, cron: "30 8 * * 1" }, base)]).toEqual(["trigger"]);
+    expect([...changedSteps({ ...base, instruction: "Also issues" }, base)]).toEqual(["instruction"]);
+    expect([...changedSteps({ ...base, apps: ["github"] }, base)]).toEqual(["apps"]);
+    expect([...changedSteps({ ...base, copyTo: "telegram" }, base)]).toEqual(["results"]);
+    // Its state and run times are not a change.
+    expect([...changedSteps({ ...base, enabled: undefined, nextRunAt: null }, { ...base, enabled: false, pausedReason: "user" })]).toEqual([]);
+  });
+});
+
+describe("a draft that is no longer open", () => {
+  it("says what became of it on the trigger, in place of not saved yet", () => {
+    const draft = { ...base, enabled: undefined, pausedReason: undefined, settled: { label: "Saved", line: "Saved. It runs from now on." } };
+    const trigger = automationFlow(draft, null, NOW)[0];
+    expect(trigger.lines).toEqual(["Saved"]);
+    expect(trigger.details.find((line) => line.label === "Status")?.value).toBe("Saved. It runs from now on.");
+    expect(trigger.details.some((line) => line.label === "First run")).toBe(false);
   });
 });

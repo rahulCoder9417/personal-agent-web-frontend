@@ -61,7 +61,8 @@ Things to try in the demo:
 - **Disconnecting an app** (Integrations → Apps): each account has its own Disconnect. GitHub's dialog lists the two pull-request reviews that stop with it; Gmail's second account says Tex goes on with the first. Afterwards a toast says so and GitHub is back under "Add more" with Connect.
 - **Pricing**: the demo account is on Pro. Press **Cancel plan**: the dialog says you keep Pro until the period ends and then move to Free; **Keep my plan** changes nothing, **Cancel plan** does it, a toast says so and the card says when it ends. With `TEXTCREW_DEMO_PLAN=free` or `max` (or `TEXTCREW_DEMO_ACCOUNT=new`, which is Free) the page shows that plan. `curl -X POST localhost:3000/api/demo/reset` starts the account over.
 - **Toasts**: on Pull-request review, turn review on for one more repo (five of five), then for another. The refusal is a toast with "See plans". A repo owned by `octocat` is refused under the field instead, because that one is about what was typed.
-- **Automations**: click a template or a "Try it in chat" link and the chat opens with the request typed in. The demo's canned reply doesn't make an automation, so the list stays as seeded.
+- **Automations**: click a template or a "Try it in chat" link and the chat opens with the request typed in.
+- **Drafts from the chat**: the active web chat has "Every Monday at 10…" answered with a draft, then "Make it 9 instead" answered with a newer one: the first card says Tex made a newer version, the second waits with Save. The later Telegram chat has "When my boss emails me…" as the outline Telegram got, drawn here as its card (an app event with its setting, from boss@northwind.studio, and a copy to Telegram). Automations lists both under "Waiting for you to save". Save one (the plan goes to five of five) and the other is refused with "See plans"; "Save paused" makes it switched off; Discard throws it away. Ask in web chat for something to do later ("Every Friday at 4pm, send me the open pull requests in acme/web", "When my boss emails me, tell me") and Tex answers with a new draft: nothing runs until you save it. A plain request is answered as before.
 - **An automation as a flow**: click "Today's meetings" (or its strip of five steps) on Automations. Its page draws the five boxes; click one, or Tab to it and press Enter, to read it in full under the canvas. "Today's meetings" was made on Telegram, so its Results box says "Copy to Telegram"; "northwind/api" shows a paused pull-request review with its repo. Narrow the window below 768px, or pick "List view", for the list a phone gets. `/automations/aut_nope` shows the page for an automation that isn't there.
 
 ## Against the real backend
@@ -245,6 +246,10 @@ The chat has a history, like ChatGPT or Claude.ai. A **conversation** is one str
   - **Waiting, not working**: while the newest message is a question still to answer, the "Tex is working" bubble doesn't show, even while the turn winds down; a quiet line under the card says "Waiting for your OK" (`threadActivity` in `src/lib/chat-thread.ts`).
   - **After Approve or Deny** Tex's follow-up runs in the same conversation, after the card, and has no incoming message of its own. So the bubble shows at once after an answer given in this browser (for up to 15 seconds), and then while the agent is waking or busy for it (a busy turn that started more than 15 minutes after the answer is about something else). Tex's reply (the result, or that it won't do it) then becomes the newest message and the usual rule applies. Answered in the Approvals screen or after a reload, the bubble shows from when the agent wakes or is busy.
   - **Deny** is the word on the buttons, here and in the Approvals screen; the API's decision is still `reject`, and its status `rejected`, shown as "Denied".
+- **When Tex proposes an automation** (a message carrying `automationDraftId`): anything more than a plain one-time reminder comes back as a draft, which runs only once the person saves it. In web chat the thread shows Tex's line ("Here's a draft of "Monday pull requests". Nothing runs until you save it.") with the draft's card under it (`DraftQuestion` and `DraftCard` in `src/components/chat/draft-card.tsx`); in a Telegram conversation the message is the outline Telegram got, so the card shows alone.
+  - **The card** is plain HTML, not the canvas: "Not saved yet", the title, the five steps one under another, drawn small (`FlowColumn` in `flow-parts.tsx`), when it would first run and how long it is kept ("Expires in 7 days"), and two buttons: **Save** and **Open in Automations** (the draft on the canvas). A change of an automation says that saving replaces it.
+  - **Save** (`POST /v1/automation-drafts/{id}/save`) makes the automation; a toast says so, with when it first runs and "Open". A full plan is a toast with "See plans"; a check that fails now (a moment that passed, an app no longer connected) is a toast in the API's words; a draft that is no longer open (409) is asked for again and the card says why, with "Already saved" as a quiet line when that is the reason (`src/lib/draft-save.ts`).
+  - **It follows the draft** (`automation_draft.updated` on the live stream, `useAutomationDraft`): once saved it folds to "Saved · Open"; asked again, the older card says "Tex made a newer version of this draft. Open it"; then "You discarded this draft", or "This draft expired. Ask Tex again." (also when the API no longer has it, after 30 days).
 - **Web chat switched off**: there is no "New chat" and no composer, and the chat opens on the newest conversation, to read.
 
 ### Tex's replies are drawn as Markdown
@@ -352,15 +357,16 @@ Three panels can be put away and brought back, and each slides rather than jumps
 
 ## Automations
 
-Automations → All automations (`/automations`). An automation is made by asking Tex in chat; there is no form. The page explains that, offers a way to start, and shows what exists as cards across the full width.
+Automations → All automations (`/automations`). An automation is made by asking Tex in chat; there is no form. Tex shows anything more than a plain one-time reminder back as a draft, which the person saves (see [A draft, to check and save](#a-draft-to-check-and-save)). The page explains that, offers a way to start, lists the drafts waiting to be saved, and shows what exists as cards across the full width.
 
 - **The top of the page** (`src/components/automations/intro.tsx`) says in two sentences what an automation is and where its results go, then has a box: "What should Tex do, and when?". "Ask Tex in chat" opens the chat with those words typed in (empty, it just opens the chat); nothing is sent until the person presses Send. Under it, **the three kinds**, each with one line on when it runs and a request that makes one, which a click opens in the chat the same way. Once the person has automations, a phone leaves the three kinds out so the list comes sooner.
 - **At a glance** (`overview.tsx`, shown once there is at least one): how many are running, how many are paused and how many of those need the person (out of credits, after failures), what runs next, and the way to the Automations chat, with its dot when a run arrived since it was last open (`AutomationsChatLink` in `chat-link.tsx`).
 - **Each automation is a card** (`automation-card.tsx`), as many across as fit (at least 340px each), one column on a phone: its name and kind, the switch to pause or resume (with "On" or "Off" beside it), when it runs as a sentence, what Tex does each time, the next run and the last run as labelled values, and why it is paused with the way out. Along the foot: "See runs" (the Automations chat, where every run answers), "Change" (the chat with "Change my automation “…”:" typed in, because the API can only pause, resume and delete one) and Delete, which asks once more. A repo with pull-request review on has "Manage" instead of the switch and "See verdicts" instead of the rest. A failed pause, resume or delete is a toast.
 - **The strip on each card** (`FlowStrip` in `flow-parts.tsx`): the automation's five steps side by side, a word or two each, joined by arrows: "Schedule → Tex → Your apps → Asks first → Chat + Telegram". It wraps onto a second line on a narrow card. Plain HTML, no drawing library. Screen readers hear each step in full ("Trigger: Every weekday at 8:00 AM, your time"). The strip and the card's name open the automation's own page.
+- **Waiting for you to save** (`drafts-waiting.tsx`, above the list, only when there are some): the drafts Tex proposed that wait to be saved (`GET /v1/automation-drafts`), each with its kind, how long it is kept, its strip, "Open and save" (its page) and Discard, which asks once more. A draft is kept 7 days; a person has at most 20 open.
 - **Each automation in plain words** (`src/lib/automations.ts`): "Every weekday at 8:00 AM, your time", "Once, tomorrow at 10:00 AM", "When a new email arrives in Gmail". A schedule in the person's own time zone reads "your time"; in another it names the place ("London time"). A cron line that isn't one of the usual shapes is shown as it is rather than guessed at, and an app trigger the app doesn't know keeps the app's own name for it, in quotes. The next and last runs read "Tomorrow, 8:00 AM", "Each time it happens", "2h ago", "Not yet" (`describeAutomationTimes`), in the browser's own clock.
 - **"Your time" is the browser's at first.** Every account starts on UTC. While nobody has set a time zone (`timezoneSet` is false in `GET /v1/me`), the app sends the browser's own (`PATCH /v1/me` with `timezone`), once, on the first page of the signed-in app or of the welcome flow (`BrowserTimezone` in `src/components/browser-timezone.tsx`, the rule in `src/lib/timezone.ts`). It is silent, and a failure is tried again on the next page load. After that `timezoneSet` is true, so a zone chosen in Settings, or set from a browser before, is never replaced, also when the person opens the app somewhere else. An old name a browser still reports ("Asia/Calcutta") is sent as the zone's current one ("Asia/Kolkata"), so the list's "your time" matches the zones Tex writes. A backend that doesn't send `timezoneSet` is left alone.
-- **An empty list** says how one comes to exist, in three steps, and the templates under it read "Start with one of these".
+- **An empty list** says how one comes to exist, in three steps (ask Tex, Tex drafts it, you save it), and the templates under it read "Start with one of these".
 - **Templates**: eight ready-made requests, below the list across the full width. A click opens the chat with the request typed in, to change and send; "Review every pull request" opens the Pull-request review tab instead. A template that needs an app shows only when that app can be connected here, and says "Connect Gmail first" when it isn't connected yet.
 - **How the chat gets the text**: the link is `/?draft=<the request>` (`chatDraftHref` in `src/lib/chat-link.ts`). The composer reads `draft` when it arrives (also while the chat is already open, as the checklist's "Write" does), puts it in the box, gives it the keyboard and tidies the address. Help's "Try it" links and the welcome flow's first messages use the same address.
 - **The plan's limit** is in the header ("4 of 5 on Pro", with Upgrade once it is full) and beside the list. When the plan is full, the templates say so before anyone tries.
@@ -376,6 +382,16 @@ Automations → All automations (`/automations`). An automation is made by askin
 - **Phones get a list**: under 768px the same steps are a column of cards, each with all its details (`FlowList`). "List view" (beside "Canvas") shows the list on a wide screen too; this browser remembers the choice.
 - **Not found**: an address that leads to no automation of this account (deleted, mistyped or someone else's; the API answers 404) says "This automation isn't here", with the way back.
 - **The API**: `GET /v1/automations/{id}` (`useAutomation`, which starts from the list when it is in the cache). `copyTo` and `trigger.config` came with it; an older backend sends neither, and they read as none.
+
+### A draft, to check and save
+
+`/automations/new?draft=drf_…` (`src/app/(app)/automations/new/page.tsx`, `draft-screen.tsx`) is a draft Tex proposed, on the same canvas (and the same list on a phone), with the apps Tex named in the Apps step. Its links come from the draft's card in the chat, the drafts waiting on Automations, and the outline Tex sends on Telegram ("Review it: …").
+
+- **Open**: "Not saved yet. Tex proposed this in the chat. Nothing runs until you save it.", when it would first run and how long it is kept, then **Save**, **Save paused** (`enabled: false`: made switched off, to turn on later; the toast says it won't run until then) and **Discard** (asks once more; "Nothing was set up").
+- **Saved**: "Saved. It runs from now on…" with "Open the automation". **Replaced**: "Tex made a newer version of this draft, so this one can no longer be saved", with "Open it". **Expired** or **discarded**: what happened, with "Ask Tex in chat". A draft that isn't there (removed after 30 days, or another account's) says so.
+- **A change** (`changeOf`): `/automations/aut_…?draft=drf_…` draws the draft with the steps that differ from the automation as it runs now marked "Changed" (`changedSteps` in `automation-flow.ts`), and says that saving replaces "…" with this version. `/automations/new?draft=` opens one too.
+- `/automations/new` **without a draft** says a new automation starts in the chat for now (building one box by box comes later), with "Ask Tex in chat" and a request of each kind to try.
+- **The API**: `GET /v1/automation-drafts/{id}`, `POST …/save` and `POST …/discard` (`useAutomationDraft`, `useSaveAutomationDraft`, `useDiscardAutomationDraft`), kept fresh by `automation_draft.updated`. The proxy lets `automation-drafts` through.
 
 ## Pull-request review
 
@@ -502,7 +518,9 @@ src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell
   confirm-dialog.tsx the dialog that asks before something is removed (Disconnect, Unlink, Remove, Cancel plan)
   pricing/           the Pricing screen: your plan and Cancel, the plans, top-ups, how credits work, and the words (pricing-logic.ts)
   automations/       the Automations screens: the cards and their strip, an automation's page, the flow as a canvas
-                     (flow-canvas.tsx, React Flow, loaded on that page only) or a list (flow-parts.tsx), pull-request review
+                     (flow-canvas.tsx, React Flow, loaded on that page only) or a list (flow-parts.tsx), a draft's page
+                     and the drafts waiting to be saved, pull-request review
+  chat/draft-card.tsx  a draft Tex proposed, in the chat: its steps drawn small, Save and Open in Automations
 src/lib/
   api/               generated types, typed client, TanStack Query hooks, SSE → cache
   auth-flow.ts       sign-in and sign-up: where to land, Clerk's refusals in words, what comes next
@@ -514,7 +532,9 @@ src/lib/
   crew.ts            who is on the crew and what they are doing, from what the backend says; their colours and a request to try for each
   crew-address.ts    where the crew is explained in Help, and the redirect from /crew
   automations.ts     automations in plain words: the three kinds, the templates, when one runs, its status, runs and cost
-  automation-flow.ts an automation (or a draft) as its five steps: what each says, for the strip, the canvas and the list
+  automation-flow.ts an automation (or a draft) as its five steps: what each says, for the strip, the canvas and the list;
+                     a draft's address, how it stands and the steps a change alters
+  draft-save.ts      what is said after Save on a draft, or when it is refused
   automations-seen.ts  up to when this browser saw the Automations chat, for its unread mark (an older backend's)
   read-while-shown.ts  marks the conversation on screen read, while the page is on screen
   chat-link.ts       the link that opens the chat with a request typed in
@@ -551,7 +571,7 @@ src/test/            for tests only: the pages the app has, read from src/app
 
 - Admin screens (`/v1/admin/*`).
 - A dark theme. The app is light only, on purpose (`color-scheme: only light` in `globals.css`). The toasts, the Help page, the automations page, the dropdowns and the settings screens take every colour from the design tokens, so they would follow a dark set of tokens (the settings and the dropdowns were checked with a trial set); the primary button (white text on the ink colour) and the figures' own colours would still need one.
-- The demo doesn't make an automation when one is asked for in chat, so a template can be followed as far as the chat and no further.
+- Building or changing an automation on the canvas by hand (phase 3 of the backend's `docs/automations-flow-proposal.md`): the canvas only shows, and a draft is saved as Tex proposed it.
 - The chat's two error lines (a message that didn't send, an approval that didn't go through) are not toasts yet.
 - Voice notes from the composer (files and text only).
 - Code in a reply has no colours for its syntax, and maths written as LaTeX is shown as typed.

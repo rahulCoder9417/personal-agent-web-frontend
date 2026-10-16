@@ -21,6 +21,8 @@ import {
   type ApprovalStatus,
   type Attachment,
   type Automation,
+  type AutomationDraft,
+  type AutomationDraftSaved,
   type ByokProvider,
   type ChannelType,
   type Conversation,
@@ -63,6 +65,10 @@ export const qk = {
   automations: ["automations"] as const,
   /** One automation, for its own page (under `automations`, so refreshing the list refreshes it too). */
   automation: (automationId: string) => ["automations", "one", automationId] as const,
+  /** The open drafts Tex proposed (`GET /v1/automation-drafts`). */
+  automationDrafts: ["automation-drafts"] as const,
+  /** One draft, in any state, for its card in the chat and its page. */
+  automationDraft: (draftId: string) => ["automation-drafts", "one", draftId] as const,
   prReviews: ["pr-reviews"] as const,
   agentStatus: ["agent", "status"] as const,
   agentSettings: ["agent", "settings"] as const,
@@ -628,13 +634,14 @@ export function useAutomations({ enabled = true }: { enabled?: boolean } = {}) {
  * card that was clicked), and an automation that isn't there (deleted, or another account's) is
  * the API's 404, which isn't asked again.
  */
-export function useAutomation(automationId: string) {
+export function useAutomation(automationId: string, { enabled = true }: { enabled?: boolean } = {}) {
   const qc = useQueryClient();
   return useQuery({
     queryKey: qk.automation(automationId),
     queryFn: () => unwrap(api.GET("/v1/automations/{automationId}", { params: { path: { automationId } } })),
     initialData: () => qc.getQueryData<{ items: Automation[] }>(qk.automations)?.items.find((a) => a.id === automationId),
     retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
+    enabled: enabled && automationId !== "",
   });
 }
 
@@ -676,6 +683,80 @@ export function useDeleteAutomation() {
     mutationFn: (automationId: string) =>
       unwrap(api.DELETE("/v1/automations/{automationId}", { params: { path: { automationId } } })),
     onSuccess: () => invalidateAutomations(qc),
+  });
+}
+
+// ---------------------------------------------------------------- automation drafts
+
+/** The drafts waiting to be saved, newest first (at most 20, each for 7 days). */
+export function useAutomationDrafts({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: qk.automationDrafts,
+    queryFn: () => unwrap(api.GET("/v1/automation-drafts")),
+    select: (data) => data.items,
+    enabled,
+  });
+}
+
+/**
+ * One draft Tex proposed, in any state. Kept fresh by the live stream (`automation_draft.updated`).
+ * A draft that isn't there (removed after 30 days, or another account's) is the API's 404, which
+ * isn't asked again. Null asks for nothing.
+ */
+export function useAutomationDraft(draftId: string | null) {
+  return useQuery({
+    queryKey: qk.automationDraft(draftId ?? ""),
+    queryFn: () => unwrap(api.GET("/v1/automation-drafts/{draftId}", { params: { path: { draftId: draftId! } } })),
+    enabled: draftId !== null,
+    retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
+  });
+}
+
+/** A draft changed: its card and page show it at once, and the list of open ones is asked for again. */
+export function noteDraft(qc: QueryClient, draft: AutomationDraft) {
+  qc.setQueryData(qk.automationDraft(draft.id), draft);
+  void qc.invalidateQueries({ queryKey: qk.automationDrafts, exact: true });
+}
+
+/**
+ * Saves a draft, which makes the automation (`enabled: false` saves it paused). A 409 means the
+ * draft is no longer open (saved already, replaced, expired, discarded): it is asked for again so
+ * its card says which.
+ */
+export function useSaveAutomationDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { draftId: string; enabled?: boolean }) =>
+      unwrap(
+        api.POST("/v1/automation-drafts/{draftId}/save", {
+          params: { path: { draftId: input.draftId } },
+          body: { enabled: input.enabled ?? true },
+        }),
+      ),
+    onSuccess: (saved: AutomationDraftSaved) => {
+      noteDraft(qc, saved.draft);
+      qc.setQueryData(qk.automation(saved.automation.id), saved.automation);
+      void invalidateAutomations(qc);
+    },
+    onError: (error, input) => {
+      if (error instanceof ApiError && (error.status === 409 || error.status === 404)) {
+        void qc.invalidateQueries({ queryKey: qk.automationDraft(input.draftId) });
+        void qc.invalidateQueries({ queryKey: qk.automationDrafts, exact: true });
+      }
+    },
+  });
+}
+
+/** Throws an open draft away. Nothing was running, so nothing stops. */
+export function useDiscardAutomationDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (draftId: string) =>
+      unwrap(api.POST("/v1/automation-drafts/{draftId}/discard", { params: { path: { draftId } } })),
+    onSuccess: (draft) => noteDraft(qc, draft),
+    onError: (error, draftId) => {
+      if (error instanceof ApiError && error.status === 409) void qc.invalidateQueries({ queryKey: qk.automationDraft(draftId) });
+    },
   });
 }
 

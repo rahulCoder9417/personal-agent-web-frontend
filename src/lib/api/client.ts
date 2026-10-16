@@ -39,12 +39,21 @@ type ApiAutomation = Schemas["Automation"];
 export type AutomationTrigger = Partial<Omit<NonNullable<ApiAutomation["trigger"]>, "config">> & { config?: Record<string, unknown> };
 /**
  * A reminder or an automation. An older backend sends neither `copyTo` (where a copy of each run's
- * answer goes besides the Automations chat) nor the trigger's settings: both read as none.
+ * answer goes besides the Automations chat), nor the trigger's settings, nor `apps` (the apps Tex
+ * named when it proposed it): each reads as none.
  */
-export type Automation = Omit<ApiAutomation, "copyTo" | "trigger"> & {
+export type Automation = Omit<ApiAutomation, "copyTo" | "trigger" | "apps"> & {
   copyTo?: ApiAutomation["copyTo"];
   trigger?: AutomationTrigger | null;
+  apps?: string[];
 };
+/**
+ * An automation Tex proposed in a chat, which runs only once the person saves it: `open` for 7
+ * days, then `saved`, `discarded`, `replaced` (by a newer one, `replacedBy`) or `expired`.
+ */
+export type AutomationDraft = Schemas["AutomationDraft"];
+export type AutomationDraftStatus = Schemas["AutomationDraftStatus"];
+export type AutomationDraftSaved = Schemas["AutomationDraftSaved"];
 export type PrReviewRepo = Schemas["PrReviewRepo"];
 export type AgentStatus = Schemas["AgentStatus"];
 export type AgentProgress = Schemas["AgentProgress"];

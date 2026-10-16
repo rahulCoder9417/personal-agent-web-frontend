@@ -509,8 +509,11 @@ paths:
         One long-lived SSE connection per browser tab. Event types:
         `message.created`, `message.status`, `message.draft`, `approval.created`, `approval.resolved`,
         `agent.status`, `agent.progress`, `credits.updated`, `automation.updated`,
-        `conversation.updated`, `conversation.deleted`.
+        `automation_draft.updated`, `conversation.updated`, `conversation.deleted`.
         Each event's `data` is JSON matching the `StreamEvent` schema.
+
+        `automation_draft.updated` carries the whole draft (`AutomationDraft`): sent when Tex
+        proposes one, and when one is saved, discarded, replaced or expires.
 
         `message.created` and `message.status` carry the whole message, so its `conversationId`
         comes with it. `conversation.updated` carries the whole conversation: it is sent when one
@@ -882,9 +885,10 @@ paths:
       tags: [automations]
       summary: The user's automations and reminders
       description: |
-        Automations are created by chatting with the agent; the web app can list, pause and delete
-        them. A repo with pull-request review on is an automation too (`preset: pr_review`); it is
-        turned on and off with `/v1/pr-reviews`.
+        Automations are made by chatting with the agent: it proposes a draft, and the user saves it
+        (`/v1/automation-drafts`). A plain one-time reminder is the exception: the agent saves it at
+        once. The web app can list, pause and delete them. A repo with pull-request review on is an
+        automation too (`preset: pr_review`); it is turned on and off with `/v1/pr-reviews`.
 
         Every run answers in the Automations chat (`GET /v1/conversations?kind=automations`), never
         in the user's other conversations. An automation made in a Telegram chat also sends a copy
@@ -958,6 +962,136 @@ paths:
         "204": { description: Deleted }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------- automation drafts
+  /v1/automation-drafts:
+    get:
+      operationId: listAutomationDrafts
+      tags: [automations]
+      summary: The user's open drafts, newest first
+      description: |
+        A draft is an automation Tex proposed in a chat (its `propose_automation` tool) that the user
+        has not saved. It never runs: it has no timer and no watch at the app. Only the user saves
+        it, here (`POST /v1/automation-drafts/{draftId}/save`) or with the Save button on Telegram.
+
+        This lists the open ones only: at most 20 per user, each for 7 days. A saved, discarded,
+        replaced or expired one is read by its id. The message that carries a draft in a chat has
+        its id (`Message.automationDraftId`).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AutomationDraft" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/automation-drafts/{draftId}:
+    get:
+      operationId: getAutomationDraft
+      tags: [automations]
+      summary: One draft, in any state
+      description: |
+        For the draft's card in the chat and its page (`/automations/new?draft=…`, or
+        `/automations/{changeOf}?draft=…` for a change). Another user's draft, or one removed after
+        30 days, is 404.
+      parameters:
+        - $ref: "#/components/parameters/DraftId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationDraft" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/automation-drafts/{draftId}/save:
+    post:
+      operationId: saveAutomationDraft
+      tags: [automations]
+      summary: Save a draft, which makes the automation
+      description: |
+        The automation is made from the draft, with the same checks as when Tex proposed it, run
+        again now: the plan's limit (a draft did not count), 15 minutes between runs, a moment not
+        yet past, the app connected. Then its timer is set or its watch made. `enabled: false`
+        ("Save paused") makes it switched off (`pausedReason: user`), to try or turn on later.
+
+        A draft that changes an automation (`changeOf`) makes the new automation and then removes
+        the old one, with its timer or watch.
+
+        One draft makes one automation: a second save, also at the same moment (a double click),
+        answers 409 with `details.status: saved` and the automation's id. A replaced, expired or
+        discarded draft can't be saved either (409, `details.status` says which).
+      parameters:
+        - $ref: "#/components/parameters/DraftId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  default: true
+                  description: False saves it paused.
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationDraftSaved" }
+        "400":
+          description: |
+            A check failed now, for example the moment it was set for has passed or the app is no
+            longer connected. The message says what, in words for the user. The draft stays open.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PlanLimit" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            The draft is not open. `details.status` is `saved` (with `details.automationId`),
+            `replaced` (with `details.replacedBy`, the newer draft), `expired` or `discarded`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: The app could not be asked to watch for the event just now. The draft stays open; try again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/automation-drafts/{draftId}/discard:
+    post:
+      operationId: discardAutomationDraft
+      tags: [automations]
+      summary: Discard an open draft
+      description: Nothing was running, so nothing stops. The draft's card then says it was discarded.
+      parameters:
+        - $ref: "#/components/parameters/DraftId"
+      responses:
+        "200":
+          description: Discarded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationDraft" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The draft is not open (`details.status` says what it is)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /v1/pr-reviews:
     get:
@@ -3586,6 +3720,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    DraftId:
+      name: draftId
+      in: path
+      required: true
+      schema: { type: string, examples: [drf_01jz3m8q4kd2v7x9w0t5b6c8ya] }
     MemoryId:
       name: memoryId
       in: path
@@ -3971,6 +4110,12 @@ components:
               mimeType: { type: string }
         status: { type: string, enum: [queued, processing, sent, delivered, read, failed] }
         approvalId: { type: [string, "null"] }
+        automationDraftId:
+          type: [string, "null"]
+          description: |
+            Tex proposed an automation in this message (`GET /v1/automation-drafts/{draftId}`).
+            The web app draws the draft's card under it. In web chat the text is one line about the
+            draft; in a chat app it is the outline sent there, with the link and a Save button.
         createdAt: { type: string, format: date-time }
 
     ApprovalStatus:
@@ -4077,7 +4222,7 @@ components:
 
     Automation:
       type: object
-      required: [id, kind, title, instruction, enabled, createdAt, copyTo]
+      required: [id, kind, title, instruction, enabled, createdAt, copyTo, apps]
       properties:
         id: { type: string }
         kind: { type: string, enum: [once, repeat, event] }
@@ -4107,6 +4252,14 @@ components:
             Where a copy of each run's answer goes, besides the Automations chat: the chat app the
             automation was made in. Null: no copy (made in web chat, or from the web app with no
             chat app linked).
+        apps:
+          type: array
+          items: { type: string, examples: [github] }
+          description: |
+            The apps Tex said it will use, by app slug (`App.slug`), as it named them in the draft
+            the automation was saved from. Empty for an older automation, or when none were named:
+            Tex then uses the user's connected apps as needed. For now only shown; the trigger's
+            app (`trigger.app`) is not repeated here.
         preset:
           type: [string, "null"]
           enum: [pr_review, null]
@@ -4145,6 +4298,83 @@ components:
           format: date-time
           description: When the agent last found it with a search. Null if never.
         useCount: { type: integer, description: How many times the agent found it with a search. }
+
+    AutomationDraftStatus:
+      type: string
+      description: |
+        `open`: waiting for the user, at most 7 days. `saved`: the user saved it and the automation
+        exists (`automationId`). `discarded`: the user threw it away. `replaced`: Tex proposed a
+        newer version (`replacedBy`); this one can no longer be saved. `expired`: 7 days passed.
+      enum: [open, saved, discarded, replaced, expired]
+
+    AutomationDraft:
+      type: object
+      description: |
+        An automation Tex proposed and the user has not saved (or has, see `status`). It holds the
+        same parts as an `Automation`, and never runs. Drawn as the same five steps: the trigger,
+        Tex's instruction, the apps, "asks you first" and the results.
+      required: [id, status, madeBy, changeOf, kind, title, instruction, runAt, cron, timezone,
+                 trigger, apps, copyTo, nextRunAt, replacedBy, automationId, createdAt, expiresAt,
+                 decidedAt]
+      properties:
+        id: { type: string, examples: [drf_01jz3m8q4kd2v7x9w0t5b6c8ya] }
+        status: { $ref: "#/components/schemas/AutomationDraftStatus" }
+        madeBy:
+          type: string
+          enum: [agent, user]
+          description: "`agent`: Tex proposed it. (`user`: made on the canvas, from phase 3.)"
+        changeOf:
+          type: [string, "null"]
+          description: |
+            The automation this draft would change. Saving makes the new automation and then
+            removes that one. Null: a new automation.
+        kind: { type: string, enum: [once, repeat, event] }
+        title: { type: string }
+        instruction: { type: string }
+        runAt: { type: [string, "null"], format: date-time, description: kind=once }
+        cron: { type: [string, "null"], description: "kind=repeat, in `timezone`" }
+        timezone:
+          type: string
+          description: The time zone it runs in (the user's own when Tex named none).
+        trigger:
+          type: [object, "null"]
+          description: kind=event
+          required: [app, event, config]
+          properties:
+            app: { type: string }
+            event: { type: string }
+            config: { type: object, additionalProperties: true }
+        apps:
+          type: array
+          items: { type: string }
+          description: The apps Tex said it will use, by app slug (see `Automation.apps`).
+        copyTo:
+          type: [string, "null"]
+          enum: [telegram, whatsapp, imessage, null]
+          description: The chat app it was proposed in, which gets a copy of each answer once saved.
+        nextRunAt:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When it would first run if it were saved now: the moment (kind=once), or the schedule's
+            next time (kind=repeat). Null for an app event.
+        replacedBy: { type: [string, "null"], description: "The newer draft, when `replaced`." }
+        automationId:
+          type: [string, "null"]
+          description: The automation it made, when `saved`. It may have been deleted since.
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        decidedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When it was saved, discarded, replaced or expired.
+
+    AutomationDraftSaved:
+      type: object
+      required: [draft, automation]
+      properties:
+        draft: { $ref: "#/components/schemas/AutomationDraft" }
+        automation: { $ref: "#/components/schemas/Automation" }
 
     PrReviewRepo:
       type: object
@@ -5262,7 +5492,8 @@ components:
           type: string
           enum: [message.created, message.status, approval.created, approval.resolved,
                  agent.status, agent.progress, credits.updated, automation.updated,
-                 conversation.updated, conversation.deleted, message.draft]
+                 automation_draft.updated, conversation.updated, conversation.deleted,
+                 message.draft]
         data:
           oneOf:
             - { $ref: "#/components/schemas/Message" }
@@ -5274,3 +5505,4 @@ components:
             - { $ref: "#/components/schemas/AgentProgress" }
             - { $ref: "#/components/schemas/CreditBalance" }
             - { $ref: "#/components/schemas/Automation" }
+            - { $ref: "#/components/schemas/AutomationDraft" }
