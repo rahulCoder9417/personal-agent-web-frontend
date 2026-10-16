@@ -469,17 +469,17 @@ function seedPlans(): Plan[] {
   const topUp = "Top-ups: $10 for 800 credits";
   return [
     {
-      id: "free", name: "Free", priceCents: 0, interval: null, monthlyCredits: 0, signupCredits: 100,
+      id: "free", name: "Free", priceCents: 0, regularPriceCents: null, interval: null, monthlyCredits: 0, signupCredits: 100,
       limits: { apps: 10, automations: 1, ownMcpServers: false, topUps: false, models: "all", browser: false },
       features: ["100 credits at sign-up, plus coupon codes", "10 apps", "1 automation", ownKey],
     },
     {
-      id: "pro", name: "Pro", priceCents: 1200, interval: "month", monthlyCredits: 1500, signupCredits: 0,
+      id: "pro", name: "Pro", priceCents: 1900, regularPriceCents: 3000, interval: "month", monthlyCredits: 1500, signupCredits: 0,
       limits: { apps: 25, automations: 5, ownMcpServers: false, topUps: true, models: "all", browser: false },
       features: ["1,500 credits every month", "All 25 apps", "5 automations", topUp, ownKey],
     },
     {
-      id: "max", name: "Max", priceCents: 3000, interval: "month", monthlyCredits: 4500, signupCredits: 0,
+      id: "max", name: "Max", priceCents: 3000, regularPriceCents: 5000, interval: "month", monthlyCredits: 4500, signupCredits: 0,
       limits: { apps: 25, automations: 50, ownMcpServers: true, topUps: true, models: "all", browser: true },
       features: ["4,500 credits every month", "Priority when things get busy", "All 25 apps plus your own MCP servers", "50 automations", "Browser use: 2 credits per minute", topUp, ownKey],
     },

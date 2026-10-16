@@ -118,8 +118,9 @@ describe("Pricing on Pro", () => {
     const words = text(card);
     expect(words).toContain("Pro");
     expect(words).toContain("Active");
-    expect(words).toContain("$12 per month");
-    expect(words).toContain(`Renews on ${formatDate(subscription.currentPeriodEnd!)} for $12.`);
+    expect(words).toContain("$19 per month");
+    expect(words).toContain("Launch price (regular $30 a month)");
+    expect(words).toContain(`Renews on ${formatDate(subscription.currentPeriodEnd!)} for $19.`);
     expect(card).toMatch(/<button [^>]*>Cancel plan<\/button>/);
   });
 
@@ -181,6 +182,15 @@ describe("Pricing on Free", () => {
     expect(column(html, "Free")).toContain("Your plan");
     expect(column(html, "Pro")).toMatch(/<button [^>]*>Upgrade to Pro<\/button>/);
     expect(column(html, "Max")).toMatch(/<button [^>]*>Upgrade to Max<\/button>/);
+  });
+
+  it("shows the launch prices with the regular price in plain words, never struck out", async () => {
+    const { qc } = await account("free");
+    const html = draw(qc);
+    expect(text(column(html, "Pro"))).toContain("$19 per month Launch price (regular $30 a month)");
+    expect(text(column(html, "Max"))).toContain("$30 per month Launch price (regular $50 a month)");
+    expect(text(column(html, "Free"))).not.toContain("Launch price");
+    expect(html).not.toMatch(/<(s|del|strike)[ >]|line-through/);
   });
 
   it("still shows the top-up's price, without a Buy button, and leads to the plans", async () => {

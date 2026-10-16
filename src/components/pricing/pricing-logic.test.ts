@@ -1,17 +1,29 @@
 import { describe, expect, it } from "vitest";
 import type { Plan, Subscription } from "@/lib/api/client";
-import { canCancel, cancelCopy, describeSubscription, nextMonthlyCredits, planFeatures } from "./pricing-logic";
+import { canCancel, cancelCopy, describeSubscription, launchPriceNote, nextMonthlyCredits, planFeatures } from "./pricing-logic";
 
 // The Pricing screen's sentences where the API leaves something out: no date for the period's end,
 // no feature list, no Free plan to quote. The usual cases are drawn in pricing-screen.test.ts.
 
 const limits = { apps: 25, automations: 5, ownMcpServers: false, topUps: true, models: "all" as const, browser: false };
-const PRO: Plan = { id: "pro", name: "Pro", priceCents: 1200, interval: "month", monthlyCredits: 1500, signupCredits: 0, limits, features: [] };
+const PRO: Plan = { id: "pro", name: "Pro", priceCents: 1900, regularPriceCents: 3000, interval: "month", monthlyCredits: 1500, signupCredits: 0, limits, features: [] };
 const sub = (over: Partial<Subscription>): Subscription => ({ plan: "pro", status: "active", currentPeriodStart: null, currentPeriodEnd: null, ...over });
+
+describe("a launch price", () => {
+  it("names the regular price in plain words beside the launch price", () => {
+    expect(launchPriceNote(PRO)).toBe("Launch price (regular $30 a month)");
+  });
+
+  it("says nothing when there is no regular price, or it is not above today's price", () => {
+    expect(launchPriceNote({ ...PRO, regularPriceCents: null })).toBeNull();
+    expect(launchPriceNote({ ...PRO, regularPriceCents: 1900 })).toBeNull();
+    expect(launchPriceNote({ ...PRO, id: "free", priceCents: 0, regularPriceCents: null, interval: null })).toBeNull();
+  });
+});
 
 describe("the subscription in words, with no end date from the backend", () => {
   it("still says what happens next", () => {
-    expect(describeSubscription(sub({}), PRO)).toBe("Renews every month for $12.");
+    expect(describeSubscription(sub({}), PRO)).toBe("Renews every month for $19.");
     expect(describeSubscription(sub({ status: "cancel_at_period_end" }), PRO)).toBe("Ends with this period. You keep Pro until then, then move to Free.");
     expect(describeSubscription(sub({ plan: "free", status: "cancelled" }), undefined)).toBe("Your subscription has ended. You’re on Free now.");
     expect(nextMonthlyCredits(sub({}), PRO)).toBe("Your next 1,500 arrive when Pro renews.");

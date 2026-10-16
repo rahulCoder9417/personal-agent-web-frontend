@@ -7,6 +7,7 @@ const plan = (id: Plan["id"], priceCents: number, monthlyCredits: number): Plan 
   id,
   name: id[0].toUpperCase() + id.slice(1),
   priceCents,
+  regularPriceCents: null,
   interval: priceCents ? "month" : null,
   monthlyCredits,
   signupCredits: 0,

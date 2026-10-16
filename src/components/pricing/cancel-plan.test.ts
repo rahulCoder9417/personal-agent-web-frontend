@@ -110,7 +110,7 @@ async function press(name: string, where: "card" | "dialog" = "card") {
 describe("Cancelling a plan", () => {
   it("asks first in a dialog that says what happens: kept until the period ends, then Free; Keep my plan changes nothing", async () => {
     await draw();
-    expect(text(yourPlan())).toContain(`Renews on ${periodEnd} for $12.`);
+    expect(text(yourPlan())).toContain(`Renews on ${periodEnd} for $19.`);
     await press("Cancel plan");
 
     const open = dialog();

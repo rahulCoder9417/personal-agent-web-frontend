@@ -5583,11 +5583,20 @@ components:
 
     Plan:
       type: object
-      required: [id, name, priceCents, interval, monthlyCredits, signupCredits, limits, features]
+      required: [id, name, priceCents, regularPriceCents, interval, monthlyCredits, signupCredits, limits, features]
       properties:
         id: { $ref: "#/components/schemas/PlanId" }
         name: { type: string }
-        priceCents: { type: integer, examples: [0, 1200, 3000] }
+        priceCents:
+          type: integer
+          examples: [0, 1900, 3000]
+          description: What a checkout charges now (the launch price while there is one).
+        regularPriceCents:
+          type: [integer, "null"]
+          examples: [null, 3000, 5000]
+          description: |
+            The plan's regular price, shown as plain text beside the launch price ("launch price,
+            regular $30"), never struck out. `null` when the plan has no launch price (Free).
         interval: { type: [string, "null"], enum: [month, null] }
         monthlyCredits: { type: integer, examples: [0, 1500, 4500] }
         signupCredits: { type: integer, examples: [100, 0, 0] }
