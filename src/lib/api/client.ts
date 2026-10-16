@@ -42,12 +42,14 @@ export type AutomationTrigger = Partial<Omit<NonNullable<ApiAutomation["trigger"
  * answer goes besides the Automations chat), nor the trigger's settings, nor `apps` (the apps Tex
  * named when it proposed it): each reads as none.
  */
-export type Automation = Omit<ApiAutomation, "copyTo" | "trigger" | "apps" | "askFirst"> & {
+export type Automation = Omit<ApiAutomation, "copyTo" | "trigger" | "apps" | "askFirst" | "steps"> & {
   copyTo?: ApiAutomation["copyTo"];
   trigger?: AutomationTrigger | null;
   apps?: string[];
   /** When a run stops for the person's yes. An older backend doesn't say: that reads as `risky`. */
   askFirst?: AutomationAskFirst;
+  /** Up to 6 steps a run follows in order. Empty (or not sent, by an older backend): one instruction. */
+  steps?: AutomationStep[];
 };
 /** `risky`: before sending, deleting or paying (always). `changes`: stricter, before anything that changes something. */
 export type AutomationAskFirst = Schemas["AutomationAskFirst"];
@@ -56,14 +58,29 @@ export type AutomationAskFirst = Schemas["AutomationAskFirst"];
  * user`), which runs only once the person saves it: `open` for 7 days, then `saved`, `discarded`,
  * `replaced` (by a newer one, `replacedBy`) or `expired`. An older backend sends no `askFirst`.
  */
-export type AutomationDraft = Omit<Schemas["AutomationDraft"], "askFirst"> & { askFirst?: AutomationAskFirst };
+export type AutomationDraft = Omit<Schemas["AutomationDraft"], "askFirst" | "steps"> & { askFirst?: AutomationAskFirst; steps?: AutomationStep[] };
+/** One step of an automation as it was saved: an app action, or a Tex instruction (`risky`: it sends, deletes or pays). */
+export type AutomationStep = Schemas["AutomationStep"];
+/** One step as the canvas sends it to be checked or saved (only `type` is needed; the canvas always sends its own `id`). */
+export type AutomationStepInput = Schemas["AutomationStepInput"];
+/** When a step runs ("only if"), on the result of the step before. A false one stops the run there. */
+export type AutomationStepCondition = Schemas["AutomationStepCondition"];
+/** One run of an automation with steps, and its trail (`GET /v1/automations/{id}/runs`, `automation_run.updated`). */
+export type AutomationRun = Schemas["AutomationRun"];
+export type AutomationRunStep = Schemas["AutomationRunStep"];
+/** One action an app step can run (`GET /v1/apps/{appSlug}/actions`), with its inputs. */
+export type AppAction = Schemas["AppAction"];
 /** The parts of an automation as the canvas holds them (what check, create, change and a user draft take). */
 export type AutomationParts = Schemas["AutomationParts"];
 export type AutomationInput = Schemas["AutomationInput"];
 export type AutomationChange = Schemas["AutomationChange"];
 export type AutomationDraftInput = Schemas["AutomationDraftInput"];
-/** One thing wrong with the parts, and the box of the canvas it belongs to (`step`, null for the whole). */
-export type AutomationProblem = Schemas["AutomationProblem"];
+/**
+ * One thing wrong with the parts, and the box of the canvas it belongs to (`step`, null for the
+ * whole). `step: steps` with `stepId`: one step's box; with `stepId` null: the list of steps (more
+ * than 6). An older backend sends no `stepId`: that reads as null.
+ */
+export type AutomationProblem = Omit<Schemas["AutomationProblem"], "stepId"> & { stepId?: string | null };
 export type AutomationCheck = Schemas["AutomationCheck"];
 export type AutomationTestRun = Schemas["AutomationTestRun"];
 /** One event an app can start an automation on (`GET /v1/apps/{appSlug}/events`), with its settings. */

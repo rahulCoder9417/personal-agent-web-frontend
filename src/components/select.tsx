@@ -442,6 +442,8 @@ type ComboboxProps = Omit<SelectProps, "placeholder"> & {
   placeholder?: string;
   /** What the list says when a search finds nothing. */
   emptyText?: (query: string) => ReactNode;
+  /** Hears what is typed (null once the field shows the choice again), for a list searched on the server. */
+  onQueryChange?: (query: string | null) => void;
 };
 
 /**
@@ -459,6 +461,7 @@ export function Combobox({
   disabled,
   minListWidth = 0,
   emptyText = (query) => `Nothing matches “${query}”`,
+  onQueryChange,
   className,
   ...rest
 }: ComboboxProps) {
@@ -472,7 +475,14 @@ export function Combobox({
   // On a phone the list stays under the field (a sheet would sit under the keyboard), with big rows.
   const narrow = useMediaQuery(SHEET_BELOW);
   // What is typed; null while the field shows the choice.
-  const [query, setQuery] = useState<string | null>(null);
+  const [query, setQueryState] = useState<string | null>(null);
+  const setQuery = useCallback(
+    (next: string | null) => {
+      setQueryState(next);
+      onQueryChange?.(next);
+    },
+    [onQueryChange],
+  );
   const items = useMemo(() => (query === null ? options : filterItems(options, query)), [options, query]);
   const flat = useMemo(() => flatOptions(items), [items]);
   const selected = indexOfValue(flat, value);
@@ -486,7 +496,7 @@ export function Combobox({
   const close = useCallback(() => {
     setOpen(false);
     setQuery(null);
-  }, []);
+  }, [setQuery]);
   const place = usePopover(open, field, pop, close, minListWidth);
 
   const openAt = (index: number) => {

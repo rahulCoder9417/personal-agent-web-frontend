@@ -81,7 +81,7 @@ describe("check without saving", () => {
 
   it("a passed moment is `past`; a change doesn't count itself against the plan", async () => {
     const past = await call<AutomationCheck>("POST", "automations/check", { ...weekly, cron: null, runAt: "2026-10-01T09:00:00Z" });
-    expect(past.body.problems).toEqual([{ step: "trigger", code: "past", message: "That moment has passed. Pick a later one." }]);
+    expect(past.body.problems).toEqual([{ step: "trigger", stepId: null, code: "past", message: "That moment has passed. Pick a later one." }]);
     await call("POST", "automations", { ...weekly, clientRequestId: uuid(1) });
     const full = await call<AutomationCheck>("POST", "automations/check", weekly);
     expect(full.body.problems).toEqual([expect.objectContaining({ step: null, code: "plan_limit" })]);

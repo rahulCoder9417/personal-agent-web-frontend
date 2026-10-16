@@ -60,7 +60,6 @@ export const saveDraft: Handler = async ({ state, request, params }) => {
   if (draft.status !== "open") throw notOpen(draft);
   const body = await readJson(request, { optional: true });
   if (body.enabled !== undefined && typeof body.enabled !== "boolean") throw badRequest("enabled must be true or false");
-  const enabled = body.enabled !== false;
 
   const limit = state.plans.find((plan) => plan.id === state.user.plan)?.limits.automations ?? 0;
   const counted = state.automations.filter((automation) => automation.id !== draft.changeOf).length;
@@ -76,6 +75,9 @@ export const saveDraft: Handler = async ({ state, request, params }) => {
   const now = nowIso();
   // A change is made in place, as the backend does it: the automation keeps its id and its page.
   const changing = draft.changeOf ? state.automations.find((item) => item.id === draft.changeOf) : undefined;
+  // Left out: a new one is switched on, and a change keeps its automation on or paused as it is.
+  const enabled = typeof body.enabled === "boolean" ? body.enabled : (changing?.enabled ?? true);
+  const keepsPause = changing && body.enabled === undefined && !changing.enabled;
   const automation: Automation = {
     ...(changing ?? {}),
     id: changing?.id ?? nextId(state, "aut"),
@@ -88,10 +90,11 @@ export const saveDraft: Handler = async ({ state, request, params }) => {
     trigger: draft.trigger,
     apps: [...draft.apps],
     askFirst: draft.askFirst ?? "risky",
+    steps: [...(draft.steps ?? [])],
     copyTo: draft.copyTo,
     preset: null,
     enabled,
-    pausedReason: enabled ? null : "user",
+    pausedReason: enabled ? null : keepsPause ? (changing!.pausedReason ?? "user") : "user",
     nextRunAt: draft.kind === "event" ? null : draft.nextRunAt,
     lastRunAt: changing?.lastRunAt ?? null,
     createdAt: changing?.createdAt ?? now,

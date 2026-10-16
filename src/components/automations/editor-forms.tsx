@@ -22,7 +22,7 @@ import {
   type ScheduleKind,
   type WhenMode,
 } from "@/lib/automation-editor";
-import { ASKS_CHANGES, ASKS_FIRST, INSTRUCTION_NOTE, type FlowStepId } from "@/lib/automation-flow";
+import { ASKS_CHANGES, ASKS_FIRST, INSTRUCTION_NOTE, KEPT_LINE, type FlowStepId } from "@/lib/automation-flow";
 import { describeCronInWords } from "@/lib/automations";
 import { cn, titleCase } from "@/lib/format";
 import { INTEGRATIONS_APPS_PATH, linkChatHref } from "@/lib/integrations";
@@ -48,7 +48,7 @@ type FormProps = {
 };
 
 const LINK = "font-medium text-accent hover:text-accent-dark";
-const textareaClass = cn(inputClass, "h-auto min-h-[112px] resize-y py-2 leading-relaxed");
+export const textareaClass = cn(inputClass, "h-auto min-h-[112px] resize-y py-2 leading-relaxed");
 
 /** The box's problems, in red, for the person and for a screen reader. */
 export function Problems({ problems, className }: { problems: readonly string[]; className?: string }) {
@@ -62,7 +62,7 @@ export function Problems({ problems, className }: { problems: readonly string[];
   );
 }
 
-function Label({ htmlFor, children, hint }: { htmlFor?: string; children: ReactNode; hint?: ReactNode }) {
+export function Label({ htmlFor, children, hint }: { htmlFor?: string; children: ReactNode; hint?: ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
       {htmlFor ? (
@@ -203,7 +203,7 @@ function ScheduleFields({ editor, onChange, id }: { editor: EditorParts; onChang
   );
 }
 
-function SettingField({ setting, value, onChange, id }: { setting: AppEventSetting; value: unknown; onChange: (value: unknown) => void; id: string }) {
+export function SettingField({ setting, value, onChange, id }: { setting: AppEventSetting; value: unknown; onChange: (value: unknown) => void; id: string }) {
   const hint = [setting.description, setting.default !== undefined ? `Left empty: ${settingText(setting.default)}.` : null].filter(Boolean).join(" ");
   const label = (
     <>
@@ -371,6 +371,7 @@ export function TriggerForm({ editor, onChange, problems, context }: FormProps) 
 
 export function InstructionForm({ editor, onChange, problems }: FormProps) {
   const id = useId();
+  if (editor.steps.length > 0) return <PurposeForm editor={editor} onChange={onChange} problems={problems} id={id} />;
   return (
     <div className="flex flex-col gap-3.5">
       <Problems problems={problems} />
@@ -394,6 +395,37 @@ export function InstructionForm({ editor, onChange, problems }: FormProps) {
         />
       </div>
       <p className="text-[12px] leading-relaxed text-muted">{INSTRUCTION_NOTE}</p>
+    </div>
+  );
+}
+
+/** With steps, the instruction is the automation's purpose in one line; the steps say what to do. */
+function PurposeForm({ editor, onChange, problems, id }: Pick<FormProps, "editor" | "onChange" | "problems"> & { id: string }) {
+  return (
+    <div className="flex flex-col gap-3.5">
+      <Problems problems={problems} />
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${id}-title`} hint="A few words to know it by in your list.">
+          Title
+        </Label>
+        <input id={`${id}-title`} className={inputClass} maxLength={120} value={editor.title} placeholder="Urgent mail from my boss" onChange={(event) => onChange({ ...editor, title: event.target.value })} />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${id}-text`} hint="What it is for, in one line. Tex reads it with the steps, so it knows why it does each one.">
+          Purpose
+        </Label>
+        <input
+          id={`${id}-text`}
+          className={inputClass}
+          maxLength={300}
+          value={editor.instruction}
+          placeholder="Reply fast to urgent mail from my boss"
+          onChange={(event) => onChange({ ...editor, instruction: event.target.value })}
+        />
+      </div>
+      <p className="text-[12px] leading-relaxed text-muted">
+        With steps, Tex follows them one at a time, in order, and the platform refuses anything that isn’t the current step. The apps it may use are the ones the steps name.
+      </p>
     </div>
   );
 }
@@ -543,6 +575,11 @@ export function ResultsForm({ editor, onChange, problems, context }: FormProps) 
           <input type="checkbox" className="mt-0.5 size-4 accent-[var(--fg)]" checked onChange={() => onChange({ ...editor, copyTo: null })} />
           <span className="font-medium">Also a copy to {titleCase(other)}</span>
         </label>
+      )}
+      {editor.steps.length > 0 && (
+        <p className="text-[12px] leading-relaxed text-muted">
+          The answer has Tex’s short summary, the results of the steps with “Show me this” on, and a line of how each step went. {KEPT_LINE}
+        </p>
       )}
     </div>
   );

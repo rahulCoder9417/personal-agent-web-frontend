@@ -17,8 +17,8 @@ import {
   turnsOverAfterReconnect,
 } from "../drafts";
 import { threadIsWorking } from "../chat-thread";
-import type { AgentProgress, AgentStatus, Approval, AutomationDraft, Conversation, CreditBalance, Message, MessageDraft, StreamEvent, StreamReady } from "./client";
-import { addMessage, cachedThread, invalidateAutomations, noteAgentStatusEvent, noteDraft, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
+import type { AgentProgress, AgentStatus, Approval, AutomationDraft, AutomationRun, Conversation, CreditBalance, Message, MessageDraft, StreamEvent, StreamReady } from "./client";
+import { addMessage, cachedThread, invalidateAutomations, noteAgentStatusEvent, noteDraft, noteRun, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
 
 const EVENT_TYPES: StreamEvent["type"][] = [
   "message.created",
@@ -31,6 +31,7 @@ const EVENT_TYPES: StreamEvent["type"][] = [
   "credits.updated",
   "automation.updated",
   "automation_draft.updated",
+  "automation_run.updated",
   "conversation.updated",
   "conversation.deleted",
 ];
@@ -183,6 +184,14 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
       const draft = event.data as AutomationDraft;
       noteDraft(qc, draft);
       if (draft.status === "saved") void invalidateAutomations(qc);
+      break;
+    }
+    case "automation_run.updated": {
+      // A run of an automation with steps started, moved on a step, waits for an OK, or ended: the
+      // trail on its canvas follows. When it ended, the automation's last and next run moved too.
+      const run = event.data as AutomationRun;
+      noteRun(qc, run);
+      if (run.state !== "running") void qc.invalidateQueries({ queryKey: qk.automation(run.automationId) });
       break;
     }
   }

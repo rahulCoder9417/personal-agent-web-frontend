@@ -13,6 +13,15 @@ export type SaveNotice = {
   action?: { label: string; href: string };
 };
 
+/**
+ * What `POST /v1/automation-drafts/{id}/save` is sent. Only "Save paused" says `enabled: false`.
+ * Otherwise `enabled` is left out: a new automation is then switched on, and a change keeps its
+ * automation on or paused as it is, so saving Tex's change of a paused automation keeps it paused.
+ */
+export function draftSaveBody(enabled?: boolean): { enabled?: boolean } {
+  return enabled === false ? { enabled: false } : {};
+}
+
 /** The confirmation after a save: what was made, when it first runs, and the way to it. */
 export function savedNotice(draft: Pick<AutomationDraft, "title" | "kind" | "nextRunAt">, saved: AutomationDraftSaved, now = new Date()): SaveNotice {
   const paused = !saved.automation.enabled;

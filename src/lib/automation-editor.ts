@@ -14,6 +14,7 @@ import type {
   AutomationTrigger,
 } from "./api/client";
 import type { FlowSource, FlowStepId } from "./automation-flow";
+import { editorStepsFrom, emptyStep, newStepId, previewSteps, problemsOfSteps, stepApps, toStepInputs, type EditorStep } from "./automation-steps";
 import type { AutomationKind } from "./automations";
 
 // ---------------------------------------------------------------- the form
@@ -45,6 +46,11 @@ export type EditorParts = {
   apps: string[];
   askFirst: AutomationAskFirst;
   copyTo: CopyTo;
+  /**
+   * Its steps, in order (phase 4). Empty: one instruction, as before steps. With steps the
+   * instruction is the purpose in one line, and the apps come from the steps.
+   */
+  steps: EditorStep[];
 };
 
 export const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
@@ -291,11 +297,12 @@ export function emptyEditor(timeZone: string, now = new Date()): EditorParts {
     apps: [],
     askFirst: "risky",
     copyTo: null,
+    steps: [],
   };
 }
 
 /** What an automation or a draft is made of, as the editor starts from it. */
-export type EditorSource = Pick<Automation, "kind" | "title" | "instruction" | "runAt" | "cron" | "timezone" | "copyTo" | "askFirst"> & {
+export type EditorSource = Pick<Automation, "kind" | "title" | "instruction" | "runAt" | "cron" | "timezone" | "copyTo" | "askFirst" | "steps"> & {
   trigger?: AutomationTrigger | null;
   apps?: readonly string[] | null;
 };
@@ -311,6 +318,7 @@ export function editorFrom(source: EditorSource | Pick<AutomationDraft, keyof Ed
     apps: [...(source.apps ?? [])],
     askFirst: source.askFirst ?? "risky",
     copyTo: source.copyTo ?? null,
+    steps: editorStepsFrom(source.steps),
   };
   if (source.kind === "once" && source.runAt) return { ...parts, mode: "once", ...wallClock(source.runAt, zone) };
   if (source.kind === "repeat" && source.cron) return { ...parts, mode: "schedule", schedule: cronToSchedule(source.cron) };
@@ -324,8 +332,12 @@ function filledConfig(config: Record<string, unknown>): Record<string, unknown> 
   return Object.fromEntries(Object.entries(config).filter(([, value]) => value !== "" && value !== undefined && value !== null));
 }
 
-/** The form as the API takes it: one of `runAt`, `cron` and `trigger` (none while nothing is picked). */
+/**
+ * The form as the API takes it: one of `runAt`, `cron` and `trigger` (none while nothing is picked).
+ * With steps, the steps with their own ids, and no `apps` (the server works them out from the steps).
+ */
 export function toParts(editor: EditorParts): AutomationParts {
+  const stepped = editor.steps.length > 0;
   const base: AutomationParts = {
     title: editor.title.trim(),
     instruction: editor.instruction.trim(),
@@ -333,9 +345,10 @@ export function toParts(editor: EditorParts): AutomationParts {
     cron: null,
     timezone: editor.timezone || null,
     trigger: null,
-    apps: [...new Set(editor.apps)],
+    ...(stepped ? {} : { apps: [...new Set(editor.apps)] }),
     askFirst: editor.askFirst,
     copyTo: editor.copyTo ?? null,
+    ...(stepped ? { steps: toStepInputs(editor.steps) } : {}),
   };
   if (editor.mode === "once") return { ...base, runAt: momentOf(editor.date, editor.time, editor.timezone) };
   if (editor.mode === "schedule") return { ...base, cron: scheduleToCron(editor.schedule) || null };
@@ -363,7 +376,12 @@ export function kindOf(editor: Pick<EditorParts, "mode">): AutomationKind | null
  * The form as the flow draws it (`automationFlow`), so the canvas shows what is being built. While
  * no trigger is picked it draws as "once"; the trigger box then says to pick one.
  */
-export function previewSource(editor: EditorParts, base: Partial<FlowSource> = {}): FlowSource {
+export function previewSource(
+  editor: EditorParts,
+  base: Partial<FlowSource> = {},
+  /** A step's action by the name its app gives it ("Send email"), when the app's list is in. */
+  actionLabel?: (step: EditorStep) => string | null | undefined,
+): FlowSource {
   const parts = toParts(editor);
   return {
     ...base,
@@ -374,35 +392,82 @@ export function previewSource(editor: EditorParts, base: Partial<FlowSource> = {
     cron: parts.cron ?? null,
     timezone: parts.timezone ?? null,
     trigger: parts.trigger ? { app: parts.trigger.app, event: parts.trigger.event, config: parts.trigger.config ?? {} } : null,
-    apps: parts.apps ?? [],
+    apps: parts.apps ?? stepApps(editor.steps),
     askFirst: editor.askFirst,
     copyTo: parts.copyTo ?? null,
+    steps: previewSteps(editor.steps, actionLabel),
     preset: null,
     nextRunAt: base.nextRunAt ?? null,
     lastRunAt: base.lastRunAt ?? null,
   };
 }
 
+// ---------------------------------------------------------------- one instruction or steps
+
+/** The first line of an instruction, for a purpose in one line (at most 200 characters). */
+function firstLine(text: string): string {
+  const line = text.trim().split(/\n/)[0]?.trim() ?? "";
+  return line.length > 200 ? `${line.slice(0, 199)}…` : line;
+}
+
+/**
+ * A one-instruction automation (or an empty canvas) as one with steps: its instruction becomes step
+ * 1, a Tex step that may read the apps it named (up to 5), and its first line the purpose. Nothing
+ * is lost, and it runs much as before until steps are added.
+ */
+export function toStepped(editor: EditorParts, random?: () => number): EditorParts {
+  if (editor.steps.length) return editor;
+  const step = { ...emptyStep("tex", newStepId([], random)), instruction: editor.instruction.trim(), readApps: editor.apps.slice(0, 5) };
+  return { ...editor, instruction: firstLine(editor.instruction), steps: [step] };
+}
+
+/**
+ * One with steps as one instruction: the purpose stays as the instruction, the steps go, and the
+ * apps the steps named become the apps Tex may use (at most 10). The canvas asks first.
+ */
+export function toOneInstruction(editor: EditorParts): EditorParts {
+  if (!editor.steps.length) return editor;
+  const texWords = editor.steps.filter((step) => step.type === "tex" && step.instruction.trim()).map((step) => step.instruction.trim());
+  const instruction = [editor.instruction.trim(), ...texWords].filter(Boolean).join("\n\n");
+  return { ...editor, instruction, apps: stepApps(editor.steps).slice(0, 10), steps: [] };
+}
+
 // ---------------------------------------------------------------- problems
 
 export type StepProblems = {
-  /** Each box's problems, in the server's words. */
+  /** Each of the five boxes' problems, in the server's words. */
   byStep: Map<FlowStepId, string[]>;
+  /** Each step's problems (phase 4), by the step's id. */
+  byStepId: Map<string, string[]>;
+  /** The list of steps' own problems (more than 6). */
+  stepsList: string[];
   /** Problems with the automation as a whole (the plan's limit). */
   general: AutomationProblem[];
   /** The plan's automations are used up. */
   planLimit: boolean;
 };
 
-/** The server's problems, box by box. */
+/** The server's problems, box by box, and step by step. */
 export function problemsByStep(problems: readonly AutomationProblem[] | null | undefined): StepProblems {
   const byStep = new Map<FlowStepId, string[]>();
   const general: AutomationProblem[] = [];
   for (const problem of problems ?? []) {
+    if (problem.step === "steps") continue;
     if (problem.step) byStep.set(problem.step, [...(byStep.get(problem.step) ?? []), problem.message]);
     else general.push(problem);
   }
-  return { byStep, general, planLimit: (problems ?? []).some((problem) => problem.code === "plan_limit") };
+  const steps = problemsOfSteps(problems);
+  return { byStep, byStepId: steps.byStepId, stepsList: steps.list, general, planLimit: (problems ?? []).some((problem) => problem.code === "plan_limit") };
+}
+
+/**
+ * Where a refused save's first problem is on the canvas, to open it: a box (`trigger`…), a step
+ * (`step:<id>`), or null.
+ */
+export function firstProblemKey(problems: readonly AutomationProblem[]): string | null {
+  const first = problems.find((problem) => problem.step && (problem.step !== "steps" || problem.stepId));
+  if (!first?.step) return null;
+  return first.step === "steps" ? `step:${first.stepId}` : first.step;
 }
 
 /** The problems a refused save carried (`details.problems` of a 400), or null when it carried none. */
@@ -471,6 +536,26 @@ export const EDITOR_TEMPLATES: readonly EditorTemplate[] = [
       title: "New email, in two lines",
       instruction: "Say who wrote and what they want, in two lines. If it isn't from my manager, say nothing more.",
       apps: ["gmail"],
+    }),
+  },
+  {
+    id: "urgent-boss-mail",
+    name: "Urgent mail from my boss, in steps",
+    blurb: "Weekdays at 8: find the urgent ones, draft a reply, send it after your OK.",
+    app: "gmail",
+    fill: (e) => ({
+      ...e,
+      mode: "schedule",
+      schedule: days([1, 2, 3, 4, 5], "08:00"),
+      title: "Urgent mail from my boss",
+      instruction: "Reply fast to urgent mail from my boss",
+      apps: [],
+      steps: [
+        { ...emptyStep("action", "fetch"), app: "gmail", action: "GMAIL_FETCH_EMAILS", inputs: { query: "from:boss@acme.com is:unread newer_than:1d" } },
+        { ...emptyStep("tex", "pick", "fetch"), instruction: "Pick the emails that are urgent and say why.", onlyIf: { kind: "found", words: "", question: "" }, showResult: false },
+        { ...emptyStep("tex", "draft", "pick"), instruction: "Draft a two-line reply to each urgent one.", onlyIf: { kind: "mentions", words: "urgent", question: "" } },
+        { ...emptyStep("action", "send", "draft"), app: "gmail", action: "GMAIL_SEND_EMAIL", askFirst: true, risky: true },
+      ],
     }),
   },
   {

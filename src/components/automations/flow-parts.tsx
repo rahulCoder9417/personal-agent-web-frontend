@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import type { FlowStep, FlowStepId } from "@/lib/automation-flow";
+import { EXIT_LABEL, type TrailMark } from "@/lib/automation-steps";
 import { cn } from "@/lib/format";
 import { BrandIcon } from "../brand-icon";
 import { ChatIcon, LockIcon } from "../icons";
@@ -86,7 +87,7 @@ export function FlowStrip({ steps, kind, className }: { steps: readonly FlowStep
   return (
     <ol aria-label="How it runs" className={cn("flex flex-wrap items-center gap-x-1 gap-y-1.5", className)}>
       {steps.map((step, index) => (
-        <li key={step.id} className="flex min-w-0 items-center gap-1">
+        <li key={step.key} className="flex min-w-0 items-center gap-1">
           {index > 0 && <Arrow />}
           <span className="inline-flex min-w-0 items-center gap-1.5 rounded-lg bg-surface-2 py-1 pr-2 pl-1">
             <StepMark step={step} kind={kind} size={20} />
@@ -137,33 +138,61 @@ export function StepDetails({ step }: { step: FlowStep }) {
   );
 }
 
+/** How a step went in the last run, as a small tag ("Done", "Waiting for your OK"). */
+export const TRAIL_TAG: Record<TrailMark["tone"], string> = {
+  done: "bg-success-soft text-success",
+  waiting: "bg-[color-mix(in_srgb,var(--patch)_18%,transparent)] text-[color-mix(in_srgb,var(--patch)_70%,var(--fg))]",
+  danger: "bg-danger-soft text-danger",
+  muted: "bg-surface-2 text-muted",
+  running: "bg-accent-soft text-accent-dark",
+};
+
+/** A step's "only if" between two cards of the list, with what a false one does. */
+function ConditionLine({ label }: { label: string }) {
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1 pl-[16px] text-[12px]">
+      <Arrow down />
+      <span className="font-medium text-fg-2">{label}</span>
+      <span className="text-muted">· {EXIT_LABEL}</span>
+    </span>
+  );
+}
+
 /**
- * The five steps as a list of cards, one under another, each with everything it says: the canvas
- * on a phone, and on a wide screen when "List view" is picked.
+ * The boxes as a list of cards, one under another, each with everything it says: the canvas on a
+ * phone, and on a wide screen when "List view" is picked. `changed` is by box key; `trail` is how
+ * each step went in the last run, by the step's id.
  */
 export function FlowList({
   steps,
   kind,
   changed,
+  trail,
 }: {
   steps: readonly FlowStep[];
   kind: AutomationKind;
-  changed?: ReadonlySet<FlowStepId>;
+  changed?: ReadonlySet<string>;
+  trail?: ReadonlyMap<string, TrailMark>;
 }) {
   return (
     <ol aria-label="The steps, in order" className="flex flex-col">
-      {steps.map((step, index) => (
-        <li key={step.id} className="flex flex-col">
-          {index > 0 && (
-            <span className="flex h-6 items-center pl-[21px]">
-              <Arrow down />
-            </span>
-          )}
+      {steps.map((step, index) => {
+        const mark = step.step ? trail?.get(step.step.id) : undefined;
+        return (
+        <li key={step.key} className="flex flex-col">
+          {index > 0 &&
+            (step.step?.condition ? (
+              <ConditionLine label={step.step.condition} />
+            ) : (
+              <span className="flex h-6 items-center pl-[21px]">
+                <Arrow down />
+              </span>
+            ))}
           <section
             aria-label={step.label}
             className={cn(
               "flex flex-col gap-3 rounded-xl border bg-surface p-4",
-              step.tone === "danger" ? "border-danger/30" : changed?.has(step.id) ? "border-accent/50" : "border-line",
+              step.tone === "danger" ? "border-danger/30" : changed?.has(step.key) ? "border-accent/50" : "border-line",
             )}
           >
             <div className="flex items-start gap-3">
@@ -171,9 +200,11 @@ export function FlowList({
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="flex items-center gap-1.5 text-[12px] text-muted">
                   <span className="tabular-nums">{index + 1}.</span> {step.label}
-                  {changed?.has(step.id) && <ChangedTag />}
+                  {changed?.has(step.key) && <ChangedTag />}
+                  {step.step?.askFirst && <LockIcon size={12} />}
                 </span>
                 <h3 className={cn("text-[14.5px] leading-snug font-semibold break-words", step.tone === "paused" && "text-nav")}>{step.title}</h3>
+                {mark && <span className={cn("w-fit rounded px-1.5 text-[11px] leading-[18px] font-semibold", TRAIL_TAG[mark.tone])}>Last run: {mark.label}</span>}
                 {headLines(step).map((line) => (
                   <span key={line} className={cn("text-[12.5px] break-words", step.tone === "danger" && line.startsWith("Paused") ? "font-medium text-danger" : "text-muted")}>
                     {line}
@@ -184,7 +215,8 @@ export function FlowList({
             <StepDetails step={step} />
           </section>
         </li>
-      ))}
+        );
+      })}
     </ol>
   );
 }
