@@ -52,6 +52,13 @@ export type EditorStep = {
    * box says so until the person looks at it again. Never sent.
    */
   follows: string | null;
+  /**
+   * An app step put on the canvas in a lane (reading or writing) before its action is known: the
+   * lane it stays in while the person picks the app and the action, whose list then offers only
+   * the actions of that lane. Never sent; a saved step's lane comes from its action
+   * (`automation-lanes.ts`).
+   */
+  lane?: "read" | "write";
 };
 
 // ---------------------------------------------------------------- ids and new steps
