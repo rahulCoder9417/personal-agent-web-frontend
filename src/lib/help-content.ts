@@ -233,7 +233,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
             ["`/start`", "What Telegram sends when you open the bot. From **Open Telegram** it carries your code, and links the chat."],
             ["A link code, such as `LINK-7KQ2-M9XP`", "Links this chat to your account."],
             ["A coupon code, such as `AGT-7KQ2-M9XP-4RWD-ABCD`", "Adds the coupon’s credits. The bot says how many, when they expire, and your new balance."],
-            ["`yes` or `no`", "Answers the newest approval waiting in this chat, like tapping **Approve** or **Reject**."],
+            ["`yes` or `no`", "Answers the newest approval waiting in this chat, like tapping **Approve** or **Deny**."],
           ),
           note("A command must be the whole message: “/new please” goes to Tex as a normal message. Anything else, `/help` included, is a normal message too: Tex reads it and answers."),
         ],
@@ -244,7 +244,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         blocks: [
           list(
             "Replies are plain text. A table becomes one line per row, and a long reply comes as several messages.",
-            "When Tex needs your OK, you get “Approval needed: …” with **Approve** and **Reject** buttons. Tap one, or type yes or no.",
+            "When Tex needs your OK, Tex says what it wants to do, with **Approve** and **Deny** buttons. Tap one, or type yes or no. A question Tex asks in the web app comes to Telegram too. See [Approve in Telegram](#approvals-telegram).",
             "Progress lines (“Scout · reading 4 pages”) show only in the web chat. On Telegram you get the finished answer.",
             "The bot never sends a payment link. Plans and credits are bought in the web app.",
           ),
@@ -256,6 +256,20 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         blocks: [
           p("Your Telegram conversations show in the web chat’s history with the Telegram mark, so you can read them anywhere. To answer one, reply on Telegram."),
           p("An automation you made on Telegram answers in {automationsChat} and also sends a copy to Telegram, starting with ⏰ or ⚡ and its name. To follow up on it, write in the Automations chat."),
+        ],
+      },
+      {
+        id: "telegram-notices",
+        title: "Hear on Telegram when work is done",
+        blocks: [
+          p("Once Telegram is linked, {telegramNotices} has three switches. A notice always comes in addition to the chat you asked in, never instead of it."),
+          table(
+            ["Switch", "What you get on Telegram"],
+            ["**Byte or Patch finishes a job** (on at first)", "A short line when Patch or Byte finishes a job you gave in the web app, such as “✅ Byte finished: Fix login in acme/web. PR #43 opened. Tests passed.”, with a link to the report"],
+            ["**Pull-request reviews finish** (on)", "A copy of each review’s verdict"],
+            ["**Automation runs finish** (off)", "A copy of each answer of an automation you made in the web app. The ones you made on Telegram always answer there"],
+          ),
+          p("**Quiet hours**, 10:00 PM to 8:00 AM in your time zone at first: Telegram messages still arrive at once, but without a sound. Change the times or switch them off in the same place."),
         ],
       },
       {
@@ -435,7 +449,10 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       {
         id: "approvals-telegram",
         title: "Approve in Telegram",
-        blocks: [p("You get “Approval needed: …” with two buttons. Tap **Approve** or **Reject**, or type yes or no. A typed answer goes to the newest approval waiting in that chat.")],
+        blocks: [
+          p("Tex says what it wants to do, with two buttons. Tap **Approve** or **Deny**, or type yes or no. A typed answer goes to the newest approval asked in that chat."),
+          p("A question Tex asks in the web app, or during an automation’s run, comes to Telegram too, with the same buttons. Answer wherever you see it first: the first answer counts. The buttons then go from Telegram, and the message says how it ended, such as “✅ Approved on web”. Tex carries on in the chat where it asked."),
+        ],
       },
       {
         id: "approvals-rules",
@@ -488,7 +505,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         title: "Where the results go",
         blocks: [
           p("Every run answers in {automationsChat}, pinned at the top of your chat history. A dot shows when a new run has arrived. Write there to follow up: Tex has the runs in mind."),
-          p("An automation you made on Telegram also sends a copy of each answer to Telegram."),
+          p("An automation you made on Telegram also sends a copy of each answer to Telegram. For the ones you made in the web app, switch on **Automation runs finish** in {telegramNotices}."),
         ],
       },
       {

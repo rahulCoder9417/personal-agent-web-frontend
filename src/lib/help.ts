@@ -34,6 +34,7 @@ export const PLACES = {
   linkTelegram: { label: "Link Telegram", href: linkChatHref("telegram") },
   settings: { label: "Settings", href: "/settings" },
   timezone: { label: "Settings → General", short: "General settings", href: "/settings" },
+  telegramNotices: { label: "Settings → General → Tell me on Telegram", short: "Telegram notices", href: "/settings#telegram-notices" },
   ai: { label: "Settings → Agent & AI", short: "Agent & AI", href: "/settings/agent" },
   memory: { label: "Settings → Memory", short: "Memory", href: "/settings/memory" },
   credits: { label: "Settings → Credits", short: "Credits", href: "/settings/credits" },
