@@ -17,7 +17,7 @@ import {
   turnsOverAfterReconnect,
 } from "../drafts";
 import { threadIsWorking } from "../chat-thread";
-import type { AgentProgress, AgentStatus, Approval, AutomationDraft, Conversation, CreditBalance, Message, MessageDraft, StreamEvent } from "./client";
+import type { AgentProgress, AgentStatus, Approval, AutomationDraft, Conversation, CreditBalance, Message, MessageDraft, StreamEvent, StreamReady } from "./client";
 import { addMessage, cachedThread, invalidateAutomations, noteAgentStatusEvent, noteDraft, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
 
 const EVENT_TYPES: StreamEvent["type"][] = [
@@ -39,11 +39,13 @@ export type StreamListener = (event: StreamEvent) => void;
 
 /**
  * After the stream comes back (the hosting cuts it at the function's time limit, every five
- * minutes on Vercel, and a phone drops it when it sleeps): catch up on what the events keep fresh.
- * The backend's stream has no event ids and replays nothing, so whatever was sent while it was
- * down is lost, and the lists (the open threads, the chat history, the approvals) have to be asked
- * for again. In a tab nobody is looking at they are
- * only marked stale, and asked for when the tab is shown again (`refetchOnWindowFocus`).
+ * minutes on Vercel, and a phone drops it when it sleeps) without the backend replaying what was
+ * missed: catch up on what the events keep fresh. The backend replays the events after the last
+ * one this tab got (`Last-Event-ID`) when it still holds them, the last 15 minutes or so, and its
+ * `ready` then says `resumed`. When it doesn't (away too long, or its record unreadable), whatever
+ * was sent while the stream was down is lost, and the lists (the open threads, the chat history,
+ * the approvals) have to be asked for again. In a tab nobody is looking at they are only marked
+ * stale, and asked for when the tab is shown again (`refetchOnWindowFocus`).
  */
 export function catchUpAfterReconnect(qc: QueryClient, visible: boolean) {
   const refetchType = visible ? "active" : "none";
@@ -207,7 +209,8 @@ const CLOSED = 2;
 /** What the live connection needs of the browser, so it can be tried without one. */
 export type LiveSource = Pick<EventSource, "addEventListener" | "close" | "readyState">;
 export type LiveBrowser = {
-  open: () => LiveSource;
+  /** Opens a connection; `lastEventId`: the id of the last event the one before it got. */
+  open: (lastEventId?: string) => LiveSource;
   /** Whether the page is on screen. */
   visible: () => boolean;
   /** Calls `listener` each time the page is shown or hidden; returns how to stop. */
@@ -216,10 +219,12 @@ export type LiveBrowser = {
 
 /**
  * Keeps one Server-Sent Events connection open and folds each event into the query cache. Each
- * connection after the first catches up as it opens (`catchUpAfterReconnect`): the browser's own
- * reconnects after a dropped connection, and the ones made here, when a connection has gone silent
- * (`SILENT_MS`; looked at again at once when the page is shown) or was refused for good. Returns how
- * to close it.
+ * connection after the first gives the id of the last event received, so the backend sends what
+ * came after it first: the browser does so by itself when it reconnects after a dropped connection
+ * (the `Last-Event-ID` header), and the connections made here say it in the address, when one has
+ * gone silent (`SILENT_MS`; looked at again at once when the page is shown) or was refused for good.
+ * When the backend can't replay (`ready` without `resumed`), the connection catches up instead
+ * (`catchUpAfterReconnect`). Returns how to close it.
  */
 export function connectLive(qc: QueryClient, browser: LiveBrowser, onEvent?: StreamListener): () => void {
   let source: LiveSource | null = null;
@@ -227,12 +232,14 @@ export function connectLive(qc: QueryClient, browser: LiveBrowser, onEvent?: Str
   let heardAt = Date.now();
   let reopenMs = REOPEN_FIRST_MS;
   let reopenTimer: ReturnType<typeof setTimeout> | undefined;
+  // The id of the last event received (a draft has none, and leaves it as it was).
+  let lastEventId: string | undefined;
 
   const open = () => {
     clearTimeout(reopenTimer);
     reopenTimer = undefined;
     source?.close();
-    const current = browser.open();
+    const current = browser.open(lastEventId);
     source = current;
     heardAt = Date.now();
     // Only the newest connection speaks: one replaced may still deliver something as it goes.
@@ -241,17 +248,18 @@ export function connectLive(qc: QueryClient, browser: LiveBrowser, onEvent?: Str
       heardAt = Date.now();
       return true;
     };
-    current.addEventListener("ready", () => {
+    current.addEventListener("ready", ((raw: MessageEvent<string>) => {
       if (!heard()) return;
       reopenMs = REOPEN_FIRST_MS;
-      // A reconnect: anything sent while we were away is missing. (The first connect needs
-      // nothing: the lists are being asked for the first time.)
-      if (opened) catchUpAfterReconnect(qc, browser.visible());
+      // A reconnect the backend could not replay: anything sent while we were away is missing.
+      // (The first connect needs nothing: the lists are being asked for the first time.)
+      if (opened && !resumed(raw.data)) catchUpAfterReconnect(qc, browser.visible());
       opened = true;
-    });
+    }) as EventListener);
     current.addEventListener("ping", heard);
     const onMessage = (raw: MessageEvent<string>) => {
       if (!heard()) return;
+      if (raw.lastEventId) lastEventId = raw.lastEventId;
       let event: StreamEvent;
       try {
         event = JSON.parse(raw.data) as StreamEvent;
@@ -288,8 +296,18 @@ export function connectLive(qc: QueryClient, browser: LiveBrowser, onEvent?: Str
   };
 }
 
+/** Whether a `ready` says the backend sends every event since the last one received (`StreamReady`). */
+function resumed(data: string | undefined): boolean {
+  try {
+    return (JSON.parse(data ?? "{}") as Partial<StreamReady>).resumed === true;
+  } catch {
+    return false;
+  }
+}
+
 const inBrowser: LiveBrowser = {
-  open: () => new EventSource("/api/v1/stream"),
+  open: (lastEventId) =>
+    new EventSource(lastEventId ? `/api/v1/stream?lastEventId=${encodeURIComponent(lastEventId)}` : "/api/v1/stream"),
   visible: () => document.visibilityState === "visible",
   onVisibility: (listener) => {
     document.addEventListener("visibilitychange", listener);

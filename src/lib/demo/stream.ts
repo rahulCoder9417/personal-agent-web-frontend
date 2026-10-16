@@ -34,7 +34,8 @@ export function streamResponse(request: Request, state: DemoState): Response {
         }
       };
       request.signal.addEventListener("abort", stop, { once: true });
-      send("ready", {});
+      // The demo keeps no record of its events, so a reconnect catches up (`StreamReady`).
+      send("ready", { resumed: false });
     },
     cancel() {
       stop();

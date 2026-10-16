@@ -98,6 +98,7 @@ export type UsageTotals = Schemas["UsageTotals"];
 export type CouponRedemption = Schemas["CouponRedemption"];
 export type ActivityEntry = Schemas["ActivityEntry"];
 export type StreamEvent = Schemas["StreamEvent"];
+export type StreamReady = Schemas["StreamReady"];
 export type Attachment = { id: string; name: string; sizeBytes: number; mimeType: string };
 
 /** An error answer from the API, in the contract's `Error` shape. */

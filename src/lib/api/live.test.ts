@@ -5,13 +5,17 @@ import { qk } from "./hooks";
 import { connectLive, type LiveBrowser, type LiveSource, REOPEN_FIRST_MS, SILENT_MS, WATCH_EVERY_MS } from "./stream";
 
 // The live connection (`connectLive`) with a stand-in for the browser's EventSource. The backend
-// writes `ready` as a connection opens, then the events, and a `ping` after 25 seconds without one.
+// writes `ready` as a connection opens (`resumed` when it sends what this tab missed first), then
+// the events, each with an id but drafts, and a `ping` after 25 seconds without one.
 
 class FakeSource {
   readyState = 0;
   closed = false;
-  private listeners = new Map<string, Set<(event: { data: string }) => void>>();
-  addEventListener(type: string, listener: (event: { data: string }) => void) {
+  /** The id of the last event this connection was given, as the browser keeps it. */
+  lastEventId = "";
+  constructor(readonly openedWith?: string) {}
+  private listeners = new Map<string, Set<(event: { data: string; lastEventId: string }) => void>>();
+  addEventListener(type: string, listener: (event: { data: string; lastEventId: string }) => void) {
     if (!this.listeners.has(type)) this.listeners.set(type, new Set());
     this.listeners.get(type)!.add(listener);
   }
@@ -19,9 +23,11 @@ class FakeSource {
     this.closed = true;
     this.readyState = 2;
   }
-  emit(type: string, data: unknown = {}) {
+  emit(type: string, data: unknown = {}, id?: string) {
     if (type === "ready") this.readyState = 1;
-    for (const listener of this.listeners.get(type) ?? []) listener({ data: JSON.stringify(data) });
+    if (id) this.lastEventId = id;
+    for (const listener of this.listeners.get(type) ?? [])
+      listener({ data: JSON.stringify(data), lastEventId: this.lastEventId });
   }
   /** The proxy answered 401 or 502: the browser gives the connection up for good. */
   refuse() {
@@ -35,8 +41,8 @@ function page(visible = true) {
   let onShow: () => void = () => {};
   const state = { visible };
   const browser: LiveBrowser = {
-    open: () => {
-      const source = new FakeSource();
+    open: (lastEventId) => {
+      const source = new FakeSource(lastEventId);
       sources.push(source);
       return source as unknown as LiveSource;
     },
@@ -111,6 +117,45 @@ describe("the live connection", () => {
     expect(screen.sources[0].closed).toBe(true);
 
     screen.latest().emit("ready");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(screen.asked()).toBe(before + 1);
+    expect(screen.qc.getQueryData<AgentStatus>(qk.agentStatus)?.state).toBe("awake");
+    screen.close();
+  });
+
+  it("a new connection gives the last event's id; when the backend resumed, nothing is asked again", async () => {
+    const screen = page();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(screen.latest().openedWith).toBeUndefined();
+    screen.latest().emit("ready", { resumed: false });
+    screen.latest().emit("agent.status", { type: "agent.status", data: { state: "busy", lastActiveAt: null } }, "17-0");
+    // A draft has no id: the last id stays the agent's state's.
+    screen.latest().emit("message.draft", { type: "message.draft", data: { conversationId: "c", turnId: "t", messageId: null, text: "Hi", at: "2026-10-16T10:00:00Z" } });
+    const before = screen.asked();
+
+    await vi.advanceTimersByTimeAsync(SILENT_MS + WATCH_EVERY_MS);
+    expect(screen.sources).toHaveLength(2);
+    expect(screen.latest().openedWith).toBe("17-0");
+    screen.latest().emit("ready", { resumed: true });
+    await vi.advanceTimersByTimeAsync(0);
+    // Nothing was missed: no list is asked for again, and what the events said stays.
+    expect(screen.asked()).toBe(before);
+    expect(screen.qc.getQueryData<AgentStatus>(qk.agentStatus)?.state).toBe("busy");
+    // What the backend replays is folded in like any event.
+    screen.latest().emit("agent.status", { type: "agent.status", data: { state: "awake", lastActiveAt: null } }, "18-0");
+    expect(screen.qc.getQueryData<AgentStatus>(qk.agentStatus)?.state).toBe("awake");
+    screen.close();
+  });
+
+  it("catches up when the backend could not resume (away too long)", async () => {
+    const screen = page();
+    await vi.advanceTimersByTimeAsync(0);
+    screen.latest().emit("ready", { resumed: false });
+    screen.latest().emit("agent.status", { type: "agent.status", data: { state: "busy", lastActiveAt: null } }, "17-0");
+    const before = screen.asked();
+    await vi.advanceTimersByTimeAsync(SILENT_MS + WATCH_EVERY_MS);
+    expect(screen.latest().openedWith).toBe("17-0");
+    screen.latest().emit("ready", { resumed: false });
     await vi.advanceTimersByTimeAsync(0);
     expect(screen.asked()).toBe(before + 1);
     expect(screen.qc.getQueryData<AgentStatus>(qk.agentStatus)?.state).toBe("awake");
