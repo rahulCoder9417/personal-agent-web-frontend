@@ -95,8 +95,8 @@ export function editorTemplateHref(template: Pick<EditorTemplate, "id">): string
 }
 
 /**
- * The four templates that fill the canvas of a new automation (a daily briefing at 8, pull
- * requests on Monday at 9, an email from someone, a check every 4 hours). On the new-automation
+ * The templates that fill the canvas of a new automation (a daily briefing at 8, pull
+ * requests on Monday at 9, an email from someone, a check every 4 hours, urgent mail in steps). On the new-automation
  * page a click fills the canvas (`onPick`, the chosen one ticked); elsewhere each card opens that
  * page with the template filled in. One whose app isn't connected says so.
  */

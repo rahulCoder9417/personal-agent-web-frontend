@@ -52,8 +52,6 @@ type BoxData = {
   trail: TrailMark | null;
   editing: boolean;
   panelId: string;
-  /** Its place in the flow, for the number on the box (1 is the trigger). */
-  place: number;
   health?: ReadonlyMap<string, AppHealth>;
   onSelect: (key: string) => void;
 };
@@ -74,7 +72,7 @@ type StepEdgeT = Edge<EdgeData, "step">;
 const HIDDEN_HANDLE = "!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent";
 
 function Box({ data }: NodeProps<BoxNode>) {
-  const { step, kind, direction, selected, changed, problems, trail, editing, panelId, place, health, onSelect } = data;
+  const { step, kind, direction, selected, changed, problems, trail, editing, panelId, health, onSelect } = data;
   const wrong = problems.length > 0;
   const info = step.step;
   const across = direction === "across";
@@ -105,15 +103,12 @@ function Box({ data }: NodeProps<BoxNode>) {
             </span>
           )}
           {changed && <ChangedTag />}
-          <span
-            aria-hidden
-            className={cn(
-              "grid size-5 shrink-0 place-items-center rounded-full text-[10.5px] font-semibold tabular-nums",
-              wrong ? "bg-danger text-white" : selected ? "bg-accent text-white" : "bg-surface-2 text-muted",
-            )}
-          >
-            {wrong ? <WarningIcon size={11} /> : place}
-          </span>
+          {/* A step's box says "Step 2" already; a box with a problem gets the warning mark. */}
+          {wrong && (
+            <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-full bg-danger text-white">
+              <WarningIcon size={11} />
+            </span>
+          )}
         </span>
         <span className={cn("line-clamp-2 text-[13.5px] leading-snug font-semibold break-words", step.tone === "paused" ? "text-nav" : "text-fg")}>{step.title}</span>
         {wrong ? (
@@ -228,7 +223,6 @@ export function stepsElements(props: StepsCanvasProps & { direction: Direction }
         trail: step.step ? (props.trail?.get(step.step.id) ?? null) : null,
         editing: props.editing ?? false,
         panelId: props.panelId,
-        place: (node.index ?? 0) + 1,
         health: props.health,
         onSelect: props.onSelect,
       },

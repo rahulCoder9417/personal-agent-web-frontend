@@ -31,7 +31,7 @@ const STEPS = [
 
 const CARD_GRID = "grid grid-cols-[repeat(auto-fill,minmax(min(340px,100%),1fr))] gap-3";
 
-/** Nothing made yet: how one comes to exist, as three connected steps, and four templates to start from. */
+/** Nothing made yet: how one comes to exist, as three connected steps, and the canvas templates to start from. */
 function NoAutomations() {
   return (
     <div className="flex flex-col gap-5 rounded-2xl border border-dashed border-line-strong bg-surface/70 p-5 sm:p-6">
@@ -39,7 +39,7 @@ function NoAutomations() {
         <AgentFigure who="tex" mood="ready" size={72} label="" className="shrink-0 max-sm:hidden" />
         <div className="flex min-w-0 flex-col gap-1">
           <h3 className="text-[17px] font-semibold tracking-[-0.01em]">You haven’t made one yet</h3>
-          <p className={cn("text-[13.5px] text-muted", READING)}>It takes one message, or a minute on the canvas. Here is what happens, and four ready-made ones to start from.</p>
+          <p className={cn("text-[13.5px] text-muted", READING)}>It takes one message, or a minute on the canvas. Here is what happens, and a few ready-made ones to start from.</p>
         </div>
       </div>
       <ol aria-label="How an automation is made" className="flex gap-0 max-md:flex-col">

@@ -30,13 +30,16 @@ export const GLYPH_TINT: Record<FlowStepId, string> = {
 
 /**
  * A step's badge, the same plain tile for every step with its glyph in the step's colour: the
- * kind's clock, loop or bolt (or the watched app's logo), Tex, the apps, a lock, the chat.
+ * kind's clock, loop or bolt (or the watched app's logo), Tex, the apps (or an app action's logo),
+ * a lock, the chat.
  */
-export function StepBadge({ step, kind, size = 32, className }: { step: Pick<FlowStep, "id" | "apps">; kind: AutomationKind; size?: number; className?: string }) {
+export function StepBadge({ step, kind, size = 32, className }: { step: Pick<FlowStep, "id" | "apps" | "step">; kind: AutomationKind; size?: number; className?: string }) {
   const glyph = Math.round(size * 0.5);
   const app = step.apps[0];
   let inner: ReactNode;
-  if (step.id === "trigger") inner = app ? <BrandIcon name={app} size={glyph} /> : <KindIcon kind={kind} size={glyph} />;
+  // An app action step wears its app's logo.
+  if (step.step?.type === "action" && step.step.app) inner = <BrandIcon name={step.step.app} size={glyph} />;
+  else if (step.id === "trigger") inner = app ? <BrandIcon name={app} size={glyph} /> : <KindIcon kind={kind} size={glyph} />;
   else if (step.id === "instruction") inner = <AgentFigure who="tex" mood="ready" glyph size={Math.round(size * 0.64)} label="" />;
   else if (step.id === "apps") inner = <AppsGlyph size={glyph} />;
   else if (step.id === "asks") inner = <LockIcon size={glyph} />;
@@ -336,7 +339,7 @@ export function FlowSteps({
               <StepFacts step={step} health={health} />
             </section>
             {!last && (
-              <span className={cn("relative flex items-center gap-2 pl-[52px] text-[12px]", condition ? "min-h-8 py-1" : "h-3")}>
+              <span className={cn("relative flex flex-wrap items-center gap-x-1.5 pl-[52px] text-[12px]", condition ? "min-h-8 py-1" : "h-3")}>
                 {condition && (
                   <>
                     <span className="font-medium text-fg-2">{condition}</span>
