@@ -622,6 +622,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
           p("Prices and the rest are in {plans}. Plans and top-ups are bought in the web app, never in Telegram."),
           p("To cancel, press **Cancel plan** in {plans}. You keep the plan until the end of the period you’ve paid for, then move to Free. The credits you have stay until they expire."),
           p("Changed your mind before then? Press **Keep my plan** in {plans}. The plan renews as before, and nothing is charged that day."),
+          p("Invoices, receipts and the card you pay with are on Polar’s billing page: press **Invoices and card** in {plans}. If a payment fails, the same button says **Update card**; Polar tries the new card at once."),
           note("To move between Pro and Max, cancel the plan you have first, then pick the other."),
         ],
       },

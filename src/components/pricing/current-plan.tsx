@@ -8,8 +8,9 @@ import { nextToExpire } from "@/components/settings/credits-balance";
 import { toast, toastError } from "@/components/toast";
 import { Button, Card, ErrorState, Pill, SectionLabel } from "@/components/ui";
 import { ApiError, errorMessage, type Plan, type Subscription, type TopUpPack } from "@/lib/api/client";
-import { useCancelSubscription, useCredits } from "@/lib/api/hooks";
+import { useCancelSubscription, useCredits, useOpenBillingPortal } from "@/lib/api/hooks";
 import { cn, formatDate, formatMoney, formatNumber } from "@/lib/format";
+import { leaveTo } from "@/lib/navigate";
 import { canCancel, cancelCopy, describeSubscription, nextMonthlyCredits, planFeatures, planInterval, STATUS } from "./pricing-logic";
 
 function cancelError(error: unknown): string {
@@ -43,6 +44,31 @@ function CancelDialog({ plan, subscription, free, onClose }: { plan: Plan | unde
       <p>{copy.keep}</p>
       <p>{copy.after}</p>
     </ConfirmDialog>
+  );
+}
+
+/**
+ * Polar's customer portal: change the card, download invoices and receipts. After a failed payment
+ * it is where the card is fixed, so the button says so. Anyone who has bought something has one.
+ */
+function BillingPortalButton({ subscription }: { subscription: Subscription }) {
+  const portal = useOpenBillingPortal();
+  const pastDue = subscription.status === "past_due";
+  const open = () =>
+    portal.mutate(undefined, {
+      onSuccess: ({ portalUrl }) => leaveTo(portalUrl),
+      onError: (error) => {
+        if (error instanceof ApiError && error.status === 409) {
+          toastError("No billing account yet", "It appears with your first payment.");
+        } else {
+          toastError("Couldn’t open billing", error);
+        }
+      },
+    });
+  return (
+    <Button variant={pastDue ? "primary" : "secondary"} pending={portal.isPending} onClick={open}>
+      {pastDue ? "Update card" : "Invoices and card"}
+    </Button>
   );
 }
 
@@ -123,6 +149,7 @@ export function CurrentPlan({
               <span className="text-[13px] text-muted">{planInterval(plan)}</span>
             </div>
           )}
+          {subscription.status !== "none" && <BillingPortalButton subscription={subscription} />}
           {canCancel(subscription) && (
             <Button variant="danger-outline" onClick={() => setAsking(true)} disabled={asking}>
               Cancel plan

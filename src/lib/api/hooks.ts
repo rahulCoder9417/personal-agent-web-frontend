@@ -1186,6 +1186,16 @@ export function useCancelSubscription() {
   });
 }
 
+/**
+ * "Invoices and card": a signed-in link to Polar's customer portal (card, invoices, receipts). The
+ * page leaves for it; changes made there come back to the backend as Polar webhooks.
+ */
+export function useOpenBillingPortal() {
+  return useMutation({
+    mutationFn: () => unwrap(api.POST("/v1/billing/portal")),
+  });
+}
+
 /** "Keep my plan": undoes a cancel before the period ends (Polar renews it again). */
 export function useResumeSubscription() {
   const qc = useQueryClient();
