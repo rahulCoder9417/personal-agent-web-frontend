@@ -189,6 +189,9 @@ export const deleteByokKey: Handler = ({ state, params }) => {
 
 export const getAgentStatus: Handler = ({ state }) => json(state.agentStatus);
 
+/** The demo has no workspace to wake: it is always awake. */
+export const prewarmAgent: Handler = () => json({ started: false, reason: "awake" });
+
 export const getAgentSettings: Handler = ({ state }) => {
   syncAgentSettings(state);
   return json(state.agentSettings);

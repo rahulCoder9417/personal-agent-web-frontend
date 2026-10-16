@@ -63,6 +63,7 @@ const ROUTES: Route[] = [
   route("DELETE", "pr-reviews/:owner/:repo", crew.disablePrReview),
 
   route("GET", "agent/status", setup.getAgentStatus),
+  route("POST", "agent/prewarm", setup.prewarmAgent),
   route("GET", "agent/settings", setup.getAgentSettings),
   route("PATCH", "agent/settings", setup.updateAgentSettings),
   route("POST", "agent/claude/login", setup.startClaudeLogin),

@@ -10,6 +10,7 @@ import { AgentFigure } from "../tex";
 import { toastError } from "../toast";
 import { ButtonLink, Spinner } from "../ui";
 import { PRICING_PATH } from "@/lib/pricing";
+import { prewarm, startsTyping } from "@/lib/prewarm";
 
 const MAX_FILES = 5;
 /** The backend refuses anything larger (413). */
@@ -77,6 +78,12 @@ export function Composer({ ref, conversationId, placeholder = "Message Tex…" }
     router.replace("/");
     input.current?.focus();
   }, [draft, router]);
+
+  // The chat is open: Tex's workspace starts waking now, so the first message doesn't wait for it.
+  // Again when typing starts; at most once a minute in all (lib/prewarm.ts).
+  useEffect(() => {
+    prewarm();
+  }, []);
 
   // Grow with the text, up to a few lines.
   useEffect(() => {
@@ -182,7 +189,10 @@ export function Composer({ ref, conversationId, placeholder = "Message Tex…" }
             aria-label="Message Tex"
             placeholder={placeholder}
             autoFocus
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              if (startsTyping(text, e.target.value)) prewarm();
+              setText(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
