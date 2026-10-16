@@ -109,7 +109,31 @@ async function agent(delivery, mcp) {
     const result = await mcp("run_app_action", { action: "GMAIL_SEND_EMAIL", arguments: EMAIL, approval_id: delivery.approvalId });
     return say(result.isError ? `That didn’t go through: ${result.text}` : "Done. It’s sent.");
   }
+  // "Run once now": the platform marks the run as a test; the answer says so.
+  if (delivery.kind === DeliverKind.AUTOMATION && text.startsWith("[Test run"))
+    return say(`Test run: here’s what this automation would send. ${text.replace(/^\[[^\]]*\]\s*/, "")}`);
   if (delivery.kind === DeliverKind.AUTOMATION) return say(`Here’s your scheduled update: ${text}`);
+
+  // "Change this draft (drf_…): …" from the canvas's "Ask Tex to change this": read the person's
+  // own version and propose it again (an hour later when they ask for "later"), replacing it.
+  const asked = /Change this draft \((drf_[a-z0-9]+)\)/i.exec(text);
+  if (asked) {
+    const read = await mcp("get_automation_draft", { draft_id: asked[1] });
+    if (read.isError) return say(`I couldn’t read that draft: ${read.text}`);
+    const d = JSON.parse(read.text);
+    const later = /\blater\b/i.test(text) && d.cron ? d.cron.replace(/^(\S+) (\d+)/, (_, m, h) => `${m} ${(Number(h) + 1) % 24}`) : d.cron;
+    return propose(mcp, delivery, {
+      title: d.title,
+      instruction: d.instruction || "Do what the title says.",
+      ...(d.runAt ? { run_at: d.runAt } : {}),
+      ...(d.cron ? { cron: later } : {}),
+      ...(d.trigger ? { trigger: d.trigger } : {}),
+      timezone: d.timezone,
+      apps: d.apps,
+      ask_first: d.askFirst,
+      replaces_draft_id: d.id,
+    });
+  }
 
   // Schedules first: "every Monday, send me my week" is an automation, not an email.
   if (/\bevery (monday|week|weekday|day|morning)\b/i.test(text)) {
