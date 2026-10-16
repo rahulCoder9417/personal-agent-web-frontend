@@ -237,19 +237,29 @@ describe("applyStreamEvent, for the answer as it is written", () => {
     expect(shown(chat.qc)).toBe("Sure, one");
   });
 
-  it("keeps a shown draft as a step when Tex starts over, with what it went on to do, and folds the steps into the answer", () => {
+  it("keeps a shown draft as a step when Tex starts over, then what it went on to do, and folds the steps into the answer", () => {
     const chat = chatCache();
     chat.send("message.draft", draft(LONG));
     chat.send("message.draft", draft(""));
-    chat.send("agent.progress", { text: "using Google Calendar", crew: null, at: at("12:01") });
+    chat.send("agent.progress", { text: "Checked your calendar", crew: null, at: at("12:01") });
     chat.send("message.draft", draft(MORE));
-    expect(steps(chat.qc)).toEqual([LONG]);
-    expect(turnOnScreen(drafts(chat.qc), "cnv_now")?.steps[0].progress.map((line) => line.text)).toEqual(["using Google Calendar"]);
+    expect(steps(chat.qc)).toEqual([LONG, "Checked your calendar"]);
     expect(shown(chat.qc)).toBe(MORE);
 
     chat.send("message.created", message("m3", "cnv_now", "12:02", { direction: "out", text: MORE }));
     expect(steps(chat.qc)).toBeUndefined();
-    expect(drafts(chat.qc).folded.m3.map((step) => step.text)).toEqual([LONG]);
+    expect(drafts(chat.qc).folded.m3.map((step) => step.text)).toEqual([LONG, "Checked your calendar"]);
+  });
+
+  it("gives what Tex did to its answer when it wrote nothing before it", () => {
+    const chat = chatCache();
+    chat.send("agent.status", { state: "busy", lastActiveAt: at("12:01") });
+    chat.send("agent.progress", { text: "Looked at your apps", crew: null, at: at("12:01") });
+    chat.send("agent.progress", { text: "Checked your inbox", crew: null, at: at("12:01") });
+    expect(steps(chat.qc)).toBeUndefined();
+    chat.send("message.created", message("m3", "cnv_now", "12:02", { direction: "out", text: "Two new emails." }));
+    chat.send("agent.status", { state: "awake", lastActiveAt: at("12:02") });
+    expect(drafts(chat.qc).folded.m3.map((step) => step.text)).toEqual(["Looked at your apps", "Checked your inbox"]);
   });
 
   it("keeps the steps when the turn fails, until the apology arrives", () => {

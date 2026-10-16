@@ -9,11 +9,11 @@ import { nextRunLine } from "@/lib/automations";
 import { threadActivity, useAnsweredHere } from "@/lib/chat-thread";
 import { isAutomationsChat, readOnlyNote } from "@/lib/conversations";
 import type { ProgressLine } from "@/lib/crew";
-import { answerInThread, type DraftStep, stepLine, stepsToShow, turnAnswered, turnOnScreen } from "@/lib/drafts";
+import { answerInThread, type DraftStep, stepLine, stepsToShow, trailLine, turnAnswered, turnOnScreen } from "@/lib/drafts";
 import { CHANNEL_LABEL, cn, formatDate, formatDay, formatTime } from "@/lib/format";
 import { useInView } from "@/lib/in-view";
 import { BrandIcon } from "../brand-icon";
-import { FileIcon } from "../icons";
+import { ChevronRightIcon, FileIcon } from "../icons";
 import { GettingStartedCard, useGettingStarted } from "../onboarding/getting-started";
 import { AgentFigure } from "../tex";
 import { Button, ButtonLink, EmptyState, ErrorState, Spinner } from "../ui";
@@ -55,7 +55,7 @@ function Attachments({ message, onDark }: { message: Message; onDark?: boolean }
   );
 }
 
-/** A message's channel, time and status. `extra` goes at the end of the line (a reply's "Show steps"). */
+/** A message's channel, time and status. `extra` goes at the end of the line (a reply's trail of steps). */
 function MetaLine({ message, align, extra }: { message: Message; align: "start" | "end"; extra?: ReactNode }) {
   const status = message.direction === "in" ? STATUS_WORDS[message.status] : message.status === "failed" ? "not delivered" : undefined;
   return (
@@ -78,7 +78,7 @@ function TexAvatar({ working }: { working?: boolean }) {
   );
 }
 
-function BubbleBody({ message, stepsToggle }: { message: Message; stepsToggle?: ReactNode }) {
+function BubbleBody({ message, stepsToggle, steps }: { message: Message; stepsToggle?: ReactNode; steps?: ReactNode }) {
   if (message.direction === "in") {
     return (
       <div className="flex flex-col items-end gap-[5px]">
@@ -103,22 +103,23 @@ function BubbleBody({ message, stepsToggle }: { message: Message; stepsToggle?: 
           </AgentBubble>
         )}
         <MetaLine message={message} align="start" extra={stepsToggle} />
+        {steps}
       </div>
     </div>
   );
 }
 
 /**
- * The steps of a turn, as a trail of muted lines beside the bubble: each one what Tex wrote and then
- * started over from (one line, cut short), with what it went on to do under it. The last
- * `STEPS_SHOWN` are there; earlier ones fold into "+N earlier steps". While the turn is written
- * (`live`) screen readers skip them, as they skip the draft.
+ * The steps of a turn, as a trail of muted lines: each one what Tex did ("Checked your inbox"), or
+ * what it wrote and then started over from (one line, cut short), with the crew's lines under it. The
+ * last `STEPS_SHOWN` are there; earlier ones fold into "+N earlier steps". While the turn is written
+ * (`live`) screen readers skip them, as they skip the draft. `className` places it.
  */
-function StepTrail({ steps, live }: { steps: readonly DraftStep[]; live?: boolean }) {
+function StepTrail({ steps, live, className }: { steps: readonly DraftStep[]; live?: boolean; className?: string }) {
   const [all, setAll] = useState(false);
   const { shown, earlier } = stepsToShow(steps, all);
   return (
-    <div aria-hidden={live || undefined} className="ml-[42px] flex min-w-0 flex-col gap-1 border-l-2 border-line pb-2 pl-3 text-[13px] text-muted">
+    <div aria-hidden={live || undefined} className={cn("flex min-w-0 flex-col gap-1 border-l-2 border-line pl-3 text-[13px] text-muted", className)}>
       {earlier > 0 && (
         <button
           type="button"
@@ -132,7 +133,7 @@ function StepTrail({ steps, live }: { steps: readonly DraftStep[]; live?: boolea
       <ol className="flex min-w-0 flex-col gap-1">
         {shown.map((step, index) => (
           <li key={earlier + index} className="flex min-w-0 flex-col gap-0.5 transition-opacity duration-200 starting:opacity-0 motion-reduce:transition-none">
-            <span className="truncate">{stepLine(step.text)}</span>
+            {step.text && <span className={cn("truncate", step.action && "text-fg-2")}>{stepLine(step.text)}</span>}
             {step.progress.map((line) => (
               <span key={line.who} className="flex min-w-0 items-center gap-1.5 text-[12px]">
                 <AgentFigure who={line.who} mood="working" glyph size={14} label="" className="shrink-0" />
@@ -148,40 +149,14 @@ function StepTrail({ steps, live }: { steps: readonly DraftStep[]; live?: boolea
   );
 }
 
-/** Answers whose steps have folded once (this session): drawn again, after another chat was open, they start folded. */
-const foldedOnce = new Set<string>();
-
-/**
- * Whether an answer's steps are open. The answer took the place of what was being written, with the
- * steps above it, so they start open and fold away at once, smoothly (`StepsRegion`).
- */
-function useStepsOpen(messageId: string) {
-  const [fresh] = useState(() => !foldedOnce.has(messageId));
-  const [open, setOpen] = useState(fresh);
-  useEffect(() => {
-    if (!fresh) return;
-    foldedOnce.add(messageId);
-    // Two frames, so the steps are drawn open once before they fold.
-    let second = 0;
-    const first = requestAnimationFrame(() => {
-      second = requestAnimationFrame(() => setOpen(false));
-    });
-    return () => {
-      cancelAnimationFrame(first);
-      cancelAnimationFrame(second);
-    };
-  }, [fresh, messageId]);
-  return [open, setOpen] as const;
-}
-
-/** The steps of an answer: a region that folds shut to nothing and opens again. */
+/** The steps of a finished turn: a region that opens and shuts. */
 function StepsRegion({ id, open, children }: { id: string; open: boolean; children: ReactNode }) {
   return (
     <div
       id={id}
       inert={!open}
       className={cn(
-        "grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none",
+        "grid w-full transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none",
         open ? "grid-rows-[1fr]" : "grid-rows-[0fr] opacity-0",
       )}
     >
@@ -191,41 +166,54 @@ function StepsRegion({ id, open, children }: { id: string; open: boolean; childr
 }
 
 /**
- * A message with the steps of the turn before it folded into it: "Show steps (N)" opens them again.
- * On Tex's answer the button is on its line of channel and time, so the answer sits exactly where its
- * draft was; on anything else (the next message, when a turn ended without an answer) it is a line of its own.
+ * The one line a message carries about the turn whose steps folded into it: "Checked your inbox · 2
+ * steps" (`trailLine`), which opens the steps and shuts them again. It starts shut.
  */
-function BubbleWithSteps({ message, steps }: { message: Message; steps: readonly DraftStep[] }) {
-  const id = useId();
-  const [open, setOpen] = useStepsOpen(message.id);
-  const toggle = (
+function TrailToggle({ steps, open, onToggle, controls }: { steps: readonly DraftStep[]; open: boolean; onToggle: () => void; controls: string }) {
+  return (
     <button
       type="button"
       aria-expanded={open}
-      aria-controls={id}
-      onClick={() => setOpen((was) => !was)}
-      className="font-medium text-muted underline-offset-2 transition-colors hover:text-fg hover:underline"
+      aria-controls={controls}
+      title={open ? "Hide the steps" : "Show the steps"}
+      onClick={onToggle}
+      className="inline-flex max-w-[min(62vw,380px)] items-center gap-1 align-bottom font-medium text-muted underline-offset-2 transition-colors hover:text-fg hover:underline"
     >
-      {open ? "Hide steps" : `Show steps (${steps.length})`}
+      <span className="truncate">{trailLine(steps)}</span>
+      <ChevronRightIcon size={11} className={cn("shrink-0 transition-transform duration-200 motion-reduce:transition-none", open && "rotate-90")} />
     </button>
   );
-  const region = (
-    <StepsRegion id={id} open={open}>
-      <StepTrail steps={steps} />
-    </StepsRegion>
-  );
+}
+
+/**
+ * A message with the steps of the turn before it folded into it. On Tex's answer (or question) the
+ * trail is on its line of channel and time, and the steps open under it, so the answer stays where
+ * its draft was; on anything else (the next message, when a turn ended without an answer) the trail
+ * is a line of its own above it.
+ */
+function BubbleWithSteps({ message, steps }: { message: Message; steps: readonly DraftStep[] }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const toggle = <TrailToggle steps={steps} open={open} onToggle={() => setOpen((was) => !was)} controls={id} />;
   if (message.direction === "out") {
     return (
-      <div className="flex flex-col">
-        {region}
-        <BubbleBody message={message} stepsToggle={toggle} />
-      </div>
+      <BubbleBody
+        message={message}
+        stepsToggle={toggle}
+        steps={
+          <StepsRegion id={id} open={open}>
+            <StepTrail steps={steps} className="ml-1 pt-0.5 pb-1" />
+          </StepsRegion>
+        }
+      />
     );
   }
   return (
     <div className="flex flex-col">
       <p className="ml-[42px] pb-1.5 text-[12px]">{toggle}</p>
-      {region}
+      <StepsRegion id={id} open={open}>
+        <StepTrail steps={steps} className="ml-[42px] pb-2" />
+      </StepsRegion>
       <BubbleBody message={message} />
     </div>
   );
@@ -312,7 +300,7 @@ function Writing({ text }: { text: string }) {
 function TurnInProgress({ steps, writing, working, lines }: { steps: readonly DraftStep[]; writing: string | null; working: boolean; lines: ProgressLine[] }) {
   return (
     <div className="flex flex-col">
-      {steps.length > 0 && <StepTrail steps={steps} live />}
+      {steps.length > 0 && <StepTrail steps={steps} live className="ml-[42px] pb-2" />}
       {writing !== null ? <Writing text={writing} /> : working && <Working lines={steps.length > 0 ? [] : lines} />}
     </div>
   );

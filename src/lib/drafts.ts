@@ -10,8 +10,10 @@
 //   of writing without starting over), so a short "Let me check your calendar." before a tool never
 //   flashes on screen.
 // - What was shown never vanishes: a run that was on screen and is started over becomes a step, one
-//   muted line with what Tex went on to do under it. When the answer arrives, the steps fold into a
-//   "Show steps" toggle on it (for this session only: they are not saved).
+//   muted line. What Tex goes on to do is a step too: each of Tex's own progress lines ("Checked your
+//   inbox"), also when it wrote nothing before it; a crew member's line goes under the step it
+//   follows. When the answer arrives, it carries the turn's steps as one line on it ("Checked your
+//   inbox · 2 steps", `trailLine`), which opens them (for this session only: they are not saved).
 
 import type { Message, MessageDraft } from "./api/client";
 import { addProgress, type ProgressLine } from "./crew";
@@ -28,9 +30,20 @@ const CLOSED_KEPT = 20;
 const FOLDED_KEPT = 40;
 /** How many steps one turn keeps. */
 const STEPS_KEPT = 30;
+/**
+ * Steps kept aside for a turn with nothing on screen (`Drafts.loose`) still go to its answer when the
+ * answer comes this long after the turn ended (the answer and the end of the turn travel apart).
+ */
+export const LOOSE_KEPT_MS = 30_000;
 
-/** A run of text that was shown and then started over: kept as one muted line, with what Tex went on to do. */
-export type DraftStep = { text: string; progress: ProgressLine[] };
+/**
+ * One step of a turn, as one muted line:
+ * - a run of text that was shown and then started over (`text`, what Tex wrote);
+ * - something Tex did (`action`: its progress line, "Checked your inbox");
+ * - or, with no `text`, the crew at work before Tex had shown anything.
+ * `progress` is the crew's latest line each (the progress lines that followed it).
+ */
+export type DraftStep = { text: string; progress: ProgressLine[]; action?: true };
 
 /** The text Tex is writing since it last started over. */
 export type DraftRun = {
@@ -79,9 +92,18 @@ export type Drafts = {
   answered: string[];
   /** The steps of answered turns, by the id of the message they folded into. */
   folded: Record<string, DraftStep[]>;
+  /**
+   * The steps of the turn that runs while no conversation has a turn on screen: Tex went straight to
+   * its tools without writing (a draft makes the turn), or the turn is in a chat app (Telegram), whose
+   * answer isn't written on screen. The agent runs one turn at a time, so they are that turn's. Its
+   * first draft takes them; else its answer or question does (`messageArrived`).
+   */
+  loose: DraftStep[];
+  /** When the turn the loose steps belong to ended (this browser's clock), or null while it runs. */
+  looseEndedAt: number | null;
 };
 
-export const NO_DRAFTS: Drafts = { turns: {}, closed: [], answered: [], folded: {} };
+export const NO_DRAFTS: Drafts = { turns: {}, closed: [], answered: [], folded: {}, loose: [], looseEndedAt: null };
 
 /** Where the drafts live in the query cache (live only: never fetched). */
 export const DRAFTS_KEY = ["agent", "drafts"] as const;
@@ -131,23 +153,27 @@ export function draftArrived(drafts: Drafts, draft: MessageDraft, now: number): 
   const before = drafts.turns[conversationId];
   let turn: DraftTurn;
   let closed = drafts.closed;
+  let base = drafts;
   if (before && before.turnId === draft.turnId) {
     turn = before;
   } else {
-    // A new turn here. What one before it left on screen (it ended without its answer) stays above it.
+    // A new turn here. What one before it left on screen (it ended without its answer) stays above it,
+    // then what this turn did before its first draft (`loose`). Loose steps of a turn that ended are not this one's.
     if (before) closed = closing(closed, before.turnId);
+    const earlier = drafts.looseEndedAt === null ? drafts.loose : [];
+    if (drafts.loose.length || drafts.looseEndedAt !== null) base = { ...drafts, loose: [], looseEndedAt: null };
     turn = {
       turnId: draft.turnId,
       messageId: draft.messageId,
       startedAt: draft.at,
       run: null,
       runs: 0,
-      steps: before ? withStep(before.steps, before.run) : [],
+      steps: [...(before ? withStep(before.steps, before.run) : []), ...earlier].slice(-STEPS_KEPT),
       over: false,
     };
   }
   const run = turn.run;
-  const next = (changed: DraftTurn): Drafts => ({ ...setTurn(drafts, conversationId, changed), closed });
+  const next = (changed: DraftTurn): Drafts => ({ ...setTurn(base, conversationId, changed), closed });
 
   if (!draft.text.trim()) {
     if (!run && turn === before) return drafts;
@@ -171,25 +197,52 @@ export function runRevealed(drafts: Drafts, conversationId: string, turnId: stri
   return setTurn(drafts, conversationId, { ...turn, run: { ...run, shown: true } });
 }
 
+/** A step for something Tex did: its progress line ("Checked your inbox"). */
+const actionStep = (line: ProgressLine): DraftStep => ({ text: line.text, progress: [], action: true });
+
 /**
- * A progress line arrived (what Tex or the crew is doing). It goes with what is on screen of each
- * turn that is running: the run being written, or else the last step, so it shows under that step.
- * With neither, the "working" bubble shows it, as before.
+ * A progress line joins a turn's steps. Tex's own line is a step of its own. A crew member's goes
+ * under the last step (one line per member, its latest), or is a step of its own when there is none.
+ */
+function stepsWithLine(steps: DraftStep[], line: ProgressLine): DraftStep[] {
+  if (line.who === "tex") return [...steps, actionStep(line)].slice(-STEPS_KEPT);
+  const last = steps[steps.length - 1];
+  if (!last) return [{ text: "", progress: [line] }];
+  return [...steps.slice(0, -1), { ...last, progress: addProgress(last.progress, line) }];
+}
+
+/**
+ * A progress line arrived (what Tex or the crew is doing). It goes to each turn on screen that still runs:
+ * - Tex's own line is something it did, so it becomes a step. The run being written ends there: Tex
+ *   starts its draft over for every tool, and that empty draft can come a moment after the line. A run
+ *   that was shown becomes a step before it; one that wasn't goes, as it would have.
+ * - A crew member's line goes with what is on screen: the run being written, else the last step, else
+ *   it is a step of its own.
+ * With no turn on screen it is kept aside (`loose`) for the turn's answer. A turn that ended left its
+ * loose steps for its answer; a new line after that starts the next turn's.
  */
 export function progressArrived(drafts: Drafts, line: ProgressLine): Drafts {
   let turns = drafts.turns;
+  let running = false;
   for (const [conversationId, turn] of Object.entries(drafts.turns)) {
     if (turn.over) continue;
-    let next: DraftTurn | null = null;
-    if (turn.run?.shown) next = { ...turn, run: { ...turn.run, progress: addProgress(turn.run.progress, line) } };
-    else if (turn.steps.length) {
-      const last = turn.steps[turn.steps.length - 1];
-      next = { ...turn, steps: [...turn.steps.slice(0, -1), { ...last, progress: addProgress(last.progress, line) }] };
-    }
-    if (next) turns = { ...turns, [conversationId]: next };
+    running = true;
+    let next: DraftTurn;
+    if (line.who === "tex") next = { ...turn, run: null, steps: stepsWithLine(withStep(turn.steps, turn.run), line) };
+    else if (turn.run?.shown) next = { ...turn, run: { ...turn.run, progress: addProgress(turn.run.progress, line) } };
+    else next = { ...turn, steps: stepsWithLine(turn.steps, line) };
+    turns = { ...turns, [conversationId]: next };
   }
-  return turns === drafts.turns ? drafts : { ...drafts, turns };
+  if (running) return { ...drafts, turns };
+  const loose = drafts.looseEndedAt === null ? drafts.loose : [];
+  return { ...drafts, loose: stepsWithLine(loose, line), looseEndedAt: null };
 }
+
+/** Whether the loose steps go to a message that arrives now: the turn still runs, or ended a moment ago. */
+const looseFor = (drafts: Drafts, now: number): DraftStep[] =>
+  drafts.loose.length && (drafts.looseEndedAt === null || now - drafts.looseEndedAt <= LOOSE_KEPT_MS) ? drafts.loose : [];
+
+const NO_LOOSE = { loose: [], looseEndedAt: null } satisfies Pick<Drafts, "loose" | "looseEndedAt">;
 
 /** Steps fold into a message: after any that folded into it before, kept for the last `FOLDED_KEPT` messages. */
 function withFolded(folded: Drafts["folded"], messageId: string, steps: DraftStep[]): Drafts["folded"] {
@@ -211,19 +264,35 @@ function foldInto(drafts: Drafts, conversationId: string, messageId: string, ste
  * it, and the turn goes on (Tex may still be writing after a card, and what it writes is not the
  * card). An incoming message changes nothing while the turn runs. Once a turn ended without its
  * answer, what it left on screen folds into whichever message comes next.
+ *
+ * With no turn on screen in its conversation, Tex's answer or question takes the loose steps (what
+ * the turn did with nothing on screen), if the turn still runs or ended within `LOOSE_KEPT_MS`. An
+ * incoming message after a turn ended lets them go. `now` is this browser's clock.
  */
-export function messageArrived(drafts: Drafts, message: Pick<Message, "id" | "conversationId" | "direction" | "approvalId">): Drafts {
+export function messageArrived(
+  drafts: Drafts,
+  message: Pick<Message, "id" | "conversationId" | "direction" | "approvalId">,
+  now = Date.now(),
+): Drafts {
   const turn = drafts.turns[message.conversationId];
   if (message.direction === "out" && message.approvalId && turn && !turn.over) {
     const asked = { ...turn, steps: [], card: message.id };
     return { ...setTurn(drafts, message.conversationId, asked), folded: withFolded(drafts.folded, message.id, turn.steps) };
   }
   if (message.direction !== "out" || message.approvalId) {
-    return turn?.over ? foldInto(drafts, message.conversationId, message.id, turn.steps) : drafts;
+    let next = turn?.over ? foldInto(drafts, message.conversationId, message.id, turn.steps) : drafts;
+    if (message.direction === "out") {
+      // A question with nothing on screen: what the turn did before it folds into it.
+      const loose = looseFor(next, now);
+      if (loose.length) next = { ...next, ...NO_LOOSE, folded: withFolded(next.folded, message.id, loose) };
+    } else if (next.looseEndedAt !== null) next = { ...next, ...NO_LOOSE };
+    return next;
   }
   if (turn) return { ...foldInto(drafts, message.conversationId, message.id, turn.steps), closed: closing(drafts.closed, turn.turnId) };
-  if (drafts.answered.includes(message.conversationId)) return drafts;
-  return { ...drafts, answered: [...drafts.answered, message.conversationId] };
+  const loose = looseFor(drafts, now);
+  const next = loose.length ? { ...drafts, ...NO_LOOSE, folded: withFolded(drafts.folded, message.id, loose) } : drafts;
+  if (next.answered.includes(message.conversationId)) return next;
+  return { ...next, answered: [...next.answered, message.conversationId] };
 }
 
 /**
@@ -251,11 +320,13 @@ export function messageSettled(drafts: Drafts, message: Pick<Message, "id" | "di
 /**
  * The agent is no longer at work (`agent.status` other than `busy`, at the end of a turn and at the
  * start of the next one): nothing is being written. Each turn still running ends as above. The
- * finished turns are still remembered.
+ * finished turns are still remembered. Loose steps are kept for the answer for `LOOSE_KEPT_MS`.
  */
-export function turnsOver(drafts: Drafts): Drafts {
+export function turnsOver(drafts: Drafts, now = Date.now()): Drafts {
   let next = drafts;
   for (const [conversationId, turn] of Object.entries(drafts.turns)) if (!turn.over) next = ended(next, conversationId, turn);
+  // The loose steps wait a moment for the answer, which can come just after.
+  if (next.loose.length && next.looseEndedAt === null) next = { ...next, looseEndedAt: now };
   return next.answered.length ? { ...next, answered: [] } : next;
 }
 
@@ -263,10 +334,12 @@ export function turnsOver(drafts: Drafts): Drafts {
  * The stream came back and the agent turned out not to be at work: the turns it was writing ended
  * while the stream was down. They end as above; their answer, if one was missed, comes with the
  * thread asked for again (`answerInThread`). A turn that answers no message of its own can't be
- * matched to its answer that way, so it goes.
+ * matched to its answer that way, so it goes, and so do loose steps.
  */
 export function turnsOverAfterReconnect(drafts: Drafts): Drafts {
-  const next = turnsOver(drafts);
+  let next = turnsOver(drafts);
+  // Loose steps can't be matched to an answer that comes with the thread asked for again.
+  if (next.loose.length) next = { ...next, ...NO_LOOSE };
   let turns = next.turns;
   for (const [conversationId, turn] of Object.entries(next.turns)) if (turn.messageId === null) turns = without(turns, conversationId);
   return turns === next.turns ? next : { ...next, turns };
@@ -327,4 +400,23 @@ export function stepLine(text: string): string {
 export function stepsToShow(steps: readonly DraftStep[], all: boolean): { shown: readonly DraftStep[]; earlier: number } {
   if (all || steps.length <= STEPS_SHOWN) return { shown: steps, earlier: 0 };
   return { shown: steps.slice(-STEPS_SHOWN), earlier: steps.length - STEPS_SHOWN };
+}
+
+/** A step as one short line: what Tex did or wrote, or, for the crew at work alone, its latest line ("Scout: reading 4 pages"). */
+export function stepLabel(step: DraftStep): string {
+  const text = stepLine(step.text);
+  if (text) return text;
+  const last = step.progress[step.progress.length - 1];
+  return last ? `${last.name}: ${last.text}` : "";
+}
+
+/**
+ * The one line an answer carries about its turn: the last thing Tex did (its last own step; else the
+ * last step), and how many steps there were. "Checked your inbox · 2 steps".
+ */
+export function trailLine(steps: readonly DraftStep[]): string {
+  const headline = [...steps].reverse().find((step) => step.action) ?? [...steps].reverse().find((step) => stepLabel(step));
+  const count = `${steps.length} ${steps.length === 1 ? "step" : "steps"}`;
+  const label = headline ? stepLabel(headline) : "";
+  return label ? `${label} · ${count}` : count;
 }
