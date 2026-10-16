@@ -24,7 +24,6 @@ import {
   Handle,
   Position,
   ReactFlow,
-  ReactFlowProvider,
   useReactFlow,
   useViewport,
   type Edge,
@@ -32,6 +31,7 @@ import {
   type Node,
   type NodeChange,
   type NodeProps,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
@@ -363,9 +363,13 @@ function Zoom() {
   );
 }
 
-function Board(props: LaneCanvasProps) {
+/**
+ * The board. React Flow keeps its own store, made from the nodes it is first given, so the boxes
+ * are drawn from the first paint (and on the server); its instance comes with `onInit`.
+ */
+export default function LaneCanvas(props: LaneCanvasProps) {
   const { diagram, boxes, empties, results, heads, conditions, selected, count, editing, compact, dragging, onSelect, onRemove, onSkip, onPlus, onDrop, onDropTrigger, label } = props;
-  const flow = useReactFlow();
+  const flow = useRef<ReactFlowInstance | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const [heights, setHeights] = useState<Map<string, number>>(() => new Map());
   const [over, setOver] = useState<string | null>(null);
@@ -388,19 +392,21 @@ function Board(props: LaneCanvasProps) {
     return () => observer.disconnect();
   }, []);
   const placedOnce = useRef(false);
-  useEffect(() => {
-    if (!width) return;
+  const place = useCallback(() => {
+    if (!width || !flow.current) return;
     if (compact || !placedOnce.current) {
       placedOnce.current = true;
-      void flow.setViewport({ x: width / 2, y: compact ? 16 : 32, zoom });
+      void flow.current.setViewport({ x: width / 2, y: compact ? 16 : 32, zoom });
     }
-  }, [width, compact, zoom, flow]);
+  }, [width, compact, zoom]);
+  useEffect(place, [place]);
 
   const shared = (key: string): Shared => ({ selected: selected === key, editing, over: over === key, zone: zoneOf(key), onSelect, onRemove });
   const nodes: Node[] = [];
   for (const item of diagram.items) {
     const at = placed.boxes.get(item.key)!;
-    const base = { id: item.key, position: { x: at.x, y: at.y }, draggable: false, selectable: false, connectable: false, focusable: false };
+    // Its size before it is measured, so it is drawn from the first paint (and on the server).
+    const base = { id: item.key, position: { x: at.x, y: at.y }, initialWidth: at.width, initialHeight: at.height, draggable: false, selectable: false, connectable: false, focusable: false };
     if (item.kind === "results") nodes.push({ ...base, type: "results", data: { ...shared(item.key), ...results } });
     else if (item.kind === "empty") {
       const empty = empties.get(item.key);
@@ -413,7 +419,19 @@ function Board(props: LaneCanvasProps) {
   for (const head of heads) {
     const at = placed.heads.get(head.before);
     const lane = diagram.heads.find((item) => item.before === head.before)?.lane ?? "start";
-    if (at) nodes.push({ id: `head:${head.before}`, type: "head", position: { x: at.x, y: at.y }, draggable: false, selectable: false, connectable: false, focusable: false, data: { head, onSkip, editing, lane } });
+    if (at)
+      nodes.push({
+        id: `head:${head.before}`,
+        type: "head",
+        position: { x: at.x, y: at.y },
+        initialWidth: at.width,
+        initialHeight: at.height,
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        focusable: false,
+        data: { head, onSkip, editing, lane },
+      });
   }
   const edges: Edge[] = diagram.gaps.map((gap) => {
     const at = placed.gaps.get(gap.id)!;
@@ -453,7 +471,7 @@ function Board(props: LaneCanvasProps) {
     });
   }, []);
 
-  const point = (event: DragEvent) => flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+  const point = (event: DragEvent) => flow.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY }) ?? { x: 0, y: 0 };
   const onDragOver = (event: DragEvent) => {
     if (!dragging || !editing) return;
     event.preventDefault();
@@ -489,6 +507,10 @@ function Board(props: LaneCanvasProps) {
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
         onNodesChange={onNodesChange}
+        onInit={(instance) => {
+          flow.current = instance;
+          place();
+        }}
         defaultViewport={{ x: 0, y: 32, zoom: 1 }}
         minZoom={0.4}
         maxZoom={1.5}
@@ -518,12 +540,4 @@ function zonesFor(diagram: LaneDiagram, lane: Lane, count: number): Insert[] {
   return dropZones(diagram, lane, count)
     .filter((zone) => zone.key === `empty:${lane}`)
     .map((zone) => zone.insert);
-}
-
-export default function LaneCanvas(props: LaneCanvasProps) {
-  return (
-    <ReactFlowProvider>
-      <Board {...props} />
-    </ReactFlowProvider>
-  );
 }

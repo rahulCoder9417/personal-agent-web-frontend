@@ -726,7 +726,8 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
       <div className="flex flex-wrap items-center gap-2">
         {editing && (
           <span aria-live="polite" className={cn(T3, "text-muted tabular-nums")}>
-            {checking ? "Checking…" : `${shownStepCount(editor.steps)} of ${MAX_STEPS} steps`}
+            {shownStepCount(editor.steps)} of {MAX_STEPS} steps
+            {checking && <span className="sr-only"> · checking</span>}
           </span>
         )}
         {(knownBad || blocked) && problemCount > 0 && (
@@ -821,11 +822,11 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
               aria-label="Blocks"
               className="border-b border-line bg-surface px-4 py-6 @min-[1040px]/builder:overflow-y-auto @min-[1040px]/builder:border-r @min-[1040px]/builder:border-b-0"
             >
-              {compact && !paletteOpen ? (
-                <Btn className="w-full" onClick={() => setPaletteOpen(true)} aria-expanded={false}>
-                  Add a block
-                </Btn>
-              ) : (
+              {/* On a phone the blocks fold away until wanted. */}
+              <Btn className={cn("w-full md:hidden", paletteOpen && "mb-6")} onClick={() => setPaletteOpen(!paletteOpen)} aria-expanded={paletteOpen}>
+                {paletteOpen ? "Hide the blocks" : "Add a block"}
+              </Btn>
+              <div className={cn(!paletteOpen && "max-md:hidden")}>
                 <Palette
                   groups={groups}
                   query={query}
@@ -836,11 +837,10 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
                   pending={pendingLabel ? { label: pendingLabel, onCancel: () => setPending(null) } : null}
                   notConnected={notConnected}
                   onConnect={(app: App) => connect.open(app, "connect")}
-                  compact={compact}
                   loading={lists.pending || events.pending}
                   dragging={dragging?.key ?? null}
                 />
-              )}
+              </div>
             </aside>
           )}
           <section aria-label="Canvas" className={cn("relative min-w-0 bg-bg", compact ? "" : "h-[720px] @min-[1040px]/builder:h-auto")}>
