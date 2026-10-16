@@ -20,7 +20,7 @@ import { ChangedTag, StepMark } from "./flow-parts";
 export const NODE_WIDTH = 200;
 export const NODE_GAP = 40;
 /** Every box is as tall as the others, so the arrows between them run straight. */
-export const NODE_HEIGHT = 128;
+export const NODE_HEIGHT = 148;
 
 type StepData = {
   step: FlowStep;
