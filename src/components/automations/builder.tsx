@@ -289,7 +289,7 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
     const action = step.type === "action";
     boxes.set(boxKey, {
       key: boxKey,
-      logo: action ? step.app || "schedule" : "tex",
+      logo: action ? step.app || "app" : "tex",
       iconUrl: action ? iconOf(step.app) : null,
       label: `Step ${index + 1} · ${action ? (step.app ? appName(step.app) : "An app") : "Tex"}`,
       title: box?.title ?? shape.title,
@@ -334,7 +334,7 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
     const pill = conditionPill(preview[index].onlyIf, index);
     if (pill) conditions.set(stepKeyOf(step), { text: pill, warn: warnings.has(step.id) });
   });
-  const results = { title: editor.copyTo ? `Automations chat, and ${titleCase(editor.copyTo)}` : "Automations chat", line: "Results go to" };
+  const results = { title: "Automations chat", line: editor.copyTo ? `Results go to · and ${titleCase(editor.copyTo)}` : "Results go to" };
 
   // ---------------------------------------------------------------- the palette
 
@@ -437,6 +437,13 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
 
   function save(enabled?: boolean) {
     setTouched(new Set([ALL]));
+    if (knownBad) {
+      // The check found something: every box's problems show, and the first one opens.
+      const first = problemBox(firstProblemKey(check.data?.problems ?? []), stepped);
+      if (first) setSelected(first);
+      toastError(`Couldn’t save “${name}” yet`, "Fix the boxes marked in amber, then save again.");
+      return;
+    }
     if (blocked) {
       const first = editor.steps.find((step) => warnings.has(step.id));
       if (first) setSelected(stepKeyOf(first));
@@ -543,7 +550,7 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
       const text = boxes.get("trigger")!;
       return (
         <>
-          <InspectorHeader logo={text.logo} iconUrl={text.iconUrl} label={`Start when · ${text.label}`} title={text.title} status={editor.mode === "event" && editor.event.app ? <HealthChip health={health(editor.event.app)} /> : undefined} />
+          <InspectorHeader logo={text.logo} iconUrl={text.iconUrl} label={text.label === "Start when" ? "Start when" : `Start when · ${text.label}`} title={text.title} status={editor.mode === "event" && editor.event.app ? <HealthChip health={health(editor.event.app)} /> : undefined} />
           {editing ? (
             <>
               <TriggerForm editor={editor} onChange={changeBox("trigger")} problems={shown.get("trigger") ?? []} context={context} />
@@ -741,15 +748,15 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
         {editing &&
           (target.kind === "new" ? (
             <>
-              <Btn pending={savePending && (create.variables?.enabled === false || draftSave.paused)} disabled={savePending || knownBad} onClick={() => save(false)}>
+              <Btn pending={savePending && (create.variables?.enabled === false || draftSave.paused)} disabled={savePending} onClick={() => save(false)}>
                 Save paused
               </Btn>
-              <Btn variant="primary" pending={savePending && create.variables?.enabled !== false && !draftSave.paused} disabled={savePending || knownBad} onClick={() => save(true)}>
+              <Btn variant="primary" pending={savePending && create.variables?.enabled !== false && !draftSave.paused} disabled={savePending} onClick={() => save(true)}>
                 Save
               </Btn>
             </>
           ) : unsaved ? (
-            <Btn variant="primary" pending={savePending} disabled={savePending || knownBad} onClick={() => save()}>
+            <Btn variant="primary" pending={savePending} disabled={savePending} onClick={() => save()}>
               Save
             </Btn>
           ) : (

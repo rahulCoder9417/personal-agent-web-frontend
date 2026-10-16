@@ -452,15 +452,13 @@ export function TriggerForm({ editor, onChange, problems, context }: FormProps) 
       <Problems problems={problems} />
       <FieldBlock>
         <Label id={`${id}-mode`}>When it runs</Label>
-        <SegmentedControl<WhenMode>
-          aria-labelledby={`${id}-mode`}
-          options={MODES}
+        {/* One under another: the settings beside the canvas are narrow. */}
+        <RadioCards<WhenMode>
+          label="When it runs"
+          options={MODES.map((mode) => ({ ...mode, description: MODE_LINE[mode.value] }))}
           value={editor.mode}
-          fill
-          wrap
           onChange={(mode) => onChange({ ...editor, mode })}
         />
-        <span className="text-[12.5px] text-muted">{editor.mode ? MODE_LINE[editor.mode] : "Once at a moment, again and again on a schedule, or each time something happens in an app."}</span>
       </FieldBlock>
       {editor.mode === "once" && (
         <>

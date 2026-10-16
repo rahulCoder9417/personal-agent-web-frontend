@@ -38,7 +38,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import { dropZones, type Insert, type Lane, type LaneDiagram } from "@/lib/automation-lanes";
 import { MAX_STEPS } from "@/lib/automation-steps";
 import { cn } from "@/lib/format";
-import { BOX_WIDTH, laneLayout, nearestZone } from "@/lib/lane-layout";
+import { BOX_WIDTH, laneLayout, nearestZone, RESULTS_WIDTH } from "@/lib/lane-layout";
 import { CloseIcon, LockIcon, MinusIcon, PlusIcon, WarningIcon } from "../icons";
 import { AppLogo, Chip, T2, T3, type ChipTone } from "./parts";
 
@@ -206,8 +206,7 @@ function EmptyNode({ data }: NodeProps<Node<EmptyData, "empty">>) {
       style={{ width: BOX_WIDTH }}
       className={cn(
         "flex flex-col items-center gap-1 rounded-[14px] border-[1.5px] border-dashed bg-surface/60 p-4 text-center transition-colors",
-        zone === "on" ? "border-accent bg-accent-soft" : "border-line-strong",
-        over && "bg-[#dfe5ff]",
+        zone === "on" ? (over ? "border-accent bg-[#dfe5ff] shadow-[0_0_0_4px_var(--accent-soft)]" : "border-accent bg-accent-soft") : "border-line-strong",
         zone === "off" && "opacity-40",
       )}
     >
@@ -230,9 +229,10 @@ function ResultsNode({ data }: NodeProps<Node<ResultsData, "results">>) {
       type="button"
       onClick={() => onSelect("results")}
       aria-pressed={selected}
+      style={{ width: RESULTS_WIDTH }}
       aria-label={`${line} ${title}`}
       className={cn(
-        "flex h-[52px] w-[220px] items-center gap-3 rounded-full bg-surface pr-6 pl-3 text-left outline-none transition-shadow",
+        "flex h-[52px] items-center gap-3 rounded-full bg-surface pr-6 pl-3 text-left outline-none transition-shadow",
         selected ? "shadow-[0_0_0_2px_var(--accent)]" : "shadow-[0_0_0_1px_var(--line-strong)] hover:shadow-[0_0_0_1px_#c3bdb1]",
         "focus-visible:shadow-[0_0_0_2px_var(--accent)]",
       )}

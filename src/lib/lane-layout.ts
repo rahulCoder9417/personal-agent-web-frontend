@@ -7,7 +7,7 @@
 import type { LaneDiagram, LaneItem } from "./automation-lanes";
 
 export const BOX_WIDTH = 340;
-export const RESULTS_WIDTH = 220;
+export const RESULTS_WIDTH = 280;
 /** The lane's name above its first box. */
 export const HEAD_HEIGHT = 28;
 /** The line between two boxes, with room for its "+". */
