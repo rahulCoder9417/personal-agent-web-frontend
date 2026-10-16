@@ -87,8 +87,8 @@ describe("editing a saved automation", () => {
       kind: "repeat",
       nextRuns: [],
       problems: [
-        { step: "apps", code: "invalid", message: "Connect Linear first, or take it off the list." },
-        { step: null, code: "plan_limit", message: "Your Pro plan allows 5 automations, and they are used." },
+        { step: "apps", stepId: null, code: "invalid", message: "Connect Linear first, or take it off the list." },
+        { step: null, stepId: null, code: "plan_limit", message: "Your Pro plan allows 5 automations, and they are used." },
       ],
     };
     qc.setQueryData(qk.automationCheck(partsKey(editorFrom(automation, me.timezone)), automation.id), check);

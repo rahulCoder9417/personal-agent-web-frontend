@@ -1,13 +1,18 @@
-// An automation as a flow: the same five steps, left to right, everywhere it is drawn (the strip on
-// a card, the canvas on its own page, the list on a phone, the draft's card in the chat):
+// An automation as a flow, the same everywhere it is drawn (the strip on a card, the canvas on its
+// own page, the list on a phone, the draft's card in the chat). A one-instruction automation is five
+// boxes:
 //
 //   Trigger → Tex's instruction → Apps Tex may use → Asks you first → Results
 //
-// Every automation has this shape today: one trigger, one instruction, and fixed rules for approvals
-// and results (`../beckend/docs/automations-flow-proposal.md`, section 3). Nothing here draws; the
-// views only lay these steps out.
+// (`../beckend/docs/automations-flow-proposal.md`, section 3). One with steps (phase 4) is the
+// trigger, each step in order, and the results:
+//
+//   Trigger → Step 1 → … → Step N → Results
+//
+// with a step's "only if" on the arrow into it. Nothing here draws; the views only lay these out.
 
-import type { Automation, AutomationDraft, AutomationTrigger } from "./api/client";
+import type { Automation, AutomationDraft, AutomationStep, AutomationTrigger } from "./api/client";
+import { actionName, conditionLabel, conditionSentence, stepApps } from "./automation-steps";
 import { describeAutomationStatus, describeAutomationTimes, describeAutomationWhen, type AutomationStatus } from "./automations";
 import { AUTOMATION_KIND_LABEL, CHANNEL_LABEL, formatDateTime, humanizeEvent, listNames, PR_REVIEW_LABEL, titleCase } from "./format";
 
@@ -19,8 +24,32 @@ export const FLOW_STEP_IDS: readonly FlowStepId[] = ["trigger", "instruction", "
 /** One line of a step's details: a label and what it says. */
 export type FlowDetail = { label: string; value: string };
 
+/** A box that is one step of an automation with steps. */
+export type FlowStepInfo = {
+  /** The step's own id (`AutomationStep.id`). */
+  id: string;
+  /** 1 for the first. */
+  number: number;
+  type: AutomationStep["type"];
+  app: string | null;
+  /** The label on the arrow into it ("only if: mentions “urgent”"), or null when it always runs. */
+  condition: string | null;
+  /** It waits for the person's yes before it runs. */
+  askFirst: boolean;
+  /** …and that can't be turned off: its action sends, deletes or pays. */
+  locked: boolean;
+  /** "Show me this": its result goes into the run's answer. */
+  showResult: boolean;
+};
+
 export type FlowStep = {
+  /**
+   * Which of the five boxes it is. A step of an automation with steps is drawn as Tex's box (a Tex
+   * step) or as the apps' box (an app action), so it has the same marks.
+   */
   id: FlowStepId;
+  /** Unique in the flow: the box's id for the five, `step:<its id>` for a step. Selection and problems use it. */
+  key: string;
   /** The step's name, small, above its title: "Trigger", "Tex's instruction"… */
   label: string;
   /** What the step says, in one short line: the node's title. */
@@ -37,7 +66,17 @@ export type FlowStep = {
   note?: string;
   /** How the step stands: `paused` and `danger` (paused by the system) dim or mark the trigger. */
   tone: "default" | "paused" | "danger";
+  /** Set on a step of an automation with steps. */
+  step?: FlowStepInfo;
 };
+
+/** The key of a step's box in a flow. */
+export const stepKey = (stepId: string) => `step:${stepId}`;
+
+/** Whether an automation or a draft runs as steps (an older backend sends none: one instruction). */
+export function hasSteps(source: { steps?: readonly unknown[] | null }): boolean {
+  return (source.steps?.length ?? 0) > 0;
+}
 
 /**
  * What a flow is drawn from: an automation, or a draft Tex proposed (the same parts). `enabled` and
@@ -47,6 +86,8 @@ export type FlowSource = Pick<Automation, "kind" | "title" | "instruction" | "ru
   trigger?: AutomationTrigger | null;
   /** The apps Tex said it will use (phase 2). The trigger's app is not repeated there. */
   apps?: readonly string[] | null;
+  /** Its steps (phase 4); none is one instruction. */
+  steps?: readonly AutomationStep[] | null;
   enabled?: boolean;
   pausedReason?: Automation["pausedReason"];
   /** A draft that is no longer open: what became of it (`draftState`), in place of "Not saved yet". */
@@ -155,6 +196,7 @@ function triggerStep(source: FlowSource, accountZone: string | null | undefined,
   const short = review ? "New pull request" : source.kind === "once" ? "Once" : source.kind === "repeat" ? "Schedule" : `${app} event`;
   return {
     id: "trigger",
+    key: "trigger",
     label: STEP_LABEL.trigger,
     title,
     short,
@@ -169,6 +211,7 @@ function instructionStep(source: FlowSource): FlowStep {
   if (source.preset === "pr_review") {
     return {
       id: "instruction",
+      key: "instruction",
       label: STEP_LABEL.instruction,
       title: "Patch reviews it",
       short: "Patch reviews",
@@ -184,6 +227,7 @@ function instructionStep(source: FlowSource): FlowStep {
   }
   return {
     id: "instruction",
+    key: "instruction",
     label: STEP_LABEL.instruction,
     title: source.title,
     short: "Tex",
@@ -203,6 +247,7 @@ function appsStep(source: FlowSource): FlowStep {
   const names = apps.map(titleCase);
   return {
     id: "apps",
+    key: "apps",
     label: STEP_LABEL.apps,
     title: names.length ? listNames(names, "and") : NO_APPS,
     short: names.length === 0 ? "Your apps" : names.length <= 2 ? names.join(", ") : `${names.length} apps`,
@@ -221,6 +266,7 @@ function asksStep(source: FlowSource): FlowStep {
   const strict = !review && source.askFirst === "changes";
   return {
     id: "asks",
+    key: "asks",
     label: STEP_LABEL.asks,
     title: review ? REVIEW_ASKS : strict ? ASKS_CHANGES : ASKS_FIRST,
     short: review ? "Comments only" : strict ? "Asks always" : "Asks first",
@@ -248,6 +294,7 @@ function resultsStep(source: FlowSource): FlowStep {
   const copy = source.copyTo ? `Copy to ${CHANNEL_LABEL[source.copyTo]}` : null;
   return {
     id: "results",
+    key: "results",
     label: STEP_LABEL.results,
     title: "Automations chat",
     short: source.copyTo ? `Chat + ${CHANNEL_LABEL[source.copyTo]}` : "Automations chat",
@@ -265,17 +312,100 @@ function resultsStep(source: FlowSource): FlowStep {
   };
 }
 
+// ---------------------------------------------------------------- automations with steps
+
+/** How long a run's results and its trail are kept (decision 7 of the proposal). */
+export const KEPT_LINE = "Each step’s result is kept 2 days after the run, then removed; the trail of steps (done, skipped, failed) is kept 30 days.";
+export const TEX_STEP_NOTE = "A Tex step only reads and writes words: it can read the apps named here, but it can’t change anything. To send, create or delete something, add an app action step.";
+export const LOCKED_LINE = "Sending, deleting or paying always asks you first. This can’t be turned off.";
+
+/** A fixed input as a line: "query: from:boss@acme.com". */
+function inputLine(name: string, value: unknown): string {
+  return `${name}: ${settingValue(value)}`;
+}
+
+/** One step of an automation with steps, as its box. */
+function stepEntry(step: AutomationStep, index: number): FlowStep {
+  const number = index + 1;
+  const action = step.type === "action";
+  const app = action ? step.app : null;
+  const appName = app ? titleCase(app) : "App";
+  const condition = conditionLabel(step.onlyIf, index);
+  const inputs = Object.entries(step.inputs ?? {});
+  const askFirst = action && (step.askFirst || step.risky);
+  const instruction = step.instruction?.trim() ?? "";
+
+  const details: FlowDetail[] = [{ label: "Type", value: action ? "App action" : "Tex instruction" }];
+  if (action) {
+    details.push({ label: "App", value: app ? appName : "Not picked yet" });
+    details.push({ label: "Action", value: step.action ? actionName(step.action, app) : "Not picked yet" });
+    details.push({ label: "Fixed inputs", value: inputs.length ? inputs.map(([name, value]) => inputLine(name, value)).join("\n") : "None: Tex fills them from the steps before" });
+    details.push({ label: "Ask me first", value: step.risky ? "Yes, always: it sends, deletes or pays" : askFirst ? "Yes" : "No" });
+  } else {
+    details.push({ label: "Instruction", value: instruction || "Not written yet" });
+    details.push({ label: "May read", value: step.readApps.length ? listNames(step.readApps.map(titleCase), "and") : "No app: only what the steps before found" });
+  }
+  if (index > 0) details.push({ label: "Only if", value: conditionSentence(step.onlyIf, index) });
+  details.push({ label: "Show me this", value: step.showResult ? "Yes: its result is in the run’s answer" : "No: its result only goes to the next step" });
+
+  const lines = action ? inputs.slice(0, 1).map(([name, value]) => inputLine(name, value)) : instruction && instruction !== step.title ? [instruction] : [];
+  return {
+    id: action ? "apps" : "instruction",
+    key: stepKey(step.id),
+    label: `Step ${number} · ${action ? appName : "Tex"}`,
+    title: step.title,
+    short: action ? appName : "Tex",
+    lines,
+    apps: action ? (app ? [app] : []) : [...step.readApps],
+    details,
+    note: action
+      ? `Tex runs this one ${appName} action, with the inputs fixed here and the rest filled in from the steps before.${step.risky ? ` ${LOCKED_LINE}` : ""}`
+      : TEX_STEP_NOTE,
+    tone: "default",
+    step: { id: step.id, number, type: step.type, app, condition, askFirst, locked: action && step.risky, showResult: step.showResult },
+  };
+}
+
+/** The results of an automation with steps: the same chat and copy, which steps are shown, and how long it is all kept. */
+function steppedResults(source: FlowSource, steps: readonly AutomationStep[]): FlowStep {
+  const base = resultsStep(source);
+  const shown = steps.map((step, index) => (step.showResult ? index + 1 : null)).filter((n): n is number => n !== null);
+  return {
+    ...base,
+    details: [
+      ...base.details,
+      {
+        label: "Shown",
+        value: shown.length
+          ? `The results of step${shown.length === 1 ? "" : "s"} ${listNames(shown.map(String), "and")}, in the run’s answer, with a line of how each step went.`
+          : "Tex’s short answer, with a line of how each step went. Turn on “Show me this” on a step to see its result too.",
+      },
+      { label: "Kept", value: KEPT_LINE },
+    ],
+  };
+}
+
 /**
- * The five steps of an automation or a draft, in order. `accountZone` is the person's own time
+ * The boxes of an automation or a draft, in order: the five of a one-instruction automation, or the
+ * trigger, each step and the results of one with steps. `accountZone` is the person's own time
  * zone, so a schedule in it reads "your time".
  */
 export function automationFlow(source: FlowSource, accountZone?: string | null, now = new Date()): FlowStep[] {
+  if (source.steps?.length && source.preset !== "pr_review") {
+    const steps = source.steps;
+    return [triggerStep(source, accountZone, now), ...steps.map(stepEntry), steppedResults(source, steps)];
+  }
   return [triggerStep(source, accountZone, now), instructionStep(source), appsStep(source), asksStep(source), resultsStep(source)];
 }
 
-/** One step by its id. */
-export function flowStep(steps: readonly FlowStep[], id: FlowStepId): FlowStep {
-  return steps.find((step) => step.id === id) ?? steps[0];
+/** The apps an automation with steps names (its actions' and what its Tex steps read), each once. */
+export function steppedApps(source: Pick<FlowSource, "steps" | "trigger">): string[] {
+  return [...new Set([source.trigger?.app, ...stepApps((source.steps ?? []).map((step) => ({ type: step.type, app: step.app ?? "", readApps: step.readApps })))].filter((app): app is string => Boolean(app)))];
+}
+
+/** One box by its key (the five's keys are their ids). The first when it isn't there. */
+export function flowStep(steps: readonly FlowStep[], key: string): FlowStep {
+  return steps.find((step) => step.key === key) ?? steps[0];
 }
 
 /** The address of an automation's own page, where its flow is drawn. */
@@ -314,11 +444,25 @@ function stepParts(source: FlowSource): Record<FlowStepId, string> {
   };
 }
 
-/** The steps a draft would change in the automation it changes. */
-export function changedSteps(draft: FlowSource, current: FlowSource): Set<FlowStepId> {
+/** A step as it is compared: everything the person set (`risky` is the server's, and follows the action). */
+function stepPart(step: AutomationStep): string {
+  return JSON.stringify([step.type, step.title, step.app, step.action, step.inputs ?? {}, step.instruction, step.readApps, step.askFirst, step.onlyIf, step.showResult]);
+}
+
+/**
+ * The boxes a draft would change in the automation it changes, by key. With steps: the trigger, the
+ * results, and each step that is new or set differently (a step is known by its id, so a moved one
+ * whose own settings are the same is not marked).
+ */
+export function changedSteps(draft: FlowSource, current: FlowSource): Set<string> {
   const next = stepParts(draft);
   const now = stepParts(current);
-  return new Set(FLOW_STEP_IDS.filter((id) => next[id] !== now[id]));
+  if (!hasSteps(draft) && !hasSteps(current)) return new Set(FLOW_STEP_IDS.filter((id) => next[id] !== now[id]));
+  const changed = new Set<string>((["trigger", "results"] as const).filter((id) => next[id] !== now[id]));
+  if (next.instruction !== now.instruction) changed.add("instruction");
+  const before = new Map((current.steps ?? []).map((step) => [step.id, stepPart(step)]));
+  for (const step of draft.steps ?? []) if (before.get(step.id) !== stepPart(step)) changed.add(stepKey(step.id));
+  return changed;
 }
 
 export type DraftState = {

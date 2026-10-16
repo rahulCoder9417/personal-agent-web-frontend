@@ -6,6 +6,7 @@ import {
   type QueryClient,
   useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -14,6 +15,7 @@ import {
   ApiError,
   unwrap,
   type AgentRuntime,
+  type AppAction,
   type AgentSettings,
   type AgentStatus,
   type AgentSettingsUpdate,
@@ -29,6 +31,7 @@ import {
   type AutomationDraftInput,
   type AutomationInput,
   type AutomationParts,
+  type AutomationRun,
   type ByokProvider,
   type ChannelType,
   type Conversation,
@@ -55,6 +58,8 @@ import {
 } from "../conversations";
 import type { ProgressLine } from "../crew";
 import { withNotificationChange, type NotificationSettingsUpdate } from "../notifications";
+import { withRun } from "../automation-steps";
+import { draftSaveBody } from "../draft-save";
 
 // One place for every query key, so the event stream and mutations invalidate the same things.
 export const qk = {
@@ -80,6 +85,10 @@ export const qk = {
   automationCheck: (key: string, automationId: string | null) => ["automation-check", automationId ?? "", key] as const,
   /** The events one app can start an automation on. */
   appEvents: (appSlug: string) => ["apps", "events", appSlug] as const,
+  /** The actions a step can run in one app (`search` "" for the whole list). */
+  appActions: (appSlug: string, search: string) => ["apps", "actions", appSlug, search] as const,
+  /** The last runs of an automation with steps, each with its trail (under `automations`, so they refresh with it). */
+  automationRuns: (automationId: string) => ["automations", "runs", automationId] as const,
   prReviews: ["pr-reviews"] as const,
   agentStatus: ["agent", "status"] as const,
   agentSettings: ["agent", "settings"] as const,
@@ -896,6 +905,64 @@ export function useAppEvents(appSlug: string) {
   });
 }
 
+/**
+ * The actions a step can run in an app, each with its inputs and whether it asks first or costs a
+ * credit. The same for everyone and kept 10 minutes by the server, so here too. `search` narrows a
+ * long list on the server ("" is the whole list, at most 200). A 503 is Composio not answering:
+ * said so, with a way to try again; a 404 is an app it doesn't know.
+ */
+export function useAppActions(appSlug: string, search = "") {
+  return useQuery({
+    queryKey: qk.appActions(appSlug, search),
+    queryFn: () =>
+      unwrap(api.GET("/v1/apps/{appSlug}/actions", { params: { path: { appSlug }, query: search ? { search } : {} } })),
+    select: (data) => data.items,
+    enabled: appSlug !== "",
+    staleTime: 10 * 60_000,
+    placeholderData: (previous, query) => (query && previous && query.queryKey[2] === appSlug ? previous : undefined),
+    retry: (count, error) => !(error instanceof ApiError && (error.status === 404 || error.status === 503)) && count < 1,
+  });
+}
+
+/** The whole action lists of several apps (for what a run's actions can cost), by app. */
+export function useAppActionLists(appSlugs: readonly string[]) {
+  return useQueries({
+    queries: [...new Set(appSlugs)].filter(Boolean).map((appSlug) => ({
+      queryKey: qk.appActions(appSlug, ""),
+      queryFn: () => unwrap(api.GET("/v1/apps/{appSlug}/actions", { params: { path: { appSlug }, query: {} } })),
+      staleTime: 10 * 60_000,
+      retry: false,
+    })),
+    combine: (results) => {
+      const byApp = new Map<string, AppAction[]>();
+      const slugs = [...new Set(appSlugs)].filter(Boolean);
+      results.forEach((result, index) => {
+        if (result.data) byApp.set(slugs[index], result.data.items);
+      });
+      return { byApp, pending: results.some((result) => result.isPending) };
+    },
+  });
+}
+
+/**
+ * The last runs of an automation with steps (newest first, at most 10), for the trail its boxes
+ * show. Kept fresh by `automation_run.updated`. Only one with steps has any.
+ */
+export function useAutomationRuns(automationId: string, { enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: qk.automationRuns(automationId),
+    queryFn: () => unwrap(api.GET("/v1/automations/{automationId}/runs", { params: { path: { automationId } } })),
+    select: (data) => data.items,
+    enabled: enabled && automationId !== "",
+    retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 1,
+  });
+}
+
+/** A run of an automation with steps changed (`automation_run.updated`): its trail follows at once. */
+export function noteRun(qc: QueryClient, run: AutomationRun) {
+  qc.setQueryData<{ items: AutomationRun[] }>(qk.automationRuns(run.automationId), (data) => ({ items: withRun(data?.items, run) }));
+}
+
 /** Keeps the canvas's parts as the person's own draft, for "Ask Tex to change this". */
 export function useCreateAutomationDraft() {
   const qc = useQueryClient();
@@ -941,9 +1008,10 @@ export function noteDraft(qc: QueryClient, draft: AutomationDraft) {
 }
 
 /**
- * Saves a draft, which makes the automation (`enabled: false` saves it paused). A 409 means the
- * draft is no longer open (saved already, replaced, expired, discarded): it is asked for again so
- * its card says which.
+ * Saves a draft, which makes the automation (`enabled: false` saves it paused). `enabled` left out
+ * is left out of the request too: a new automation is then switched on, and a change keeps its
+ * automation on or paused as it is (`draftSaveBody`). A 409 means the draft is no longer open
+ * (saved already, replaced, expired, discarded): it is asked for again so its card says which.
  */
 export function useSaveAutomationDraft() {
   const qc = useQueryClient();
@@ -952,7 +1020,7 @@ export function useSaveAutomationDraft() {
       unwrap(
         api.POST("/v1/automation-drafts/{draftId}/save", {
           params: { path: { draftId: input.draftId } },
-          body: { enabled: input.enabled ?? true },
+          body: draftSaveBody(input.enabled),
         }),
       ),
     onSuccess: (saved: AutomationDraftSaved) => {

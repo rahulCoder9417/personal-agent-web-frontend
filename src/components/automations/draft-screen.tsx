@@ -60,7 +60,7 @@ function DraftBanner({ draft, changing, onEdit }: { draft: AutomationDraft; chan
           <Button variant="primary" pending={pending && !paused} disabled={pending} onClick={() => save(draft)}>
             Save
           </Button>
-          <Button pending={paused} disabled={pending} onClick={() => save(draft, false)}>
+          <Button pending={paused} disabled={pending} onClick={() => save(draft, { paused: true })}>
             Save paused
           </Button>
           {onEdit && (
