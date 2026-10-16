@@ -8,7 +8,7 @@ Browser ──▶ Next.js app ──/api/v1/*──▶ Next.js route handler ─
                                          token on the server)
 ```
 
-- **Screens**: chat, approvals, automations and pull-request review, activity, integrations (the chat apps, the apps and your own MCP servers: see [Integrations](#integrations)), crew and crew jobs, settings (general, agent and AI, memory, credits, plans), help (see [Help](#help)), the welcome flow and the "Getting started" checklist (see [Getting started](#getting-started)), sign-in and sign-up.
+- **Screens**: chat, approvals, automations and pull-request review, activity, integrations (the chat apps, the apps and your own MCP servers: see [Integrations](#integrations)), crew and crew jobs, pricing (your plan and Cancel, the plans, top-ups and how credits work: see [Pricing](#pricing)), settings (general, agent and AI, memory, credits), help (see [Help](#help)), the welcome flow and the "Getting started" checklist (see [Getting started](#getting-started)), sign-in and sign-up.
 - **One layout, two shapes**: on a wide screen a sidebar sits beside the current screen, and folds down to a rail of icons; on a phone there is a top bar, the screen edge to edge and five tabs along the bottom (the rest is under More). See [Panels that fold](#panels-that-fold).
 - **Every screen takes the whole width**, except Settings, which is one readable column beside its sections. See [Width](#width) and [Settings](#settings).
 - **Installable on a phone**: "Add to Home Screen" on Android and iPhone opens it in its own window. See [Installing on a phone](#installing-on-a-phone).
@@ -58,6 +58,7 @@ Things to try in the demo:
 - **Connecting an app** (Integrations → Apps, or the welcome flow's apps step): Connect opens Textcrew's own connect screen first. Cancel changes nothing; "Continue to Google" connects at once (there is no provider to sign in to) and comes back saying so. Reconnect the expired Google Drive account to see the screen say why. `/connected?app=gmail&status=failed` shows the page for a sign-in that didn't go through.
 - **Telegram, linked and unlinked** (Integrations → Chat apps): the seeded account has Telegram linked as @aarav_s, with its masked chat id ("•••• 4821") and "Last message 17 min ago"; with `TEXTCREW_DEMO_TELEGRAM=blocked` it says "Blocked the bot". Unlink asks first in a dialog, then a toast says so and the one-time code is offered right there; "Get my Telegram code" makes one, and the demo links it by itself after six seconds.
 - **Disconnecting an app** (Integrations → Apps): each account has its own Disconnect. GitHub's dialog lists the two pull-request reviews that stop with it; Gmail's second account says Tex goes on with the first. Afterwards a toast says so and GitHub is back under "Add more" with Connect.
+- **Pricing**: the demo account is on Pro. Press **Cancel plan**: the dialog says you keep Pro until the period ends and then move to Free; **Keep my plan** changes nothing, **Cancel plan** does it, a toast says so and the card says when it ends. With `TEXTCREW_DEMO_PLAN=free` or `max` (or `TEXTCREW_DEMO_ACCOUNT=new`, which is Free) the page shows that plan. `curl -X POST localhost:3000/api/demo/reset` starts the account over.
 - **Toasts**: on Pull-request review, turn review on for one more repo (five of five), then for another. The refusal is a toast with "See plans". A repo owned by `octocat` is refused under the field instead, because that one is about what was typed.
 - **Automations**: click a template or a "Try it in chat" link and the chat opens with the request typed in. The demo's canned reply doesn't make an automation, so the list stays as seeded.
 
@@ -177,7 +178,7 @@ The screens don't know which chat apps or which AI are on offer. They ask.
 - **The way back.** Composio sends the browser back with `status=success` or `status=failed` added (`connectOutcome`). From Integrations → Apps the sign-in takes over the tab and returns to `/integrations/apps?connected=<slug>` (the backend's own default, `/apps?connected=<slug>`, is redirected there with its query), where a toast says "Gmail connected" or, as an error, "Gmail didn't connect". The welcome flow opens the sign-in in a new tab so it stays put; that tab returns to `/connected?app=<slug>`, which says "Gmail is connected" or "Gmail didn't connect" with the app's icon beside Tex. Anything else that lands on `/connected` still says "All set".
 - **A refusal** (the plan's limit, an app the server can't connect, Composio being down: 403, 404, 503) closes the screen and is a toast, the plan's limit with "See plans".
 
-**The crew.** `GET /v1/crew` lists Tex and the specialists with a name, role and description each, whether each one works on this deployment yet (`available`), and for Scout which plan the real browser needs and whether it is built yet (`browser`). The crew page, the "soon" note in the navigation and the browser note on the Plans screen are built from it (`src/lib/crew.ts`). The app keeps the figures and their colours, and what the backend doesn't say: three lines on what each member does, a request to try, and the four steps of how the crew works (`CREW_GUIDE` and `CREW_STEPS` in the same file).
+**The crew.** `GET /v1/crew` lists Tex and the specialists with a name, role and description each, whether each one works on this deployment yet (`available`), and for Scout which plan the real browser needs and whether it is built yet (`browser`). The crew page, the "soon" note in the navigation and the browser note on Pricing's Max plan are built from it (`src/lib/crew.ts`). The app keeps the figures and their colours, and what the backend doesn't say: three lines on what each member does, a request to try, and the four steps of how the crew works (`CREW_GUIDE` and `CREW_STEPS` in the same file).
 
 **Credits.** What credits pay for is written once, in `src/lib/credit-costs.ts`: Textcrew AI if you use it, the agent's running time (1 credit per 10 minutes), app actions that change something (1 credit each; reading and searching are free), paid tools such as Scout's web search (about 1 credit per search) and browser use on the Max plan (2 credits per minute). The usage chart shows the same five parts from `GET /v1/usage`: browser use (`browserCredits`) and paid tools (`toolCredits`) are separate numbers. In the history (`GET /v1/credits/ledger`) browser use is part of a usage line and a paid tool is its own line, known by its name ("Web search"), because the ledger has no field for the kind of charge. Whether a plan includes browser use is `limits.browser`.
 
@@ -280,7 +281,7 @@ When something the person asked for doesn't work, a toast says so in the corner 
 
 - **One place draws them**: `src/components/toast.tsx`, on the `sonner` library. `toast({ title, body })` is a confirmation, `toastError(title, why, action?)` a failure. The toaster is mounted once, in `Providers`, so setup and sign-in can raise toasts too. sonner's own look is switched off and each part wears the app's design tokens.
 - **What stays under a field** is validation: what the form checks itself (an empty name, a URL that isn't https), and the API's verdict on a value that was typed, which is a 400: a coupon code, the code from Anthropic, an API key the provider rejects, a repo that doesn't exist (`refusedTypedValue` in `src/lib/action-errors.ts`). Everything else is a toast: a plan limit, a missing connection, too many tries, the server being down.
-- **Removing something asks first, in a dialog** (`ConfirmDialog` in `src/components/confirm-dialog.tsx`): disconnecting an app's account, unlinking a chat, removing an MCP server. The row has a real button for it (`danger-outline`), the dialog names what goes and says what stops, the keyboard starts on Cancel, and while the work runs its button has a spinner and nothing can be pressed. Then a toast says how it went. Smaller removals (a memory, an API key, an automation) still ask with the inline "confirm / cancel" (`ConfirmButton`).
+- **Removing something asks first, in a dialog** (`ConfirmDialog` in `src/components/confirm-dialog.tsx`): disconnecting an app's account, unlinking a chat, removing an MCP server, cancelling a plan (where the way out reads "Keep my plan", `cancelLabel`). The row has a real button for it (`danger-outline`), the dialog names what goes and says what stops, the keyboard starts on Cancel, and while the work runs its button has a spinner and nothing can be pressed. Then a toast says how it went. Smaller removals (a memory, an API key, an automation) still ask with the inline "confirm / cancel" (`ConfirmButton`).
 - **A list that fails to load** still shows the full "That didn't load" state with "Try again". That is a screen with nothing to show, not an action.
 - **The same failure twice** shows one toast, and at most three are up at once.
 - The chat's own two messages (a message that didn't send, an approval that didn't go through) are still red lines; the chat is being reworked separately.
@@ -291,20 +292,23 @@ Every screen under the shell takes the whole width of the sheet. `PageBody` (`sr
 
 - **Lists and tables** fill the width: activity, the credit history, the automations.
 - **Cards** sit in as many columns as fit. Apps, plans and templates use a grid. `Columns` (in `page.tsx`) fills each column top to bottom so cards of different heights leave no gaps; nothing uses it at the moment.
-- **Settings is the exception.** General, Agent & AI and Memory are one column at most 720px wide, beside the column of sections on a wide screen, because a setting is read with its control and a wide page scatters them. Credits and Plans fill the width beside the sections: Credits puts its side column beside the rest when the page itself has 760px (a container query, not the window's width), and the plans sit three across from 228px each. See [Settings](#settings).
+- **Settings is the exception.** General, Agent & AI and Memory are one column at most 720px wide, beside the column of sections on a wide screen, because a setting is read with its control and a wide page scatters them. Credits fills the width beside the sections, and puts its side column beside the rest when the page itself has 760px (a container query, not the window's width). See [Settings](#settings).
+- **Pricing** is a screen of its own, the whole width: the plans sit three across from 228px each, and Top-ups sits beside How credits work when the page has 900px. See [Pricing](#pricing).
 - **Text that is read**, not scanned, keeps a comfortable line with the `READING` class (72 characters): the intro paragraphs, the message in an approval.
 - **Approvals** show the list and the open approval side by side from 1024px, the list taking about a third; below that they stack, which includes a tablet with the sidebar showing.
 - Checked at 1440, 1100, 768 and 390 pixels wide.
 
 ## Settings
 
-Settings has five sections: General, Agent & AI, Memory, Credits and Plans (`src/app/(app)/settings/`).
+Settings has four sections: General, Agent & AI, Memory and Credits (`src/app/(app)/settings/`), and a fifth entry, Plans, which leads to [Pricing](#pricing).
 
-- **Where the sections are**: from 1280px a column of links on the left of the screen (`RouteNav` in `src/components/route-tabs.tsx`); below that a strip of tabs under the title, as on the other screens. The app's own sidebar takes the left from 768px, and a second column beside it any earlier would squeeze Credits and Plans.
+- **Where the sections are**: from 1280px a column of links on the left of the screen (`RouteNav` in `src/components/route-tabs.tsx`); below that a strip of tabs under the title, as on the other screens. The app's own sidebar takes the left from 768px, and a second column beside it any earlier would squeeze Credits.
 - **One column of groups**: a group is a heading, a line on what is in it, and a card of rows (`SettingsGroup` and `SettingRow` in `src/components/settings/settings-rows.tsx`). A row has the setting's name and a line of help on the left and its control on the right, 280px wide; on a phone the control goes under the words. A control that needs the room (the choice of agent) sits under its name at every width.
 - **General**: Profile (name, email, time zone, and Save changes), Linked chats (the same rows as Integrations → Chat apps; Link leads there, and a line points to Integrations for the apps and MCP servers), Getting started (the welcome tour and the checklist again), Help (the way to the Help page), Your data, and Account (who is signed in and Sign out; Delete account, which asks for DELETE first).
 - **Agent & AI**: on top, what runs now and what pays for it, with "How it’s decided" folded away under it (a `<details>`). Then **Engine**: the agent (Hermes or Claude Code) and Claude Code's model and thinking effort. Then **AI access**: the three ways to give Tex its AI, each a card with its name, its tag ("Recommended", "Beta") and where it stands ("In use", "Not available") at the top.
 - **Memory**: the kinds one under another.
+- **Credits**: the balance and what it is made of, credits used per day, a top-up, a coupon code, and the credit history. The history stays here rather than on Pricing: Pricing is what you pay for, Credits is what you spent.
+- **Plans** is now Pricing. The section's link goes to `/pricing`, and the old address `/settings/plans` is redirected there with its query (`OLD_PRICING_ADDRESSES` in `src/lib/pricing.ts`, read by `next.config.ts`), for Tex's messages and bookmarks.
 
 ### Dropdowns
 
@@ -412,13 +416,25 @@ There is no store app. On a phone, the browser's "Add to Home Screen" (Android: 
 
 The PNGs are drawn from `src/app/icon.svg` (plain) and `public/icons/icon-maskable.svg` (full bleed, face inside the middle 80%) with `rsvg-convert -w <size> -h <size>`. The Apple icon is `icon.svg` with square corners, at 180.
 
+## Pricing
+
+`/pricing` (`src/components/pricing/`) is where people see what they pay and change it: "Pricing" in the sidebar under Set up (after Crew), and a row of More on a phone (More stays lit on it). Every "See plans" and "Upgrade" link in the app leads here, and so does Polar after a payment (`/billing`). Each section has a heading and a line on what is in it.
+
+- **Your plan**: the name, the price, and what happens next: "Renews on 5 Nov for $12.", or once cancelled "Ends on 5 Nov. You keep Pro until then, then move to Free.", or a failed payment. Beside it the credits left, how many expire next and when, and the next month's credits; a link to the credit history in Settings → Credits. Then what the plan includes.
+- **Cancel plan** (paid plans that will renew, also after a failed payment, as the backend allows): a confirm dialog says you keep the plan until the end of the period you paid for, it won't renew, and you then move to Free with Free's own limits; your credits stay until they expire. The keyboard starts on **Keep my plan**. Then a toast. The API has no way to undo a cancel, so a cancelled plan has no "keep my plan" button: the plan's column offers to subscribe again, which starts a new paid month (see [Not done yet](#not-done-yet)).
+- **Plans**: Free, Pro and Max side by side, with the current one marked and the buttons the backend's rules allow (see [Billing](#billing-polar)). The waitlist's 50% off the first month is said under them; the regular prices the website strikes out are not in the API, so they aren't shown.
+- **Top-ups**: each pack with its price and Buy. On Free the price still shows, with the way to a plan that can buy it.
+- **How credits work**: what uses credits (`credit-costs.ts`, the same words as Credits and Help), 90 days, what happens at zero, failed tasks refunded, and a link to Help's credits.
+- **No automatic top-up.** The backend has none, so the page doesn't mention one.
+- The words are in `pricing-logic.ts`; tests draw the page on Free, Pro, Max, cancelled, a failed payment, loading and failed (`pricing-screen.test.ts`), click Cancel through (`cancel-plan.test.ts`), and check every way to it (`pricing-nav.test.ts`).
+
 ## Billing (Polar)
 
 The backend owns Polar; the app never talks to it directly.
 
-1. **Start**: Plans or Credits calls `POST /v1/billing/checkout` and sends the browser to the Polar URL it returns. The app remembers what it is waiting for (`src/lib/checkout.ts`).
+1. **Start**: Pricing or Credits calls `POST /v1/billing/checkout` and sends the browser to the Polar URL it returns. The app remembers what it is waiting for (`src/lib/checkout.ts`).
 2. **Pay**: on Polar's page. Polar then calls the backend's `/webhooks/polar`; only that changes the plan or adds credits.
-3. **Return**: Polar sends the browser to `/billing?checkout=done`, which forwards to Plans.
+3. **Return**: Polar sends the browser to `/billing?checkout=done`, which forwards to Pricing.
 4. **Confirm**: the app asks the backend every few seconds (there is no live event for a plan change) and confirms with a toast once the new plan or the top-up grant shows up.
 
 The plan buttons follow the backend's rules: a second plan can't be started while the current one will renew, it can once the current one is set to end, and top-ups need a paid plan. `/billing?checkout=done` also works with no session, for checkouts started from the desktop app.
@@ -474,7 +490,8 @@ src/components/      screens and UI primitives (ui.tsx, page.tsx, tex.tsx, shell
   apps/connect-dialog.tsx  Textcrew's own connect screen, shown before any app's sign-in page
   integrations/      the Integrations screen's chat apps tab and the tabs' headings
   channels/          linking a chat app with a one-time code, and the rows of linked chats (Integrations, Settings, the welcome flow)
-  confirm-dialog.tsx the dialog that asks before something is removed (Disconnect, Unlink, Remove)
+  confirm-dialog.tsx the dialog that asks before something is removed (Disconnect, Unlink, Remove, Cancel plan)
+  pricing/           the Pricing screen: your plan and Cancel, the plans, top-ups, how credits work, and the words (pricing-logic.ts)
 src/lib/
   api/               generated types, typed client, TanStack Query hooks, SSE → cache
   auth-flow.ts       sign-in and sign-up: where to land, Clerk's refusals in words, what comes next
@@ -505,6 +522,7 @@ src/lib/
   claude-code.ts     Claude Code's model and thinking effort as the dropdowns offer them
   credit-costs.ts    what credits pay for, in the words every screen uses
   checkout.ts        what a Polar checkout is waiting for, and when it has arrived
+  pricing.ts         the Pricing screen's address, and the old Settings → Plans address that leads there
   help.ts            the Help page's parts: what an answer is made of, the places it links to, the markup, the search
   help-content.ts    the Help page's words
   onboarding.ts      getting started: which steps are done (from the API), when the checklist shows and goes,
@@ -527,6 +545,7 @@ src/test/            for tests only: the pages the app has, read from src/app
 - Markdown is drawn only in Tex's chat messages. Memories, the activity log and an approval's preview are shown as typed.
 - Scout's browser: the contract says it isn't built (`browser.available: false`), so there is nothing to show but the note. `browserSeconds` is in the usage and not shown yet.
 - What the screens would like and the contract doesn't offer:
+  - Pricing: no way to undo a cancel (Polar has one, and the backend already follows its `subscription.uncanceled` event, but there is no endpoint for it), no automatic top-up, and no regular price beside the launch price.
   - An automation's last run says only when it ran, not how it went (answered, failed, ran late), and there is no list of one automation's own runs: "See result" and "See runs" open the Automations chat, where every automation's runs are mixed. Changing an automation is asked of Tex in chat, because the API can only pause, resume and delete one.
   - The backend can pause an automation for a suspended account or by Textcrew support (`suspended`, `admin`), but the contract's `pausedReason` doesn't list those, so such a card reads plain "Paused".
   - A pull-request review repo has no history: which pull requests were reviewed, the verdicts, or why a review failed. The screen shows only when the last one ran.
