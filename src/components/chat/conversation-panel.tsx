@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiError, errorMessage, type Conversation } from "@/lib/api/client";
 import { useConversations, useDeleteConversation, usePinnedAutomations, useRenameConversation } from "@/lib/api/hooks";
-import { allConversations, AUTOMATIONS_TITLE, isAutomationsChat, lastSpokenAt, TITLE_MAX, titleOf, titleToSave } from "@/lib/conversations";
+import { allConversations, AUTOMATIONS_TITLE, isAutomationsChat, lastSpokenAt, showsUnread, TITLE_MAX, titleOf, titleToSave } from "@/lib/conversations";
 import { CHANNEL_LABEL, cn, formatAgo } from "@/lib/format";
 import { useInView } from "@/lib/in-view";
 import { usePresence } from "@/lib/motion";
@@ -163,6 +163,7 @@ function Row({
   entering,
   leaving,
   open,
+  unread,
   now,
   menu,
   renaming,
@@ -179,6 +180,8 @@ function Row({
   /** It has just gone (deleted here or elsewhere): it fades and folds shut, and can't be reached. */
   leaving: boolean;
   open: boolean;
+  /** Tex said something in it that wasn't seen yet: a blue dot before its name, which is bolder. */
+  unread: boolean;
   now: Date;
   menu: MenuState | null;
   renaming: boolean;
@@ -223,7 +226,11 @@ function Row({
             open ? "bg-surface-2" : "hover:bg-surface-2/70",
           )}
         >
-          <span className={cn("w-full truncate text-[13.5px]", open ? "font-semibold text-fg" : "font-medium text-fg-2")}>{title}</span>
+          <span className={cn("flex w-full min-w-0 items-center gap-1.5 text-[13.5px]", open || unread ? "font-semibold text-fg" : "font-medium text-fg-2")}>
+            {unread && <span data-unread aria-hidden className="size-2 shrink-0 rounded-full bg-accent" />}
+            <span className="min-w-0 truncate">{title}</span>
+            {unread && <span className="sr-only">, unread</span>}
+          </span>
           <span className="flex w-full items-center gap-1.5 text-[12px] text-muted tabular-nums">
             {elsewhere && (
               <>
@@ -339,7 +346,8 @@ function Loading() {
 /**
  * The chat history: every conversation, the one something was last said in first, with "New chat"
  * above them. Each row opens its conversation, and its menu renames or deletes it (the Automations
- * chat, pinned above, has no menu). Further pages
+ * chat, pinned above, has no menu). A blue dot marks one with something from Tex that wasn't seen
+ * yet (never the one open, which is being read). Further pages
  * are asked for as the list is scrolled to its end. On a wide screen this is the column beside the
  * thread; on a phone it is the drawer.
  *
@@ -456,6 +464,7 @@ export function ConversationPanel({
               entering={entering}
               leaving={leaving}
               open={conversation.id === openId}
+              unread={showsUnread(conversation, openId)}
               now={now}
               menu={menu}
               renaming={renaming === conversation.id}

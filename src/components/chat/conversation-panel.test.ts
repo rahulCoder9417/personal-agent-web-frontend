@@ -114,3 +114,35 @@ describe("ConversationPanel with the Automations chat", () => {
     expect(pinnedPart(draw({ automationsOpen: true }))).toContain('aria-current="true"');
   });
 });
+
+describe("ConversationPanel, unread conversations", () => {
+  /** One dated row's markup, by its title. */
+  const rowOf = (html: string, title: string) => datedPart(html).split("<li").find((row) => row.includes(`>${title}<`)) ?? "";
+
+  it("puts a blue dot before an unread conversation's name, makes the name bolder, and says so to a screen reader", () => {
+    state.chats = [
+      conversation("cnv_a", "Plan a trip to Goa", { active: true, lastMessageAt: at("11:00"), unread: false }),
+      conversation("cnv_b", "Laptop", { channel: "telegram", unread: true }),
+    ];
+    const html = draw({ openId: "cnv_a" });
+    const unread = rowOf(html, "Laptop");
+    expect(unread).toContain("data-unread");
+    expect(unread).toContain("bg-accent");
+    expect(unread).toContain("font-semibold");
+    expect(unread).toContain('<span class="sr-only">, unread</span>');
+    expect(unread.indexOf("data-unread")).toBeLessThan(unread.indexOf(">Laptop<"));
+    // A read one has neither.
+    const read = rowOf(draw({ openId: "cnv_b" }), "Plan a trip to Goa");
+    expect(read).not.toContain("data-unread");
+    expect(read).toContain("font-medium");
+  });
+
+  it("never shows the dot on the conversation that is open, nor anywhere for an older backend", () => {
+    state.chats = [conversation("cnv_a", "Plan a trip to Goa", { unread: true })];
+    expect(rowOf(draw({ openId: "cnv_a" }), "Plan a trip to Goa")).not.toContain("data-unread");
+    expect(rowOf(draw({ openId: null }), "Plan a trip to Goa")).toContain("data-unread");
+    // No `unread` at all (a backend from before it): no dot.
+    state.chats = [conversation("cnv_a", "Plan a trip to Goa")];
+    expect(datedPart(draw())).not.toContain("data-unread");
+  });
+});

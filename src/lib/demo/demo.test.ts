@@ -480,6 +480,44 @@ describe("conversations", () => {
     }
   });
 
+  it("says which conversations have something from Tex that wasn't seen: the later Telegram chat, at first", async () => {
+    const all = (await list()).items;
+    expect(all.map((item) => [item.id, item.unread])).toEqual([
+      ["cnv_tg_1", true],
+      ["cnv_web_1", false],
+      ["cnv_automations", false],
+      ["cnv_web_0", false],
+      ["cnv_tg_0", false],
+    ]);
+  });
+
+  it("marks one read once, and says so on the stream; a reply in it makes it unread again", async () => {
+    const seen = events();
+    const read = await call<Conversation>("POST", "conversations/cnv_tg_1/read");
+    expect(read.status).toBe(200);
+    expect(read.body).toMatchObject({ id: "cnv_tg_1", unread: false });
+    expect((await list()).items.find((item) => item.id === "cnv_tg_1")?.unread).toBe(false);
+    expect(seen.filter((event) => event.type === "conversation.updated").map((event) => event.data)).toMatchObject([{ id: "cnv_tg_1", unread: false }]);
+    // Read already: the same answer, and nothing more on the stream.
+    expect((await call<Conversation>("POST", "conversations/cnv_tg_1/read")).body).toMatchObject({ unread: false });
+    expect(seen.filter((event) => event.type === "conversation.updated")).toHaveLength(1);
+    expect((await call<ErrorBody>("POST", "conversations/cnv_nope/read")).status).toBe(404);
+
+    // The person writes in the open web chat: their own message never makes it unread; Tex's answer does.
+    await call<Message>("POST", "messages", { text: "Thanks", clientMessageId: uuid(70) });
+    expect((await list()).items.find((item) => item.id === "cnv_web_1")?.unread).toBe(false);
+    vi.advanceTimersByTime(2000);
+    expect((await list()).items.find((item) => item.id === "cnv_web_1")?.unread).toBe(true);
+    const updates = seen.filter((event) => event.type === "conversation.updated").map((event) => event.data as Conversation);
+    expect(updates.at(-1)).toMatchObject({ id: "cnv_web_1", unread: true });
+  });
+
+  it("marks the Automations chat when a run arrives, until it is read", async () => {
+    runDemoAutomation(getStore());
+    expect((await list("?kind=automations")).items[0]).toMatchObject({ id: "cnv_automations", unread: true });
+    expect((await call<Conversation>("POST", "conversations/cnv_automations/read")).body).toMatchObject({ kind: "automations", unread: false });
+  });
+
   it("keeps the Automations chat apart: its own kind, never active, listed alone with kind=automations", async () => {
     const pinned = (await list("?kind=automations")).items;
     expect(pinned.map((item) => [item.id, item.kind, item.channel, item.epoch, item.active, item.title])).toEqual([

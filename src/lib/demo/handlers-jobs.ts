@@ -214,6 +214,7 @@ function reportConversation(state: DemoState, job: DemoCrewJob): Conversation | 
     lastMessageAt: at,
     title: job.title,
     active: false,
+    unread: false,
   };
   state.conversations.push(own);
   emit(state, "conversation.updated", own);

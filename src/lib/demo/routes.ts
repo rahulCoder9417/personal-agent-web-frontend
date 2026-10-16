@@ -27,6 +27,7 @@ const ROUTES: Route[] = [
   route("POST", "conversations", conversations.createConversation),
   route("PATCH", "conversations/:conversationId", conversations.updateConversation),
   route("DELETE", "conversations/:conversationId", conversations.deleteConversation),
+  route("POST", "conversations/:conversationId/read", conversations.markConversationRead),
   route("POST", "chats/new", conversations.startNewChat),
   route("POST", "attachments", chat.uploadAttachment),
   route("GET", "stream", chat.openStream),

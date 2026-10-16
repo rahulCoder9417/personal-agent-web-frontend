@@ -672,6 +672,8 @@ export function runCopyText(title: string, icon: "⏰" | "⚡", text: string): s
 /**
  * The chats so far: two on Telegram and two in the web chat, the later of each the active one, and
  * the Automations chat, where every run of every automation answers (pinned apart in the app).
+ * The later Telegram chat is unread: Tex wrote there (the moved meeting, the note waiting for an
+ * OK) since it was last looked at here. Everything else has been read.
  * All of Tex's replies are plain text but one, in the active web chat, which is written in Markdown.
  * Each conversation's title and `lastMessageAt` come from its messages, as the backend derives them.
  * The pull-request review was turned on with Telegram linked, so its verdict also went there as a copy.
@@ -682,13 +684,13 @@ function seedChats(now: Date, withAutomationsChat: boolean): { conversations: Co
   const messages: Message[] = [];
 
   /** One conversation, oldest message first. `at` is when each message was said. */
-  const chat = (id: string, channel: ChannelType, epoch: number, active: boolean, lines: [id: string, at: string, line: Line][], kind: "chat" | "automations" = "chat") => {
+  const chat = (id: string, channel: ChannelType, epoch: number, active: boolean, lines: [id: string, at: string, line: Line][], kind: "chat" | "automations" = "chat", unread = false) => {
     for (const [messageId, at, line] of lines) {
       messages.push({ id: messageId, conversationId: id, channel, createdAt: at, approvalId: null, ...line });
     }
     const firstIncoming = lines.find(([, , line]) => line.direction === "in");
     conversations.push({
-      id, channel, kind, epoch, active,
+      id, channel, kind, epoch, active, unread,
       startedAt: lines[0][1],
       lastMessageAt: lines[lines.length - 1][1],
       title: kind === "automations" ? AUTOMATIONS_TITLE : conversationTitle(firstIncoming?.[2].text ?? ""),
@@ -723,7 +725,7 @@ function seedChats(now: Date, withAutomationsChat: boolean): { conversations: Co
     // As the backend does it: the ask is its own message carrying the approval, then Tex's words.
     ["msg_5", earlierToday(now, 15), { direction: "out", status: "delivered", approvalId: "ap_email", text: "I'd like to send this email to Maya. Approve or Deny below." }],
     ["msg_6", earlierToday(now, 15), { direction: "out", status: "delivered", text: "The meeting is moved. I’ve drafted a note to Maya; it needs your OK before I send it." }],
-  ]);
+  ], "chat", true);
   chat("cnv_web_1", "web", 1, true, [
     ["msg_w5", earlierToday(now, 55), { direction: "in", status: "read", text: "What did you get done for me yesterday?" }],
     ["msg_w6", earlierToday(now, 54), { direction: "out", status: "sent", text: "Yesterday I posted your update in #team once you gave the OK, and filed two sets of meeting notes in Notion. Nothing from then is waiting on you." }],
