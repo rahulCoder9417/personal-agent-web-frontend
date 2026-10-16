@@ -239,3 +239,11 @@ export const LinkIcon = (p: IconProps) => (
     <path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1" />
   </Base>
 );
+
+/** A price tag: Pricing. */
+export const PricingIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M4 12.5V5.5a1.5 1.5 0 0 1 1.5-1.5h7L20 11.5 12.5 19 4 12.5Z" />
+    <path d="M8.5 8.5h.01" />
+  </Base>
+);

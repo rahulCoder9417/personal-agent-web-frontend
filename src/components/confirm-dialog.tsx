@@ -6,11 +6,12 @@ import { Button } from "./ui";
 
 /**
  * Asks once more before something is removed: what is being removed (the title names it), what
- * stops working, and Cancel or the action. Disconnecting an app and unlinking a chat app use it.
+ * stops working, and Cancel or the action. Disconnecting an app, unlinking a chat app and
+ * cancelling a plan use it.
  *
  * `onConfirm` does the work and says how it went (a toast); while it runs, the action button shows
  * a spinner and nothing in the dialog can be pressed, and when it settles the dialog closes. The
- * keyboard starts on Cancel, so Enter never removes anything by accident.
+ * keyboard starts on Cancel (or `cancelLabel`), so Enter never removes anything by accident.
  *
  * A native modal dialog, like the connect screen: the page behind can't be reached, Escape and a
  * click on the dimmed page close it, and the keyboard goes back to the button that opened it.
@@ -20,6 +21,7 @@ export function ConfirmDialog({
   icon,
   children,
   confirmLabel,
+  cancelLabel = "Cancel",
   onConfirm,
   onClose,
 }: {
@@ -30,6 +32,8 @@ export function ConfirmDialog({
   children?: ReactNode;
   /** "Disconnect Gmail". */
   confirmLabel: string;
+  /** The way out without doing it. "Cancel" unless that would read oddly ("Keep my plan" before cancelling a plan). */
+  cancelLabel?: string;
   onConfirm: () => Promise<unknown>;
   /** The dialog has closed, by Cancel, Escape, the dimmed page or after the work. */
   onClose: () => void;
@@ -101,7 +105,7 @@ export function ConfirmDialog({
         </div>
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" size="lg" onClick={close} disabled={working} autoFocus className="sm:h-[34px] sm:px-3.5 sm:text-[13.5px]">
-            Cancel
+            {cancelLabel}
           </Button>
           <Button variant="destructive" size="lg" pending={working} onClick={() => void confirm()} className="sm:h-[34px] sm:px-3.5 sm:text-[13.5px]">
             {confirmLabel}

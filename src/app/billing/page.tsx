@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AgentFigure } from "@/components/tex";
 import { authMode } from "@/lib/env";
+import { PRICING_PATH } from "@/lib/pricing";
 
 export const metadata: Metadata = { title: "Billing" };
 
@@ -11,7 +12,7 @@ export const metadata: Metadata = { title: "Billing" };
  * - Polar returns here after checkout (`/billing?checkout=done`);
  * - Tex links here from chat when credits run out.
  *
- * Signed in, it forwards to Plans (which watches for the payment to land). Not signed in happens
+ * Signed in, it forwards to Pricing (which watches for the payment to land). Not signed in happens
  * when checkout was started from the desktop app and ran in a browser with no session: then it
  * just confirms, and the change shows up in the app by itself.
  */
@@ -19,7 +20,7 @@ export default async function BillingPage({ searchParams }: PageProps<"/billing"
   const done = (await searchParams).checkout === "done";
   const signedIn = authMode() !== "clerk" || Boolean((await auth()).userId);
 
-  if (signedIn) redirect(done ? "/settings/plans?checkout=done" : "/settings/plans");
+  if (signedIn) redirect(done ? `${PRICING_PATH}?checkout=done` : PRICING_PATH);
   if (!done) redirect("/sign-in");
 
   return (
