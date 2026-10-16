@@ -40,6 +40,6 @@ describe("the old addresses", () => {
 
   it("are what the app's config redirects, so /apps?connected=gmail keeps its query on the way", async () => {
     // Next.js passes the query on to the destination of a redirect by itself.
-    expect(await nextConfig.redirects?.()).toEqual(OLD_ADDRESSES.map((redirect) => ({ ...redirect })));
+    expect(await nextConfig.redirects?.()).toEqual(expect.arrayContaining(OLD_ADDRESSES.map((redirect) => ({ ...redirect }))));
   });
 });

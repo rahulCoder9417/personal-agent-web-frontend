@@ -3,63 +3,24 @@
 import Link from "next/link";
 import { useId, useState, type FormEvent } from "react";
 import { ApiError, errorMessage, type CouponRedemption, type TopUpPack } from "@/lib/api/client";
-import { useCreateCheckout, useRedeemCoupon } from "@/lib/api/hooks";
+import { useRedeemCoupon } from "@/lib/api/hooks";
+import { TopUpOption, TopUpWaiting } from "@/components/pricing/top-ups";
 import { toastError } from "@/components/toast";
 import { Button, ButtonLink, Card, inputClass, SectionLabel } from "@/components/ui";
-import { usePendingCheckout } from "@/components/checkout-watcher";
 import { refusedTypedValue } from "@/lib/action-errors";
-import { startPendingCheckout } from "@/lib/checkout";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
-import { leaveTo } from "@/lib/navigate";
-import { cn, formatDate, formatMoney, formatNumber } from "@/lib/format";
-
-function TopUpOption({ pack }: { pack: TopUpPack }) {
-  const checkout = useCreateCheckout();
-
-  const buy = () =>
-    checkout.mutate(
-      { kind: "topup", topUpId: pack.id },
-      {
-        onSuccess: ({ checkoutUrl }) => {
-          startPendingCheckout({ kind: "topup", topUpId: pack.id, credits: pack.credits, startedAt: new Date().toISOString() });
-          leaveTo(checkoutUrl);
-        },
-        onError: (error) => {
-          if (error instanceof ApiError && (error.planLimit || error.status === 403)) {
-            toastError("Top-ups aren’t part of your plan", "Upgrade to buy one.", { label: "See plans", href: "/settings/plans" });
-          } else {
-            toastError("Couldn’t start the top-up checkout", error);
-          }
-        },
-      },
-    );
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-baseline gap-2">
-        <span className="text-[28px] leading-none font-semibold tracking-[-0.03em]">{formatMoney(pack.priceCents)}</span>
-        <span className="text-muted">for {formatNumber(pack.credits)} credits</span>
-      </div>
-      <p className="text-[13px] text-muted">Good for {pack.expiresInDays} days from the day you buy them.</p>
-      <Button variant="primary" pending={checkout.isPending} onClick={buy}>
-        Buy a top-up
-      </Button>
-    </div>
-  );
-}
+import { cn, formatDate, formatNumber } from "@/lib/format";
+import { PRICING_PATH } from "@/lib/pricing";
 
 /** Buy more credits. Only paid plans can; Free is pointed at the plans instead. */
 export function TopUpCard({ packs, allowed }: { packs: TopUpPack[]; allowed: boolean }) {
-  const pending = usePendingCheckout();
-  const started = pending?.kind === "topup";
-
   return (
     <Card role="group" aria-label="Buy a top-up" className="flex flex-col gap-3.5 p-5">
       <SectionLabel>Top-up</SectionLabel>
       {!allowed ? (
         <>
           <p className="text-[13.5px]">Top-ups come with Pro and Max. On Free, credits come from codes.</p>
-          <ButtonLink href="/settings/plans" variant="primary">
+          <ButtonLink href={PRICING_PATH} variant="primary">
             Upgrade
           </ButtonLink>
         </>
@@ -72,11 +33,7 @@ export function TopUpCard({ packs, allowed }: { packs: TopUpPack[]; allowed: boo
           </div>
         ))
       )}
-      {started && (
-        <p role="status" className="rounded-[10px] bg-accent-soft px-3 py-2 text-[12.5px] text-accent-dark">
-          Waiting for Polar to confirm your payment. Your credits land here by themselves; if you didn’t finish paying, start again.
-        </p>
-      )}
+      <TopUpWaiting />
       <p className="text-[12px] text-muted">Checkout by Polar. We never see card details.</p>
     </Card>
   );
@@ -186,7 +143,7 @@ export function CreditsExplainer() {
       <p>
         <strong className="font-semibold text-fg">No surprise bills.</strong> At zero, Tex pauses and tells you in chat.
       </p>
-      <Link href="/settings/plans" className="self-start font-medium text-accent hover:text-accent-dark">
+      <Link href={PRICING_PATH} className="self-start font-medium text-accent hover:text-accent-dark">
         Compare plans
       </Link>
     </Card>

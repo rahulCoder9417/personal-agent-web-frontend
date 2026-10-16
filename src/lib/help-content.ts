@@ -495,7 +495,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
             "Your automations pause. They start again by themselves when credits are added.",
             "App actions that change something are refused. Reading still works.",
           ),
-          p("The balance can dip a little below zero when a last task costs more than was left. Your next credits cover that first. To carry on, top up in {credits}, change plan in {plans}, or redeem a coupon."),
+          p("The balance can dip a little below zero when a last task costs more than was left. Your next credits cover that first. To carry on, buy a top-up or change plan in {plans}, or redeem a coupon in {credits}."),
         ],
       },
       {
@@ -517,6 +517,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
             ["**Max**", "4,500 credits every month. All apps and your own MCP servers. 50 automations. Web search through Textcrew. First in line when the server is busy."],
           ),
           p("Prices and the rest are in {plans}. Plans and top-ups are bought in the web app, never in Telegram."),
+          p("To cancel, press **Cancel plan** in {plans}. You keep the plan until the end of the period you’ve paid for, then move to Free. The credits you have stay until they expire."),
           note("To move between Pro and Max, cancel the plan you have first, then pick the other."),
         ],
       },

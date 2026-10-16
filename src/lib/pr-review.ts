@@ -4,6 +4,7 @@
 import { ApiError, errorMessage, type ChannelType, type PrReviewRepo } from "./api/client";
 import { CHANNEL_LABEL } from "./format";
 import { INTEGRATIONS_APPS_PATH } from "./integrations";
+import { PRICING_PATH } from "./pricing";
 
 export type RepoRef = { owner: string; repo: string };
 
@@ -124,7 +125,7 @@ export function describeEnableError(error: unknown, repo: string, plan: PlanCont
         : "Your plan’s automations are used up";
     return plan.canUpgrade === false
       ? { message: `${allows}, and each repo with review on counts as one. Turn one off to add this repo.`, link: { href: "/automations", label: "See your automations" } }
-      : { message: `${allows}, and each repo with review on counts as one. Turn one off, or upgrade.`, link: { href: "/settings/plans", label: "See plans" } };
+      : { message: `${allows}, and each repo with review on counts as one. Turn one off, or upgrade.`, link: { href: PRICING_PATH, label: "See plans" } };
   }
   if (error.status === 409) {
     return { message: "GitHub isn’t connected. Connect it in Integrations, then turn review on.", link: { href: INTEGRATIONS_APPS_PATH, label: "Open Integrations" } };

@@ -15,6 +15,7 @@ import {
   type McpServerDraft,
   type McpServerErrors,
 } from "./apps-logic";
+import { PRICING_PATH } from "@/lib/pricing";
 
 function ServerGlyph() {
   return (
@@ -37,7 +38,7 @@ export function McpLocked() {
       <p className="max-w-md text-[13.5px] text-muted">
         On Max you can add a server that speaks MCP, and Tex uses its tools like any connected app. Risky actions still wait for your Approve.
       </p>
-      <ButtonLink href="/settings/plans" variant="primary" className="mt-2">
+      <ButtonLink href={PRICING_PATH} variant="primary" className="mt-2">
         See Max
       </ButtonLink>
     </Card>

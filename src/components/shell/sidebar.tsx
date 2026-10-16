@@ -12,7 +12,8 @@ import { PANEL_MOTION, useMotionReady } from "@/lib/motion";
 import { PANELS } from "@/lib/panels";
 import { useStoredFlag } from "@/lib/stored-flag";
 import { INTEGRATIONS_PATH } from "@/lib/integrations";
-import { ActivityIcon, ApprovalsIcon, AppsIcon, AutomationsIcon, ChatIcon, ChevronsLeftIcon, CrewIcon, SettingsIcon } from "../icons";
+import { PRICING_PATH } from "@/lib/pricing";
+import { ActivityIcon, ApprovalsIcon, AppsIcon, AutomationsIcon, ChatIcon, ChevronsLeftIcon, CrewIcon, PricingIcon, SettingsIcon } from "../icons";
 import { GettingStartedNav } from "../onboarding/getting-started";
 import { IconButton } from "../ui";
 import { Brand } from "./brand";
@@ -194,6 +195,7 @@ export function Sidebar() {
   const setup: Item[] = [
     { href: INTEGRATIONS_PATH, label: "Integrations", icon: <AppsIcon size={18} /> },
     { href: "/crew", label: "Crew", icon: <CrewIcon size={18} />, note: crewNavNote(crew.data) },
+    { href: PRICING_PATH, label: "Pricing", icon: <PricingIcon size={18} /> },
     { href: "/settings", label: "Settings", icon: <SettingsIcon size={18} /> },
     { href: "/help", label: "Help", icon: <HelpIcon size={18} /> },
   ];

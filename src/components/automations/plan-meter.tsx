@@ -2,6 +2,7 @@
 
 import { useMe, usePlans } from "@/lib/api/hooks";
 import { ButtonLink } from "../ui";
+import { PRICING_PATH } from "@/lib/pricing";
 
 export type PlanAutomations = {
   planName: string;
@@ -50,7 +51,7 @@ export function PlanMeter({ used }: { used: number }) {
         </span>
       </div>
       {full && plan.canUpgrade && (
-        <ButtonLink href="/settings/plans" size="sm">
+        <ButtonLink href={PRICING_PATH} size="sm">
           Upgrade
         </ButtonLink>
       )}

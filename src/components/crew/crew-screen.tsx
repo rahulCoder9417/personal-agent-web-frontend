@@ -12,6 +12,7 @@ import { Page, PageBody, PageHeader } from "../page";
 import { AgentFigure } from "../tex";
 import { CrewJobsSection } from "./crew-jobs";
 import { ButtonLink, Card, ErrorState, Pill, SkeletonRows } from "../ui";
+import { PRICING_PATH } from "@/lib/pricing";
 
 // Each member's own colour, from the design tokens. Who they are and what they do comes from the API.
 const COLOUR: Record<CrewMember["id"], string> = { tex: "var(--accent)", byte: "var(--byte)", patch: "var(--patch)", scout: "var(--scout)" };
@@ -47,7 +48,7 @@ function BrowserNote({ browser }: { browser: CrewBrowser }) {
       {note.upgrade && (
         <>
           {" "}
-          <Link href="/settings/plans" className="font-medium text-accent hover:text-accent-dark">
+          <Link href={PRICING_PATH} className="font-medium text-accent hover:text-accent-dark">
             See plans
           </Link>
         </>

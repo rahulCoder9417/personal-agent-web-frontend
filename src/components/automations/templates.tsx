@@ -10,6 +10,7 @@ import { IconTile, SectionLabel } from "../ui";
 import { KindIcon } from "./kind-icon";
 import type { PlanAutomations } from "./plan-meter";
 import { INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
+import { PRICING_PATH } from "@/lib/pricing";
 
 /** One ready-made request. The whole card opens it; an app that still needs connecting gets its own link. */
 function TemplateCard({ template, needsApp }: { template: AutomationTemplate; needsApp: boolean }) {
@@ -72,7 +73,7 @@ export function AutomationTemplates({ full, first = false }: { full: PlanAutomat
           {full.canUpgrade && (
             <>
               {" "}
-              <Link href="/settings/plans" className="font-medium text-accent hover:text-accent-dark">
+              <Link href={PRICING_PATH} className="font-medium text-accent hover:text-accent-dark">
                 See plans
               </Link>
             </>

@@ -13,6 +13,7 @@ import { cn, titleCase } from "@/lib/format";
 import { connectedReturnPath } from "@/lib/integrations";
 import { disconnectCopy, isConnectable, NOT_AVAILABLE_LABEL } from "./apps-logic";
 import { useConnectDialog } from "./connect-dialog";
+import { PRICING_PATH } from "@/lib/pricing";
 
 type Connection = App["connections"][number];
 
@@ -183,7 +184,7 @@ export function AvailableAppCard({ app }: { app: App }) {
           </Button>
         ) : (
           <Link
-            href="/settings/plans"
+            href={PRICING_PATH}
             className="flex h-[30px] shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-nav hover:bg-surface hover:text-fg"
             aria-label={`${app.name} isn’t on your plan. See plans`}
           >

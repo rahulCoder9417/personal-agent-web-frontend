@@ -45,10 +45,10 @@ describe("toastButton", () => {
   it("opens a page of the app for a link", () => {
     const assign = vi.fn();
     vi.stubGlobal("window", { location: { assign } });
-    const button = toastButton({ label: "See plans", href: "/settings/plans" });
+    const button = toastButton({ label: "See plans", href: "/pricing" });
     expect(button?.label).toBe("See plans");
     button?.onClick();
-    expect(assign).toHaveBeenCalledWith("/settings/plans");
+    expect(assign).toHaveBeenCalledWith("/pricing");
     vi.unstubAllGlobals();
   });
 });
@@ -78,7 +78,7 @@ describe("toastError", () => {
   });
 
   it("stays longer than a confirmation, and carries the way out", () => {
-    toastError("Your plan’s app limit is reached", "Disconnect one or upgrade to add more.", { label: "See plans", href: "/settings/plans" });
+    toastError("Your plan’s app limit is reached", "Disconnect one or upgrade to add more.", { label: "See plans", href: "/pricing" });
     expect(TOAST_ERROR_MS).toBeGreaterThan(TOAST_MS);
     expect(sonner.error).toHaveBeenCalledWith(
       "Your plan’s app limit is reached",

@@ -31,7 +31,7 @@ describe("afterAuthPath", () => {
   });
 
   it("goes back to the page the proxy sent the person from, which arrives as a full address", () => {
-    expect(afterAuthPath("https://app.textcrew.in/settings/plans?checkout=done", ORIGIN)).toBe("/settings/plans?checkout=done");
+    expect(afterAuthPath("https://app.textcrew.in/pricing?checkout=done", ORIGIN)).toBe("/pricing?checkout=done");
     expect(afterAuthPath("https://app.textcrew.in/automations/reviews#acme", ORIGIN)).toBe("/automations/reviews#acme");
     expect(afterAuthPath("http://localhost:3000/onboarding?step=2", "http://localhost:3000")).toBe("/onboarding?step=2");
   });
@@ -81,7 +81,7 @@ describe("afterSignUpPath", () => {
   });
 
   it("keeps a page the person was sent from, as a sign-in does", () => {
-    expect(afterSignUpPath("https://app.textcrew.in/settings/plans?checkout=done", ORIGIN)).toBe("/settings/plans?checkout=done");
+    expect(afterSignUpPath("https://app.textcrew.in/pricing?checkout=done", ORIGIN)).toBe("/pricing?checkout=done");
     expect(afterSignUpPath("/apps", ORIGIN)).toBe("/apps");
     // The home screen with something asked for (a request typed in) is not the plain home screen.
     expect(afterSignUpPath("/?draft=hello", ORIGIN)).toBe("/?draft=hello");
@@ -100,7 +100,7 @@ describe("withRedirect", () => {
     expect(withRedirect("/sign-up", "https://app.textcrew.in/apps?tab=mcp")).toBe(
       "/sign-up?redirect_url=https%3A%2F%2Fapp.textcrew.in%2Fapps%3Ftab%3Dmcp",
     );
-    expect(withRedirect("/sso-callback", "/settings/plans")).toBe("/sso-callback?redirect_url=%2Fsettings%2Fplans");
+    expect(withRedirect("/sso-callback", "/pricing")).toBe("/sso-callback?redirect_url=%2Fpricing");
   });
 
   it("adds nothing when there is nowhere special to land", () => {

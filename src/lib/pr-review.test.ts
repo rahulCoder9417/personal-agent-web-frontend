@@ -83,7 +83,7 @@ describe("describeEnableError", () => {
   it("explains the plan limit with the plan's own numbers, and where to go", () => {
     expect(describeEnableError(error(403, "plan_limit"), "acme/website", { planName: "Pro", automations: 5, canUpgrade: true })).toEqual({
       message: "Your Pro plan allows 5 automations, and each repo with review on counts as one. Turn one off, or upgrade.",
-      link: { href: "/settings/plans", label: "See plans" },
+      link: { href: "/pricing", label: "See plans" },
     });
     expect(describeEnableError(error(403, "plan_limit"), "acme/website", { planName: "Free", automations: 1, canUpgrade: true }).message).toContain(
       "allows 1 automation,",

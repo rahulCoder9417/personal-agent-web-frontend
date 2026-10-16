@@ -9,21 +9,8 @@ import { useCreateCheckout, useCrew } from "@/lib/api/hooks";
 import { planAction, startPendingCheckout } from "@/lib/checkout";
 import { crewBrowser } from "@/lib/crew";
 import { leaveTo } from "@/lib/navigate";
-import { cn, formatDate, formatMoney, formatNumber } from "@/lib/format";
-
-/** What a plan includes, read from its numbers. Used when the API sends no feature list of its own. */
-function derivedFeatures(plan: Plan, topUp: TopUpPack | undefined): string[] {
-  const lines: string[] = [];
-  if (plan.monthlyCredits > 0) lines.push(`${formatNumber(plan.monthlyCredits)} credits every month`);
-  if (plan.signupCredits > 0) lines.push(`${formatNumber(plan.signupCredits)} credits at sign-up, plus coupon codes`);
-  lines.push(`${formatNumber(plan.limits.apps)} apps${plan.limits.ownMcpServers ? " plus your own MCP servers" : ""}`);
-  lines.push(`${formatNumber(plan.limits.automations)} ${plan.limits.automations === 1 ? "automation" : "automations"}`);
-  if (plan.limits.browser) lines.push("Browser use: 2 credits per minute");
-  if (plan.limits.topUps) {
-    lines.push(topUp ? `Top-ups: ${formatMoney(topUp.priceCents)} for ${formatNumber(topUp.credits)} credits` : "Top-ups when you need more");
-  }
-  return lines;
-}
+import { cn, formatDate, formatMoney } from "@/lib/format";
+import { planFeatures, planInterval } from "./pricing-logic";
 
 function checkoutError(error: unknown): string {
   if (error instanceof ApiError && (error.planLimit || error.status === 403)) return "That plan isn’t available for your account.";
@@ -47,7 +34,7 @@ function PlanColumn({
 }) {
   const checkout = useCreateCheckout();
   const pending = usePendingCheckout();
-  const features = plan.features.length > 0 ? plan.features : derivedFeatures(plan, topUp);
+  const features = planFeatures(plan, topUp);
   const action = planAction(plan, currentPlan, subscription);
   const current = action.type === "current" || action.type === "current-ending";
   const waiting = pending?.kind === "plan" && pending.planId === plan.id ? pending : null;
@@ -71,13 +58,13 @@ function PlanColumn({
       className={cn("flex flex-col gap-5 rounded-xl border bg-surface p-5", current ? "border-fg-2" : "border-line")}
     >
       <div className="flex items-center gap-2">
-        <h2 className="text-[17px] font-semibold tracking-[-0.01em]">{plan.name}</h2>
+        <h3 className="text-[17px] font-semibold tracking-[-0.01em]">{plan.name}</h3>
         {current && <Pill tone="waiting">Your plan</Pill>}
       </div>
 
       <div className="flex items-baseline gap-2">
         <span className="text-[34px] leading-none font-semibold tracking-[-0.04em]">{formatMoney(plan.priceCents)}</span>
-        <span className="text-[13px] text-muted">{plan.interval ? `per ${plan.interval}` : "forever"}</span>
+        <span className="text-[13px] text-muted">{planInterval(plan)}</span>
       </div>
 
       <ul className="flex flex-1 flex-col gap-2.5 text-[13.5px]">
@@ -123,7 +110,9 @@ function PlanColumn({
             <p className="text-[12.5px] text-muted">{action.reason}</p>
           </>
         )}
-        {action.type === "free" && <p className="text-[12.5px] text-muted">Where you land when a paid plan ends. Cancel above to move here.</p>}
+        {action.type === "free" && (
+          <p className="text-[12.5px] text-muted">Where you land when a paid plan ends. Cancel your plan above to move here.</p>
+        )}
 
         {waiting && (
           <p role="status" className="rounded-[10px] bg-accent-soft px-3 py-2 text-[12.5px] text-accent-dark">
