@@ -1,7 +1,7 @@
 // Why Tex is asking, worked out from the action name (e.g. GMAIL_SEND_EMAIL), and what an
 // answered approval says.
 
-import type { ApprovalStatus } from "./api/client";
+import type { Approval, ApprovalStatus } from "./api/client";
 
 export type ApprovalReason = {
   label: string;
@@ -30,6 +30,47 @@ export function approvalReason(action?: string | null): ApprovalReason {
   if (has(DELETES)) return { label: "Deletes things", tone: "danger" };
   if (has(SENDS)) return { label: "Sends to someone else", tone: "info" };
   return { label: "Needs your OK", tone: "neutral" };
+}
+
+/**
+ * What one of the agent's own actions asks for, read from the approval's `kind` and `details`: one of Claude
+ * Code's commands or file changes, a git push to a branch that already existed, or running a crew job again with
+ * what its run was refused. Null for an app's action (its details are shown as fields).
+ */
+export type OwnAction =
+  | { kind: "command"; tool: string; target: string; why: string | null; folder: string | null }
+  | { kind: "git_push"; repo: string; branch: string; force: boolean }
+  | { kind: "crew_rerun"; job: string | null; items: string[] };
+
+const text = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value : null);
+
+export function ownAction(approval: Pick<Approval, "kind" | "details">): OwnAction | null {
+  const d = approval.details ?? {};
+  if (approval.kind === "command") {
+    const target = text(d.target);
+    if (!target) return null;
+    return { kind: "command", tool: text(d.tool) ?? "Bash", target, why: text(d.why), folder: text(d.folder) };
+  }
+  if (approval.kind === "git_push") {
+    const repo = text(d.repo);
+    const branch = text(d.branch);
+    if (!repo || !branch) return null;
+    return { kind: "git_push", repo, branch, force: d.force === true };
+  }
+  if (approval.kind === "crew_rerun") {
+    const items = Array.isArray(d.items) ? d.items.filter((item): item is string => typeof item === "string") : [];
+    return { kind: "crew_rerun", job: text(d.job), items };
+  }
+  return null;
+}
+
+/** Why Tex is asking, for any approval: the agent's own actions by what they do, an app's by its action name. */
+export function approvalReasonOf(approval: Pick<Approval, "kind" | "details" | "action">): ApprovalReason {
+  const own = ownAction(approval);
+  if (own?.kind === "command") return { label: own.tool === "Bash" ? "Runs a command" : "Changes a file", tone: "info" };
+  if (own?.kind === "git_push") return own.force ? { label: "Rewrites a branch", tone: "danger" } : { label: "Pushes code", tone: "info" };
+  if (own?.kind === "crew_rerun") return { label: "Runs the job again", tone: "neutral" };
+  return approvalReason(approval.action);
 }
 
 export type DetailField = { key: string; label: string; value: string };

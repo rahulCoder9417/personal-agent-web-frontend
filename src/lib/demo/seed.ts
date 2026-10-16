@@ -627,26 +627,39 @@ function seedApprovals(now: Date): Approval[] {
   const pending = (createdAt: string) => ({ status: "pending" as const, createdAt, expiresAt: iso(Date.parse(createdAt) + DAY), decidedAt: null });
   return [
     {
-      id: "ap_email", ...pending(earlierToday(now, 15)), summary: "Send this email to Maya", app: "gmail", action: "GMAIL_SEND_EMAIL",
+      id: "ap_email", kind: "app_action", ...pending(earlierToday(now, 15)), summary: "Send this email to Maya", app: "gmail", action: "GMAIL_SEND_EMAIL",
       details: { arguments: { to: "maya@acme.com", from: "aarav@northwind.studio", subject: "Moving today’s 3pm",
         body: "Hi Maya, could we move today’s 3pm to tomorrow, same time? Thanks!",
       } },
     },
     {
-      id: "ap_slack", ...pending(earlierToday(now, 88)), summary: "Post today’s update in #team", app: "slack", action: "SLACK_SEND_MESSAGE",
+      id: "ap_slack", kind: "app_action", ...pending(earlierToday(now, 88)), summary: "Post today’s update in #team", app: "slack", action: "SLACK_SEND_MESSAGE",
       details: { arguments: { channel: "#team", workspace: "Northwind", body: "Shipped the new onboarding flow, fixed 4 bugs, demo Thursday." } },
     },
     {
-      id: "ap_drafts", ...pending(earlierToday(now, 230)), summary: "Delete 12 old drafts", app: "gmail", action: "GMAIL_DELETE_DRAFT",
+      id: "ap_drafts", kind: "app_action", ...pending(earlierToday(now, 230)), summary: "Delete 12 old drafts", app: "gmail", action: "GMAIL_DELETE_DRAFT",
       details: { arguments: { mailbox: "aarav@northwind.studio", count: 12, body: "Drafts older than 90 days in Gmail." } },
     },
     {
-      id: "ap_update", status: "approved", summary: "Post yesterday’s update in #team", app: "slack", action: "SLACK_SEND_MESSAGE",
+      id: "ap_update", kind: "app_action", status: "approved", summary: "Post yesterday’s update in #team", app: "slack", action: "SLACK_SEND_MESSAGE",
       details: { arguments: { channel: "#team", workspace: "Northwind", body: "Onboarding flow is in review, two bugs left, invoices went out." } },
       createdAt: atDay(now, 1, 17, 30), expiresAt: atDay(now, 0, 17, 30), decidedAt: atDay(now, 1, 17, 31),
     },
     {
-      id: "ap_renew", status: "expired", summary: "Renew your Notion plan ($10)", app: "notion", action: "NOTION_RENEW_PLAN",
+      // One of Claude Code's own commands that needed an OK (Scout's browser was on), approved yesterday.
+      id: "ap_command", kind: "command", status: "approved", summary: "Run this command: `curl -s https://status.northwind.studio/api` (it reaches the internet)",
+      app: null, action: "TEXTCREW_RUN_COMMAND",
+      details: { tool: "Bash", target: "curl -s https://status.northwind.studio/api", why: "it reaches the internet, and Scout's browser is on, so any website can be reached", folder: "/data/workspace" },
+      createdAt: atDay(now, 1, 11, 4), expiresAt: atDay(now, 0, 11, 4), decidedAt: atDay(now, 1, 11, 6),
+    },
+    {
+      id: "ap_push", kind: "git_push", status: "expired", summary: "Force push to the branch \"onboarding\" of northwind/web (it rewrites the branch's history)",
+      app: null, action: "TEXTCREW_GIT_PUSH",
+      details: { repo: "northwind/web", branch: "onboarding", force: true },
+      createdAt: atDay(now, 2, 16, 20), expiresAt: atDay(now, 1, 16, 20), decidedAt: atDay(now, 2, 16, 25),
+    },
+    {
+      id: "ap_renew", kind: "app_action", status: "expired", summary: "Renew your Notion plan ($10)", app: "notion", action: "NOTION_RENEW_PLAN",
       details: { arguments: { amount: "$10.00", workspace: "Northwind", body: "Monthly renewal, same plan as last month." } },
       createdAt: atDay(now, 4, 9, 12), expiresAt: atDay(now, 3, 9, 12), decidedAt: null,
     },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APPROVAL_RESULT, approvalOutcome, approvalQuestion, approvalReason, splitDetails } from "./approvals";
+import { APPROVAL_RESULT, approvalOutcome, approvalQuestion, approvalReason, approvalReasonOf, ownAction, splitDetails } from "./approvals";
 
 describe("approvalReason", () => {
   it("spots actions that reach other people", () => {
@@ -89,5 +89,32 @@ describe("an answered approval", () => {
     expect(approvalOutcome("replaced")).toContain("Nothing was done with it");
     expect(approvalOutcome("rejected")).toBe("Tex didn’t do this.");
     expect(approvalOutcome("expired")).toContain("Nothing was done");
+  });
+});
+
+describe("ownAction", () => {
+  it("reads the agent's own actions from the kind and the details", () => {
+    expect(ownAction({ kind: "command", details: { tool: "Bash", target: "curl x", why: "it reaches the internet", folder: "/w" } })).toEqual({
+      kind: "command",
+      tool: "Bash",
+      target: "curl x",
+      why: "it reaches the internet",
+      folder: "/w",
+    });
+    expect(ownAction({ kind: "git_push", details: { repo: "acme/web", branch: "dev", force: true } })).toEqual({ kind: "git_push", repo: "acme/web", branch: "dev", force: true });
+    expect(ownAction({ kind: "crew_rerun", details: { job: "J", items: ["a", 3, "b"] } })).toEqual({ kind: "crew_rerun", job: "J", items: ["a", "b"] });
+  });
+
+  it("is null for an app's action, or when the details are missing", () => {
+    expect(ownAction({ kind: "app_action", details: { arguments: { to: "x" } } })).toBeNull();
+    expect(ownAction({ kind: "command", details: {} })).toBeNull();
+    expect(ownAction({ kind: "git_push", details: { repo: "a/b" } })).toBeNull();
+  });
+
+  it("names why Tex asks", () => {
+    expect(approvalReasonOf({ kind: "command", action: "TEXTCREW_RUN_COMMAND", details: { tool: "Bash", target: "x" } }).label).toBe("Runs a command");
+    expect(approvalReasonOf({ kind: "command", action: "TEXTCREW_RUN_COMMAND", details: { tool: "Write", target: "/x" } }).label).toBe("Changes a file");
+    expect(approvalReasonOf({ kind: "git_push", action: "TEXTCREW_GIT_PUSH", details: { repo: "a/b", branch: "c", force: true } })).toEqual({ label: "Rewrites a branch", tone: "danger" });
+    expect(approvalReasonOf({ kind: "app_action", action: "GMAIL_SEND_EMAIL", details: {} }).label).toBe("Sends to someone else");
   });
 });

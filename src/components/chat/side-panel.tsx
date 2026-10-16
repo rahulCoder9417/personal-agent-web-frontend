@@ -10,7 +10,7 @@ import {
   useAutomations,
 } from "@/lib/api/hooks";
 import { describeAgent } from "@/lib/agent-state";
-import { approvalReason } from "@/lib/approvals";
+import { approvalReasonOf } from "@/lib/approvals";
 import { cn, describeAutomationNext, describeAutomationSchedule, formatCredits, formatTime } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { stepHref } from "@/lib/onboarding";
@@ -259,7 +259,7 @@ function SidePanelContents() {
           <Quiet>Nothing is waiting on you.</Quiet>
         ) : (
           pending.slice(0, 3).map((approval) => {
-            const reason = approvalReason(approval.action);
+            const reason = approvalReasonOf(approval);
             return (
               <Row
                 key={approval.id}

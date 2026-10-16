@@ -139,6 +139,7 @@ function askForApproval(state: DemoState, request: Message, risk: Risk): void {
   const createdAt = nowIso();
   const approval: Approval = {
     id: nextId(state, "ap"),
+    kind: "app_action",
     status: "pending",
     summary: upperFirst(truncate(request.text, 70)),
     app: risk.app,
