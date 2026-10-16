@@ -22,6 +22,7 @@ export function ConfirmDialog({
   children,
   confirmLabel,
   cancelLabel = "Cancel",
+  tone = "destructive",
   onConfirm,
   onClose,
 }: {
@@ -34,6 +35,8 @@ export function ConfirmDialog({
   confirmLabel: string;
   /** The way out without doing it. "Cancel" unless that would read oddly ("Keep my plan" before cancelling a plan). */
   cancelLabel?: string;
+  /** The confirm button: red for removing something (the default), the accent for keeping something. */
+  tone?: "destructive" | "primary";
   onConfirm: () => Promise<unknown>;
   /** The dialog has closed, by Cancel, Escape, the dimmed page or after the work. */
   onClose: () => void;
@@ -107,7 +110,7 @@ export function ConfirmDialog({
           <Button variant="ghost" size="lg" onClick={close} disabled={working} autoFocus className="sm:h-[34px] sm:px-3.5 sm:text-[13.5px]">
             {cancelLabel}
           </Button>
-          <Button variant="destructive" size="lg" pending={working} onClick={() => void confirm()} className="sm:h-[34px] sm:px-3.5 sm:text-[13.5px]">
+          <Button variant={tone} size="lg" pending={working} onClick={() => void confirm()} className="sm:h-[34px] sm:px-3.5 sm:text-[13.5px]">
             {confirmLabel}
           </Button>
         </div>

@@ -110,7 +110,7 @@ export function checkoutResult(
 /** What a plan's button should do, given the backend's rules for switching (see billing/polar.ts). */
 export type PlanAction =
   | { type: "current" }
-  | { type: "current-ending" } // cancelled at period end: may subscribe again
+  | { type: "current-ending" } // cancelled at period end: "Keep my plan" undoes it
   | { type: "checkout"; verb: "Upgrade to" | "Switch to" | "Start" }
   | { type: "blocked"; reason: string }
   | { type: "free" };

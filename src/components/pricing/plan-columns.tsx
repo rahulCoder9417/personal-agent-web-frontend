@@ -10,6 +10,7 @@ import { planAction, startPendingCheckout } from "@/lib/checkout";
 import { crewBrowser } from "@/lib/crew";
 import { leaveTo } from "@/lib/navigate";
 import { cn, formatDate, formatMoney } from "@/lib/format";
+import { KeepPlan } from "./keep-plan";
 import { planFeatures, planInterval } from "./pricing-logic";
 
 function checkoutError(error: unknown): string {
@@ -84,14 +85,7 @@ function PlanColumn({
         {action.type === "current" && (
           <div className="grid h-[34px] place-items-center rounded-[9px] bg-surface-2 text-[13.5px] font-medium text-nav">Current plan</div>
         )}
-        {action.type === "current-ending" && (
-          <>
-            <Button pending={checkout.isPending} onClick={start}>
-              Subscribe to {plan.name} again
-            </Button>
-            <p className="text-[12.5px] text-muted">{ends ? `Yours ends ${ends}.` : "Yours ends with this period."} Subscribing again starts a new month today.</p>
-          </>
-        )}
+        {action.type === "current-ending" && <KeepPlan plan={plan} subscription={subscription} />}
         {action.type === "checkout" && (
           <>
             <Button variant="primary" pending={checkout.isPending} onClick={start}>

@@ -118,3 +118,31 @@ export function cancelCopy(plan: Plan | undefined, subscription: Subscription, f
     },
   };
 }
+
+export type ResumeCopy = {
+  title: string;
+  /** What happens from now on: it renews, and when Polar charges again. */
+  body: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  done: { title: string; body: string };
+};
+
+/** The confirm dialog's words before a cancelled plan is kept after all, and the toast after. */
+export function resumeCopy(plan: Plan | undefined, subscription: Subscription): ResumeCopy {
+  const name = plan?.name ?? "your plan";
+  const end = periodEnd(subscription);
+  const price = plan && plan.priceCents > 0 ? formatMoney(plan.priceCents) : null;
+  const renews = end ? `on ${end}` : "at the end of this period";
+  const charge = price ? `Polar charges your card ${price} then, as before.` : "Polar charges your card then, as before.";
+  return {
+    title: `Keep your ${name} plan?`,
+    body: `${plan?.name ?? "Your plan"} renews ${renews} instead of ending. ${charge} Nothing is charged today.`,
+    confirmLabel: "Keep my plan",
+    cancelLabel: "Not now",
+    done: {
+      title: `You’re keeping ${plan?.name ?? "your plan"}`,
+      body: end ? `It renews on ${end}${price ? ` for ${price}` : ""}.` : "It renews at the end of this period.",
+    },
+  };
+}
