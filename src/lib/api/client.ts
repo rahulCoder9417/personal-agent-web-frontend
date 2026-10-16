@@ -42,16 +42,33 @@ export type AutomationTrigger = Partial<Omit<NonNullable<ApiAutomation["trigger"
  * answer goes besides the Automations chat), nor the trigger's settings, nor `apps` (the apps Tex
  * named when it proposed it): each reads as none.
  */
-export type Automation = Omit<ApiAutomation, "copyTo" | "trigger" | "apps"> & {
+export type Automation = Omit<ApiAutomation, "copyTo" | "trigger" | "apps" | "askFirst"> & {
   copyTo?: ApiAutomation["copyTo"];
   trigger?: AutomationTrigger | null;
   apps?: string[];
+  /** When a run stops for the person's yes. An older backend doesn't say: that reads as `risky`. */
+  askFirst?: AutomationAskFirst;
 };
+/** `risky`: before sending, deleting or paying (always). `changes`: stricter, before anything that changes something. */
+export type AutomationAskFirst = Schemas["AutomationAskFirst"];
 /**
- * An automation Tex proposed in a chat, which runs only once the person saves it: `open` for 7
- * days, then `saved`, `discarded`, `replaced` (by a newer one, `replacedBy`) or `expired`.
+ * An automation Tex proposed in a chat (or the person's own version from the canvas, `madeBy:
+ * user`), which runs only once the person saves it: `open` for 7 days, then `saved`, `discarded`,
+ * `replaced` (by a newer one, `replacedBy`) or `expired`. An older backend sends no `askFirst`.
  */
-export type AutomationDraft = Schemas["AutomationDraft"];
+export type AutomationDraft = Omit<Schemas["AutomationDraft"], "askFirst"> & { askFirst?: AutomationAskFirst };
+/** The parts of an automation as the canvas holds them (what check, create, change and a user draft take). */
+export type AutomationParts = Schemas["AutomationParts"];
+export type AutomationInput = Schemas["AutomationInput"];
+export type AutomationChange = Schemas["AutomationChange"];
+export type AutomationDraftInput = Schemas["AutomationDraftInput"];
+/** One thing wrong with the parts, and the box of the canvas it belongs to (`step`, null for the whole). */
+export type AutomationProblem = Schemas["AutomationProblem"];
+export type AutomationCheck = Schemas["AutomationCheck"];
+export type AutomationTestRun = Schemas["AutomationTestRun"];
+/** One event an app can start an automation on (`GET /v1/apps/{appSlug}/events`), with its settings. */
+export type AppEvent = Schemas["AppEvent"];
+export type AppEventSetting = Schemas["AppEventSetting"];
 export type AutomationDraftStatus = Schemas["AutomationDraftStatus"];
 export type AutomationDraftSaved = Schemas["AutomationDraftSaved"];
 export type PrReviewRepo = Schemas["PrReviewRepo"];

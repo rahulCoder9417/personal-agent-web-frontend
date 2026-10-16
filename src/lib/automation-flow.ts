@@ -43,7 +43,7 @@ export type FlowStep = {
  * What a flow is drawn from: an automation, or a draft Tex proposed (the same parts). `enabled` and
  * `pausedReason` belong to a saved one; a draft has neither, and reads as "Not saved yet".
  */
-export type FlowSource = Pick<Automation, "kind" | "title" | "instruction" | "runAt" | "cron" | "timezone" | "preset" | "copyTo" | "nextRunAt" | "lastRunAt"> & {
+export type FlowSource = Pick<Automation, "kind" | "title" | "instruction" | "runAt" | "cron" | "timezone" | "preset" | "copyTo" | "nextRunAt" | "lastRunAt" | "askFirst"> & {
   trigger?: AutomationTrigger | null;
   /** The apps Tex said it will use (phase 2). The trigger's app is not repeated there. */
   apps?: readonly string[] | null;
@@ -63,6 +63,8 @@ const STEP_LABEL: Record<FlowStepId, string> = {
 
 /** The fixed rule for risky actions, the same for every automation but pull-request review. */
 export const ASKS_FIRST = "Sending, deleting or paying waits for your OK";
+/** The stricter choice (`askFirst: changes`). */
+export const ASKS_CHANGES = "Anything that changes something waits for your OK";
 export const REVIEW_ASKS = "Comments without asking; never merges or approves";
 export const NO_APPS = "Your connected apps, as needed";
 export const INSTRUCTION_NOTE = "Tex follows this in its own way: it reads the instruction each time and decides what to do, as it would with a message from you.";
@@ -208,19 +210,20 @@ function appsStep(source: FlowSource): FlowStep {
     apps,
     details: [{ label: "Apps", value: names.length ? listNames(names, "and") : NO_APPS }],
     note: names.length
-      ? "The apps this automation needs. Each must stay connected under Integrations → Apps."
-      : "No apps were named when it was made, so Tex uses whichever of your connected apps the instruction needs.",
+      ? "During a run Tex may use only these apps, and the trigger’s app: an action in any other app is refused. Each must stay connected under Integrations → Apps."
+      : "No apps are named, so Tex uses whichever of your connected apps the instruction needs. Name some to keep its runs to those.",
     tone: "default",
   };
 }
 
 function asksStep(source: FlowSource): FlowStep {
   const review = source.preset === "pr_review";
+  const strict = !review && source.askFirst === "changes";
   return {
     id: "asks",
     label: STEP_LABEL.asks,
-    title: review ? REVIEW_ASKS : ASKS_FIRST,
-    short: review ? "Comments only" : "Asks first",
+    title: review ? REVIEW_ASKS : strict ? ASKS_CHANGES : ASKS_FIRST,
+    short: review ? "Comments only" : strict ? "Asks always" : "Asks first",
     lines: [],
     apps: [],
     details: [
@@ -228,10 +231,14 @@ function asksStep(source: FlowSource): FlowStep {
         label: "The rule",
         value: review
           ? "Turning review on is your OK for one thing: a review or a comment on a pull request in this repo. Merging, approving, closing or anything in another repo still waits for your OK."
-          : "Before Tex sends something to another person, deletes something or pays, it stops and asks you, in the chat. Reading and searching don’t ask.",
+          : strict
+            ? "Before any app action that changes something (sending, creating, updating, deleting, paying), Tex stops and asks you, in the chat. Reading and searching don’t ask."
+            : "Before Tex sends something to another person, deletes something or pays, it stops and asks you, in the chat. Reading and searching don’t ask.",
       },
     ],
-    note: "This is the platform’s rule for every run. It can’t be switched off.",
+    note: strict
+      ? "Stricter than the platform’s rule, which every run keeps: sending, deleting or paying always waits for your OK."
+      : "This is the platform’s rule for every run. It can be made stricter, never switched off.",
     tone: "default",
   };
 }
@@ -297,7 +304,7 @@ function stepParts(source: FlowSource): Record<FlowStepId, string> {
     trigger: JSON.stringify([source.kind, source.runAt ?? null, source.cron ?? null, source.kind === "event" ? null : (source.timezone ?? null), trigger]),
     instruction: JSON.stringify([source.title, source.instruction]),
     apps: JSON.stringify(flowApps(source)),
-    asks: JSON.stringify(source.preset ?? null),
+    asks: JSON.stringify([source.preset ?? null, source.askFirst ?? "risky"]),
     results: JSON.stringify(source.copyTo ?? null),
   };
 }

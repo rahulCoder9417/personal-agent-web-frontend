@@ -688,6 +688,41 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /v1/apps/{appSlug}/events:
+    get:
+      operationId: listAppEvents
+      tags: [apps]
+      summary: The events an app can start an automation on, with their settings
+      description: |
+        For the canvas's event picker: Composio's list of the app's events (its trigger types),
+        each with the settings it takes, for example the label to watch in Gmail or the repository
+        in GitHub. Kept for 10 minutes. Any app of the catalogue can be listed; to use one, it must
+        be connected and on the plan (the checks say so).
+      parameters:
+        - name: appSlug
+          in: path
+          required: true
+          schema: { type: string, examples: [gmail] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AppEvent" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: Composio could not give the list just now. Retry later
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /v1/connections/{connectionId}:
     delete:
       operationId: disconnectApp
@@ -887,8 +922,10 @@ paths:
       description: |
         Automations are made by chatting with the agent: it proposes a draft, and the user saves it
         (`/v1/automation-drafts`). A plain one-time reminder is the exception: the agent saves it at
-        once. The web app can list, pause and delete them. A repo with pull-request review on is an
-        automation too (`preset: pr_review`); it is turned on and off with `/v1/pr-reviews`.
+        once. The user can also build one by hand in the web app (`POST /v1/automations`), change
+        one (`PUT /v1/automations/{automationId}`), pause, resume and delete them, and run one once
+        as a test. A repo with pull-request review on is an automation too (`preset: pr_review`);
+        it is turned on and off with `/v1/pr-reviews`.
 
         Every run answers in the Automations chat (`GET /v1/conversations?kind=automations`), never
         in the user's other conversations. An automation made in a Telegram chat also sends a copy
@@ -908,6 +945,98 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Automation" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createAutomation
+      tags: [automations]
+      summary: Make an automation by hand (the canvas's Save)
+      description: |
+        Makes the automation from its parts, with the same checks as `POST /v1/automations/check`,
+        then sets its timer, or makes its watch at the app for an app event. `enabled: false`
+        ("Save paused") makes it switched off (`pausedReason: user`), to try with "Run once now"
+        and turn on later.
+
+        One `clientRequestId`, one automation: sending it again (a double click, a retry) answers
+        200 with the automation it made, and makes nothing more.
+
+        `draftId`: the draft open on the canvas when the user saved (Tex's, or their own), changed
+        or not. It must be open and not a change of another automation (a change is saved with
+        `PUT /v1/automations/{changeOf}`); it is marked saved together with the automation.
+
+        400 when a check fails: `details.problems` lists each problem with the box it belongs to.
+        403 `plan_limit` when the plan's automations are used. 409 when the draft is not open. 503
+        when the app could not be asked to watch for the event just now; nothing was saved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutomationInput" }
+      responses:
+        "200":
+          description: This `clientRequestId` made an automation before; that automation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "201":
+          description: Made, and its timer or watch set (none while paused)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "400": { $ref: "#/components/responses/AutomationProblems" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PlanLimit" }
+        "409":
+          description: The draft is not open (`details.status` says what it is), or it is a change of an automation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: The app could not be asked to watch for the event just now. Nothing was saved; try again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/automations/check:
+    post:
+      operationId: checkAutomation
+      tags: [automations]
+      summary: Check an automation's parts without saving anything
+      description: |
+        For the canvas while the user types: the same checks a save makes, with every problem found
+        at once, each with the box it belongs to (`step`), and when it would run next. Nothing is
+        saved, scheduled or watched. Parts may be missing or empty; each gap is a problem.
+
+        `automationId`: the parts are a change of that automation, so it does not count against
+        the plan's limit.
+
+        The checks: exactly one of a moment, a schedule or an app event; a real time zone; a moment
+        not past; a schedule at most every 15 minutes; an app event's app known, on the plan and
+        connected, an event that app offers (`GET /v1/apps/{appSlug}/events`) and its required
+        settings filled; the apps known, on the plan and connected (at most 10); a title and an
+        instruction; a linked chat for the copy (`copyTo`); the plan's number of automations.
+        An event list Composio can't give just now is not held against the parts: the save then
+        asks Composio itself.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AutomationParts"
+                - type: object
+                  properties:
+                    automationId:
+                      type: [string, "null"]
+                      description: The automation these parts would change.
+      responses:
+        "200":
+          description: The result (also when there are problems)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationCheck" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
   /v1/automations/{automationId}:
     get:
@@ -928,6 +1057,56 @@ paths:
               schema: { $ref: "#/components/schemas/Automation" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      operationId: changeAutomation
+      tags: [automations]
+      summary: Change an automation (the canvas's Save on a saved one)
+      description: |
+        Replaces the automation's parts with these, after the same checks as a new one (it does not
+        count against the plan's limit itself). Its id, its page and its runs so far stay.
+
+        - A new schedule or moment replaces the timer.
+        - A changed app event (another app, event or settings) gets its new watch at Composio
+          first; then the automation points at it; then the old watch is removed. Exactly one
+          watch is left, and there is no moment without one. If the new watch can't be made,
+          nothing changes (503).
+        - `enabled` left out keeps it on or paused as it is; `true` turns it on, `false` pauses it.
+          The count of failures in a row starts again from zero.
+        - `draftId`: the draft of this change open on the canvas (`changeOf` is this automation).
+          It must be open; it is marked saved together with the change.
+
+        Pull-request review is changed on its own screen (409), and a one-time reminder that has
+        run is finished (409).
+      parameters:
+        - $ref: "#/components/parameters/AutomationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutomationChange" }
+      responses:
+        "200":
+          description: Changed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "400": { $ref: "#/components/responses/AutomationProblems" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PlanLimit" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            Pull-request review, a finished one-time reminder, or a draft that is not open or is not
+            a change of this automation (`details.status` for the draft)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: The app could not be asked to watch for the new event just now. Nothing changed; try again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     patch:
       operationId: updateAutomation
       tags: [automations]
@@ -963,6 +1142,51 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/automations/{automationId}/run:
+    post:
+      operationId: runAutomationNow
+      tags: [automations]
+      summary: Run once now, as a test
+      description: |
+        Runs the saved automation once, now, on or paused: a normal run in the Automations chat, at
+        a normal run's cost, with approvals as usual. A line before it says it is a test run, and
+        Tex is told so; the copy to a chat app (`copyTo`) is marked "Test run" too. An app event's
+        test has no real event: Tex is told to work without one.
+
+        It does not move the schedule, does not finish a one-time reminder and does not count as a
+        failure. At most 10 test runs an hour per user (429). One `clientRequestId`, one run.
+        402 at zero credits. Pull-request review and a finished one-time reminder can't be run so
+        (409).
+      parameters:
+        - $ref: "#/components/parameters/AutomationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientRequestId]
+              properties:
+                clientRequestId:
+                  type: string
+                  format: uuid
+                  description: Idempotency key; sending it again starts no second run.
+      responses:
+        "202":
+          description: Queued. Its answer arrives in the Automations chat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationTestRun" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/OutOfCredits" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Pull-request review, or a one-time reminder that has run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   # ---------------------------------------------------------------- automation drafts
   /v1/automation-drafts:
     get:
@@ -990,6 +1214,39 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/AutomationDraft" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createAutomationDraft
+      tags: [automations]
+      summary: Keep the user's version from the canvas as a draft of their own
+      description: |
+        For "Ask Tex to change this": the parts as they stand on the canvas are kept as a draft
+        made by the user (`madeBy: user`), and the web app opens the chat with a request naming the
+        draft. Tex reads it (`get_automation_draft`) and proposes its change, which replaces it.
+        Nothing runs, nothing is posted in a chat, and the parts are only checked for their shape
+        (one of a moment, a schedule or an app event), since the point is for Tex to fix them.
+
+        `replacesDraftId`: the open draft the user started from (Tex's), which then reads
+        "replaced". `changeOf`: the saved automation these parts would change. It counts towards
+        the 20 open drafts (409 past them).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutomationDraftInput" }
+      responses:
+        "201":
+          description: Kept
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationDraft" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: 20 drafts are open already
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
   /v1/automation-drafts/{draftId}:
     get:
@@ -1022,8 +1279,9 @@ paths:
         yet past, the app connected. Then its timer is set or its watch made. `enabled: false`
         ("Save paused") makes it switched off (`pausedReason: user`), to try or turn on later.
 
-        A draft that changes an automation (`changeOf`) makes the new automation and then removes
-        the old one, with its timer or watch.
+        A draft that changes an automation (`changeOf`) changes that automation in place, as
+        `PUT /v1/automations/{automationId}` does: its id and page stay, and a changed app event
+        gets its new watch before the old one is removed. `automation` is that automation.
 
         One draft makes one automation: a second save, also at the same moment (a double click),
         answers 409 with `details.status: saved` and the automation's id. A replaced, expired or
@@ -3762,6 +4020,13 @@ components:
           schema: { type: object, additionalProperties: true }
 
   responses:
+    AutomationProblems:
+      description: |
+        A check failed. `details.problems` is a list of `AutomationProblem`: each says what is
+        wrong, in words for the user, and which box of the canvas it belongs to.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     BadRequest:
       description: Invalid input
       content:
@@ -4229,7 +4494,7 @@ components:
 
     Automation:
       type: object
-      required: [id, kind, title, instruction, enabled, createdAt, copyTo, apps]
+      required: [id, kind, title, instruction, enabled, createdAt, copyTo, apps, askFirst]
       properties:
         id: { type: string }
         kind: { type: string, enum: [once, repeat, event] }
@@ -4263,10 +4528,11 @@ components:
           type: array
           items: { type: string, examples: [github] }
           description: |
-            The apps Tex said it will use, by app slug (`App.slug`), as it named them in the draft
-            the automation was saved from. Empty for an older automation, or when none were named:
-            Tex then uses the user's connected apps as needed. For now only shown; the trigger's
-            app (`trigger.app`) is not repeated here.
+            The apps its runs may use, by app slug (`App.slug`): named by Tex in the draft it was
+            saved from, or by the user on the canvas. A limit: during a run Tex may use only these
+            and the trigger's app (`trigger.app`, not repeated here). Empty for an older
+            automation, or when none were named: Tex then uses the user's connected apps as needed.
+        askFirst: { $ref: "#/components/schemas/AutomationAskFirst" }
         preset:
           type: [string, "null"]
           enum: [pr_review, null]
@@ -4321,15 +4587,15 @@ components:
         same parts as an `Automation`, and never runs. Drawn as the same five steps: the trigger,
         Tex's instruction, the apps, "asks you first" and the results.
       required: [id, status, madeBy, changeOf, kind, title, instruction, runAt, cron, timezone,
-                 trigger, apps, copyTo, nextRunAt, replacedBy, automationId, createdAt, expiresAt,
-                 decidedAt]
+                 trigger, apps, askFirst, copyTo, nextRunAt, replacedBy, automationId, createdAt,
+                 expiresAt, decidedAt]
       properties:
         id: { type: string, examples: [drf_01jz3m8q4kd2v7x9w0t5b6c8ya] }
         status: { $ref: "#/components/schemas/AutomationDraftStatus" }
         madeBy:
           type: string
           enum: [agent, user]
-          description: "`agent`: Tex proposed it. (`user`: made on the canvas, from phase 3.)"
+          description: "`agent`: Tex proposed it. `user`: the user's own version from the canvas, kept for Tex to change (`POST /v1/automation-drafts`)."
         changeOf:
           type: [string, "null"]
           description: |
@@ -4354,7 +4620,8 @@ components:
         apps:
           type: array
           items: { type: string }
-          description: The apps Tex said it will use, by app slug (see `Automation.apps`).
+          description: The apps its runs may use, by app slug (see `Automation.apps`).
+        askFirst: { $ref: "#/components/schemas/AutomationAskFirst" }
         copyTo:
           type: [string, "null"]
           enum: [telegram, whatsapp, imessage, null]
@@ -4375,6 +4642,170 @@ components:
           type: [string, "null"]
           format: date-time
           description: When it was saved, discarded, replaced or expired.
+
+    AutomationAskFirst:
+      type: string
+      enum: [risky, changes]
+      default: risky
+      description: |
+        When a run stops for the user's yes. `risky`: before sending, deleting or paying (the
+        platform's rule for every run). `changes`: stricter, before any app action that changes
+        something. Never looser than `risky`.
+
+    AutomationParts:
+      type: object
+      description: |
+        The parts of an automation as the canvas holds them. Exactly one of `runAt`, `cron` and
+        `trigger` says when it runs.
+      properties:
+        title: { type: string, maxLength: 120 }
+        instruction: { type: string, maxLength: 4000 }
+        runAt: { type: [string, "null"], format: date-time, description: "Once, at this moment" }
+        cron:
+          type: [string, "null"]
+          maxLength: 100
+          description: On this schedule (5 fields), in `timezone`. At most every 15 minutes.
+        timezone:
+          type: [string, "null"]
+          maxLength: 64
+          description: An IANA time zone such as `Asia/Kolkata`. Left out, the user's own.
+        trigger:
+          type: [object, "null"]
+          description: On this app event (`GET /v1/apps/{appSlug}/events`)
+          required: [app, event]
+          properties:
+            app: { type: string, maxLength: 60, examples: [gmail] }
+            event: { type: string, maxLength: 120, examples: [GMAIL_NEW_GMAIL_MESSAGE] }
+            config: { type: object, additionalProperties: true }
+        apps:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 60 }
+          description: The apps its runs may use, by app slug. Empty, any connected app.
+        askFirst: { $ref: "#/components/schemas/AutomationAskFirst" }
+        copyTo:
+          type: [string, "null"]
+          enum: [telegram, whatsapp, imessage, null]
+          description: |
+            A copy of each answer to this chat app, besides the Automations chat: the user's
+            linked chat there (the one it was made in, when that is the same app). Null: none.
+
+    AutomationInput:
+      description: A new automation made by hand.
+      allOf:
+        - $ref: "#/components/schemas/AutomationParts"
+        - type: object
+          required: [title, instruction, clientRequestId]
+          properties:
+            enabled:
+              type: boolean
+              default: true
+              description: False saves it paused.
+            draftId:
+              type: [string, "null"]
+              description: The draft open on the canvas, marked saved with it.
+            clientRequestId:
+              type: string
+              format: uuid
+              description: Idempotency key; sending it again returns the same automation.
+
+    AutomationChange:
+      description: An automation's new parts.
+      allOf:
+        - $ref: "#/components/schemas/AutomationParts"
+        - type: object
+          required: [title, instruction]
+          properties:
+            enabled:
+              type: boolean
+              description: Left out, it stays on or paused as it is.
+            draftId:
+              type: [string, "null"]
+              description: The draft of this change open on the canvas, marked saved with it.
+
+    AutomationDraftInput:
+      description: The user's version from the canvas, kept as a draft for Tex to change.
+      allOf:
+        - $ref: "#/components/schemas/AutomationParts"
+        - type: object
+          required: [title, instruction]
+          properties:
+            changeOf:
+              type: [string, "null"]
+              description: The saved automation these parts would change.
+            replacesDraftId:
+              type: [string, "null"]
+              description: The open draft the user started from; it reads "replaced".
+
+    AutomationProblem:
+      type: object
+      required: [step, code, message]
+      properties:
+        step:
+          type: [string, "null"]
+          enum: [trigger, instruction, apps, asks, results, null]
+          description: The box it belongs to. Null for the automation as a whole (the plan's limit).
+        code:
+          type: string
+          enum: [invalid, plan_limit, past]
+          description: "`plan_limit`: the plan's automations are used. `past`: the moment has passed."
+        message: { type: string, description: "What is wrong, in words for the user." }
+
+    AutomationCheck:
+      type: object
+      required: [ok, problems, kind, nextRuns]
+      properties:
+        ok: { type: boolean, description: No problems. A save now would pass the same checks. }
+        problems:
+          type: array
+          items: { $ref: "#/components/schemas/AutomationProblem" }
+        kind:
+          type: [string, "null"]
+          enum: [once, repeat, event, null]
+          description: What the parts make. Null when it can't be told (none or several of the three).
+        nextRuns:
+          type: array
+          maxItems: 3
+          items: { type: string, format: date-time }
+          description: |
+            When it would run: the moment (once), or the schedule's next three times. Empty for an
+            app event, or when the schedule can't be read.
+
+    AutomationTestRun:
+      type: object
+      required: [automationId, eventId, queuedAt]
+      properties:
+        automationId: { type: string }
+        eventId: { type: string, description: The run's event; the same for the same `clientRequestId`. }
+        queuedAt: { type: string, format: date-time }
+
+    AppEventSetting:
+      type: object
+      required: [name, title, description, type, required]
+      properties:
+        name: { type: string, description: "The setting's name, as `trigger.config` takes it", examples: [labelIds] }
+        title: { type: string, examples: [Label ids] }
+        description: { type: string }
+        type:
+          type: string
+          enum: [string, number, integer, boolean, array, object]
+        required: { type: boolean }
+        enum:
+          type: array
+          items: {}
+          description: The values it may take, when the app names them.
+        default: { description: "Its value when left out, when the app says." }
+
+    AppEvent:
+      type: object
+      required: [slug, name, description, settings]
+      properties:
+        slug: { type: string, description: "For `trigger.event`", examples: [GMAIL_NEW_GMAIL_MESSAGE] }
+        name: { type: string, examples: [New Gmail message] }
+        description: { type: string }
+        settings:
+          type: array
+          items: { $ref: "#/components/schemas/AppEventSetting" }
 
     AutomationDraftSaved:
       type: object
