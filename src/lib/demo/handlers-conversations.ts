@@ -47,6 +47,7 @@ export function automationsChat(state: DemoState): Conversation {
     lastMessageAt: at,
     title: AUTOMATIONS_TITLE,
     active: false,
+    unread: false,
   };
   state.conversations.push(conversation);
   emit(state, "conversation.updated", conversation);
@@ -87,6 +88,7 @@ export function startWebConversation(state: DemoState): Conversation {
     lastMessageAt: at,
     title: NEW_CHAT_TITLE,
     active: false,
+    unread: false,
   };
   state.conversations.push(conversation);
   makeActive(state, conversation);
@@ -95,7 +97,8 @@ export function startWebConversation(state: DemoState): Conversation {
 
 /**
  * A message was saved in a conversation: it moves to the top of the list, and the first incoming
- * message names it (unless the person already renamed it).
+ * message names it (unless the person already renamed it). One from Tex makes it unread until it
+ * is read; one the person wrote means they saw what came before, as the backend counts it.
  */
 export function messageSaved(state: DemoState, message: Message): void {
   const conversation = findConversation(state, message.conversationId);
@@ -103,6 +106,7 @@ export function messageSaved(state: DemoState, message: Message): void {
   const first = !state.messages.some((other) => other.id !== message.id && other.conversationId === conversation.id && other.direction === "in");
   if (message.direction === "in" && first && conversation.title === NEW_CHAT_TITLE) conversation.title = conversationTitle(message.text);
   conversation.lastMessageAt = message.createdAt;
+  conversation.unread = message.direction === "out";
   emit(state, "conversation.updated", conversation);
 }
 
@@ -159,6 +163,20 @@ export const updateConversation: Handler = async ({ state, request, params }) =>
   // Making it active sends it on the stream, new title included; a rename alone is sent here.
   if (becomesActive) makeActive(state, conversation);
   else if (renamed) emit(state, "conversation.updated", conversation);
+  return json(conversation);
+};
+
+/**
+ * The person has seen it up to now (the app shows it). Any conversation, the Automations chat and
+ * Telegram ones too. Only one that was unread changes, and only then is it sent on the stream.
+ */
+export const markConversationRead: Handler = ({ state, params }) => {
+  const conversation = findConversation(state, params.conversationId);
+  if (!conversation) throw notFound("That conversation doesn't exist");
+  if (conversation.unread) {
+    conversation.unread = false;
+    emit(state, "conversation.updated", conversation);
+  }
   return json(conversation);
 };
 

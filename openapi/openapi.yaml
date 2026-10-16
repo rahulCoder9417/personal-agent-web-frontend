@@ -415,6 +415,31 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /v1/conversations/{conversationId}/read:
+    post:
+      operationId: markConversationRead
+      tags: [chat]
+      summary: Mark a conversation read
+      description: |
+        The user has seen everything in the conversation up to now, so its `unread` turns false.
+        The web app calls it when it shows a conversation, and again when a message arrives in the
+        one it shows. Any conversation can be marked read: web, Telegram and the Automations chat.
+        No body.
+
+        Safe to call again: marking a conversation that is read already changes nothing. When it
+        was unread, `conversation.updated` goes out on the live stream with `unread: false`, so the
+        user's other tabs and devices clear their mark too. No turn runs and nothing is charged.
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: Read; the conversation as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Conversation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/chats/new:
     post:
       operationId: startNewChat
@@ -489,8 +514,8 @@ paths:
 
         `message.created` and `message.status` carry the whole message, so its `conversationId`
         comes with it. `conversation.updated` carries the whole conversation: it is sent when one
-        starts, and when its `title`, `lastMessageAt` or `active` changes. `conversation.deleted`
-        carries the deleted conversation's `id` only.
+        starts, and when its `title`, `lastMessageAt`, `active` or `unread` changes.
+        `conversation.deleted` carries the deleted conversation's `id` only.
 
         `agent.progress` is a short line about what the agent is doing in the current turn (for
         example `Scout: reading 4 pages` or `using web_search`). It is live only: it isn't saved
@@ -3809,7 +3834,7 @@ components:
     Conversation:
       type: object
       description: One stretch of a chat between two "New chat" actions. The agent keeps a context of its own for each.
-      required: [id, channel, kind, epoch, startedAt, lastMessageAt, title, active]
+      required: [id, channel, kind, epoch, startedAt, lastMessageAt, title, active, unread]
       properties:
         id: { type: string, examples: [cnv_01jz3m8q4kd2v7x9w0t5b6c8ya] }
         channel: { $ref: "#/components/schemas/ChannelType" }
@@ -3844,6 +3869,19 @@ components:
             True for the one conversation of its chat that the next message goes into. Web chat:
             the one the user has open to write in. Telegram: the chat's latest one. Always false
             for the Automations chat.
+        unread:
+          type: boolean
+          description: |
+            True when the agent said something in it that the user hasn't seen yet: a message from
+            the agent (`direction: out`: a reply, an approval request, an automation run's answer
+            or a copy of one) saved after the user last read the conversation. The same on every
+            channel: a Telegram conversation counts like a web one.
+
+            It turns false when the user reads the conversation
+            (`POST /v1/conversations/{conversationId}/read`, which the web app calls when it shows
+            the conversation and when a message arrives while it is shown) and when the user writes
+            in it, in any channel: what came before their own message counts as seen. Messages the
+            user writes never make it true. Older servers leave the field out: read that as false.
 
     ConversationDeleted:
       type: object

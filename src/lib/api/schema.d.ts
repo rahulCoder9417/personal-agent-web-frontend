@@ -236,6 +236,33 @@ export interface paths {
         patch: operations["updateConversation"];
         trace?: never;
     };
+    "/v1/conversations/{conversationId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a conversation read
+         * @description The user has seen everything in the conversation up to now, so its `unread` turns false.
+         *     The web app calls it when it shows a conversation, and again when a message arrives in the
+         *     one it shows. Any conversation can be marked read: web, Telegram and the Automations chat.
+         *     No body.
+         *
+         *     Safe to call again: marking a conversation that is read already changes nothing. When it
+         *     was unread, `conversation.updated` goes out on the live stream with `unread: false`, so the
+         *     user's other tabs and devices clear their mark too. No turn runs and nothing is charged.
+         */
+        post: operations["markConversationRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats/new": {
         parameters: {
             query?: never;
@@ -295,8 +322,8 @@ export interface paths {
          *
          *     `message.created` and `message.status` carry the whole message, so its `conversationId`
          *     comes with it. `conversation.updated` carries the whole conversation: it is sent when one
-         *     starts, and when its `title`, `lastMessageAt` or `active` changes. `conversation.deleted`
-         *     carries the deleted conversation's `id` only.
+         *     starts, and when its `title`, `lastMessageAt`, `active` or `unread` changes.
+         *     `conversation.deleted` carries the deleted conversation's `id` only.
          *
          *     `agent.progress` is a short line about what the agent is doing in the current turn (for
          *     example `Scout: reading 4 pages` or `using web_search`). It is live only: it isn't saved
@@ -2373,6 +2400,19 @@ export interface components {
              *     for the Automations chat.
              */
             active: boolean;
+            /**
+             * @description True when the agent said something in it that the user hasn't seen yet: a message from
+             *     the agent (`direction: out`: a reply, an approval request, an automation run's answer
+             *     or a copy of one) saved after the user last read the conversation. The same on every
+             *     channel: a Telegram conversation counts like a web one.
+             *
+             *     It turns false when the user reads the conversation
+             *     (`POST /v1/conversations/{conversationId}/read`, which the web app calls when it shows
+             *     the conversation and when a message arrives while it is shown) and when the user writes
+             *     in it, in any channel: what came before their own message counts as seen. Messages the
+             *     user writes never make it true. Older servers leave the field out: read that as false.
+             */
+            unread: boolean;
         };
         /** @description The `data` of a `conversation.deleted` stream event. */
         ConversationDeleted: {
@@ -4237,6 +4277,30 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    markConversationRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: components["parameters"]["ConversationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read; the conversation as it is now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conversation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     startNewChat: {

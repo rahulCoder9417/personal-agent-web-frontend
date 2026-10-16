@@ -6,11 +6,12 @@ import type { ChannelType } from "@/lib/api/client";
 import { useAvailableChannels, useConversations, useNewChat, usePinnedAutomations } from "@/lib/api/hooks";
 import { useAutomationsUnread } from "@/lib/automations-seen";
 import { linkableChannels } from "@/lib/channels";
-import { allConversations, AUTOMATIONS_TITLE, canWriteIn, conversationToOpen, isAutomationsChat, newChatError, readOnlyNote, titleOf } from "@/lib/conversations";
+import { allConversations, anyUnread, AUTOMATIONS_TITLE, canWriteIn, conversationToOpen, isAutomationsChat, newChatError, readOnlyNote, titleOf } from "@/lib/conversations";
 import { CHANNEL_LABEL, cn, listNames } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { PANEL_MOTION, useMotionReady, useStaysDrawn } from "@/lib/motion";
 import { focusAfterToggle, PANELS } from "@/lib/panels";
+import { useReadWhileShown } from "@/lib/read-while-shown";
 import { useStoredFlag } from "@/lib/stored-flag";
 import { BrandIcon } from "../brand-icon";
 import { AutomationsIcon, CloseIcon, NewChatIcon, PanelIcon } from "../icons";
@@ -119,10 +120,8 @@ export function ChatScreen() {
   const pinned = usePinnedAutomations(wantAutomations);
   const automationsChat = pinned.chat;
   // The dated list, then the Automations chat (pinned apart in the history, but opened like any).
-  const conversations = useMemo(() => {
-    const dated = allConversations(list.data).filter((conversation) => !isAutomationsChat(conversation));
-    return automationsChat ? [...dated, automationsChat] : dated;
-  }, [list.data, automationsChat]);
+  const dated = useMemo(() => allConversations(list.data).filter((conversation) => !isAutomationsChat(conversation)), [list.data]);
+  const conversations = useMemo(() => (automationsChat ? [...dated, automationsChat] : dated), [dated, automationsChat]);
   const [pickedId, setPickedId] = useState<string | null>(null);
   const picked = pickedId ?? (wantAutomations ? (automationsChat?.id ?? null) : null);
   // Asked for before the backend has started it: its stand-in, which says what will come. Once
@@ -133,6 +132,10 @@ export function ChatScreen() {
   const writable = webChatOn && canWriteIn(opened) && !standIn;
   const inAutomations = standIn !== null || isAutomationsChat(opened);
   const automationsUnread = useAutomationsUnread(automationsChat, inAutomations);
+  // The one on screen is being read: opening it, and each reply that arrives while it is shown, marks it read.
+  useReadWhileShown(opened?.id ?? null, opened?.unread === true);
+  // Something from Tex not seen yet in another chat: the button that shows the list says so while it is put away.
+  const chatsUnread = anyUnread(dated, opened?.id ?? null);
 
   const wide = useMediaQuery(SHOWN_AT.conversations);
   const hidden = useStoredFlag(PANELS.chats);
@@ -223,7 +226,7 @@ export function ChatScreen() {
           <span className={cn(headerOnly, !hidden && "lg:-mr-1.5")}>
             <IconButton
               id={SHOW_CHATS_ID}
-              label={automationsUnread ? "Show chats (new automation runs)" : "Show chats"}
+              label={chatsUnread ? "Show chats (unread messages)" : automationsUnread ? "Show chats (new automation runs)" : "Show chats"}
               aria-controls={wide ? CHATS_ID : undefined}
               aria-haspopup={wide ? undefined : "dialog"}
               aria-expanded={wide ? false : drawer}
@@ -235,8 +238,8 @@ export function ChatScreen() {
               className="relative size-9"
             >
               <PanelIcon size={18} />
-              {/* A run arrived in the Automations chat while the history is put away. */}
-              {automationsUnread && (
+              {/* Something from Tex arrived in another chat, or a run in the Automations chat, while the history is put away. */}
+              {(chatsUnread || automationsUnread) && (
                 <span data-unread aria-hidden className="absolute top-1.5 right-1.5 size-2 rounded-full bg-accent ring-2 ring-surface" />
               )}
             </IconButton>

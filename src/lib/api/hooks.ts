@@ -35,12 +35,14 @@ import {
   allConversations,
   automationsChatIn,
   automationsChatSpoke,
+  changeConversation,
   conversationSpoke,
   conversationStartedBy,
   dropConversation,
   emptyActiveChat,
   isAutomationsChat,
   placeConversation,
+  readMarked,
   serverHasAutomationsChat,
   type ConversationList,
 } from "../conversations";
@@ -350,6 +352,31 @@ export function useDeleteConversation() {
     onError: (error, conversationId) => {
       if (error instanceof ApiError && error.status === 404) gone(conversationId);
     },
+  });
+}
+
+/** Changes one conversation wherever it is kept: in the dated list, or pinned (the Automations chat). */
+function changeCachedConversation(qc: QueryClient, conversationId: string, change: (conversation: Conversation) => Conversation) {
+  qc.setQueryData<ConversationList>(qk.conversations, (list) => (list ? changeConversation(list, conversationId, change) : list));
+  const automations = automationsChatOf(qc);
+  if (automations?.id !== conversationId) return;
+  const next = change(automations);
+  if (next !== automations) qc.setQueryData<Conversation | null>(qk.automationsChat, next);
+}
+
+/**
+ * Marks a conversation read: the person is looking at it. Its mark goes at once; the backend's
+ * answer then says what it is now, unless something newer arrived in the meantime (that message's
+ * own event says). If the request fails, the list is asked for again, to show what the backend has.
+ */
+export function useMarkConversationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (conversationId: string) =>
+      unwrap(api.POST("/v1/conversations/{conversationId}/read", { params: { path: { conversationId } } })),
+    onMutate: (conversationId) => changeCachedConversation(qc, conversationId, (conversation) => readMarked(conversation)),
+    onSuccess: (answer, conversationId) => changeCachedConversation(qc, conversationId, (conversation) => readMarked(conversation, answer)),
+    onError: () => void qc.invalidateQueries({ queryKey: qk.conversations }),
   });
 }
 

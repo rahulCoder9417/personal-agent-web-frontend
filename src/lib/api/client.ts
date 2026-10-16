@@ -23,9 +23,10 @@ export type Message = Schemas["Message"];
 export type ConversationKind = Schemas["ConversationKind"];
 /**
  * One stretch of a chat between two "New chat" actions; Tex's context is separate for each. An
- * older backend sends no `kind`: that reads as `chat`.
+ * older backend sends no `kind`: that reads as `chat`. Nor `unread` (Tex said something there that
+ * wasn't seen yet): that reads as read, and nothing is ever marked.
  */
-export type Conversation = Omit<Schemas["Conversation"], "kind"> & { kind?: ConversationKind };
+export type Conversation = Omit<Schemas["Conversation"], "kind" | "unread"> & { kind?: ConversationKind; unread?: boolean };
 export type Approval = Schemas["Approval"];
 export type ApprovalStatus = Schemas["ApprovalStatus"];
 export type App = Schemas["App"];

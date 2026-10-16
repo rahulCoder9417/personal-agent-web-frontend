@@ -21,6 +21,11 @@ import {
   serverHasAutomationsChat,
   titleOf,
   titleToSave,
+  anyUnread,
+  changeConversation,
+  readMarked,
+  showsUnread,
+  unreadAfter,
   type ConversationList,
 } from "./conversations";
 
@@ -262,10 +267,28 @@ describe("the Automations chat", () => {
 
   it("moves on with each message saved in it, and stays not active when the person writes there", () => {
     const chat = pinned("09:00");
-    const run = automationsChatSpoke(chat, { conversationId: "auto", createdAt: at("09:30") });
+    const run = automationsChatSpoke(chat, { conversationId: "auto", createdAt: at("09:30"), direction: "out" });
     expect(run).toMatchObject({ lastMessageAt: at("09:30"), active: false });
-    expect(automationsChatSpoke(run, { conversationId: "auto", createdAt: at("09:10") })).toBe(run);
-    expect(automationsChatSpoke(run, { conversationId: "other", createdAt: at("10:00") })).toBe(run);
+    expect(automationsChatSpoke(run, { conversationId: "auto", createdAt: at("09:10"), direction: "out" })).toBe(run);
+    expect(automationsChatSpoke(run, { conversationId: "other", createdAt: at("10:00"), direction: "out" })).toBe(run);
+  });
+
+  it("is unread after a run's answer, and read after the person writes there, when the backend says unread", () => {
+    const chat = pinned("09:00", { unread: false });
+    const run = automationsChatSpoke(chat, { conversationId: "auto", createdAt: at("09:30"), direction: "out" });
+    expect(run.unread).toBe(true);
+    expect(automationsChatSpoke(run, { conversationId: "auto", createdAt: at("09:40"), direction: "in" }).unread).toBe(false);
+    // An older backend says nothing about it, and nothing is made up.
+    expect(automationsChatSpoke(pinned("09:00"), { conversationId: "auto", createdAt: at("09:30"), direction: "out" }).unread).toBeUndefined();
+  });
+
+  it("takes the backend's word for its mark when it gives one, on any device, and never while it is open", () => {
+    const chat = pinned("09:30");
+    const remembered = { id: "auto", at: at("09:30") };
+    expect(automationsUnread({ ...chat, unread: true }, remembered, false)).toBe(true);
+    expect(automationsUnread({ ...chat, unread: true }, null, false)).toBe(true);
+    expect(automationsUnread({ ...chat, unread: true }, remembered, true)).toBe(false);
+    expect(automationsUnread({ ...chat, unread: false }, { id: "auto", at: at("09:00") }, false)).toBe(false);
   });
 
   it("lights its mark when a run arrived after it was last seen, and not while it is open", () => {
@@ -287,5 +310,68 @@ describe("the Automations chat", () => {
     const remembered = seenToRemember(again, first);
     expect(remembered).toEqual({ id: "auto2", at: at("11:59") });
     expect(automationsUnread(again, remembered, false)).toBe(true);
+  });
+});
+
+describe("unread conversations", () => {
+  it("are marked unless they are the one open, and not at all by an older backend", () => {
+    const unread = conversation("a", "10:00", { unread: true });
+    const read = conversation("b", "09:00", { unread: false });
+    const older = conversation("c", "08:30");
+    expect(showsUnread(unread, null)).toBe(true);
+    expect(showsUnread(unread, "a")).toBe(false);
+    expect(showsUnread(read, null)).toBe(false);
+    expect(showsUnread(older, null)).toBe(false);
+    expect(anyUnread([read, older, unread], null)).toBe(true);
+    expect(anyUnread([read, older, unread], "a")).toBe(false);
+    expect(anyUnread([], null)).toBe(false);
+  });
+
+  it("become unread with a reply from Tex, and read when the person writes, as the backend counts it", () => {
+    const read = conversation("a", "09:00", { unread: false });
+    expect(unreadAfter(read, { direction: "out" })).toEqual({ ...read, unread: true });
+    expect(unreadAfter({ ...read, unread: true }, { direction: "in" }).unread).toBe(false);
+    // Nothing changes: the same object back.
+    expect(unreadAfter(read, { direction: "in" })).toBe(read);
+    const older = conversation("b", "09:00");
+    expect(unreadAfter(older, { direction: "out" })).toBe(older);
+  });
+
+  it("a reply to a conversation that isn't open puts the mark on it as it moves to the top", () => {
+    const list = listOf([[conversation("open", "10:00", { active: true, unread: false }), conversation("other", "09:00", { unread: false })]]);
+    const next = conversationSpoke(list, { conversationId: "other", channel: "telegram", direction: "out", createdAt: at("10:30") })!;
+    const [first, second] = allConversations(next);
+    expect(first).toMatchObject({ id: "other", unread: true, lastMessageAt: at("10:30") });
+    expect(second).toMatchObject({ id: "open", unread: false });
+    expect(showsUnread(first, "open")).toBe(true);
+    // The person's own message in it: what came before counts as seen.
+    const after = conversationSpoke(next, { conversationId: "other", channel: "telegram", direction: "in", createdAt: at("10:40") })!;
+    expect(allConversations(after)[0]).toMatchObject({ id: "other", unread: false });
+  });
+
+  it("are read at once when marked, and take the backend's answer unless something newer arrived", () => {
+    const unread = conversation("a", "10:00", { unread: true });
+    expect(readMarked(unread)).toEqual({ ...unread, unread: false });
+    expect(readMarked(unread, { ...unread, unread: false })).toEqual({ ...unread, unread: false });
+    // A reply arrived after the answer was made: its own event decides, the answer doesn't undo it.
+    const newer = conversation("a", "10:05", { unread: true });
+    expect(readMarked(newer, { ...unread, unread: false })).toBe(newer);
+    // Read already, or an older backend: nothing changes.
+    const read = conversation("a", "10:00", { unread: false });
+    expect(readMarked(read)).toBe(read);
+    const older = conversation("a", "10:00");
+    expect(readMarked(older)).toBe(older);
+  });
+
+  it("change one conversation in its place, and leave the list as it is when nothing changed", () => {
+    const list = listOf([[conversation("a", "10:00", { unread: true })], [conversation("b", "09:00", { unread: true })]]);
+    const next = changeConversation(list, "b", (item) => readMarked(item));
+    expect(allConversations(next).map((item) => [item.id, item.unread])).toEqual([
+      ["a", true],
+      ["b", false],
+    ]);
+    expect(next.pages[0]).toBe(list.pages[0]);
+    expect(changeConversation(next, "b", (item) => readMarked(item))).toBe(next);
+    expect(changeConversation(list, "missing", (item) => readMarked(item))).toBe(list);
   });
 });
