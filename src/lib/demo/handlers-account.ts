@@ -1,6 +1,7 @@
 // Profile, linked chats, billing, credits and the activity log for the demo account.
 
 import type { ChannelLink, ChannelType, LinkCode, Me, PlanId, UsagePeriod, UsageTotals } from "@/lib/api/client";
+import { withNotificationChange, type NotificationSettings } from "@/lib/notifications";
 import { nowIso, type Handler } from "./context";
 import {
   badRequest,
@@ -62,8 +63,31 @@ export const updateMe: Handler = async ({ state, request }) => {
   if (timezone !== undefined) Object.assign(state.user, { timezone, timezoneSet: true });
   if (completed !== undefined) state.user.onboardingCompletedAt = completed ? (state.user.onboardingCompletedAt ?? nowIso()) : null;
   if (dismissed !== undefined) state.user.gettingStartedDismissedAt = dismissed ? (state.user.gettingStartedDismissedAt ?? nowIso()) : null;
+  if (body.notifications !== undefined) state.user.notifications = notificationsChange(state.user.notifications, body.notifications);
   return json(me(state));
 };
+
+const CLOCK = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+
+/** `notifications` in `PATCH /v1/me`: only the fields given change; quiet hours can't start when they end. */
+function notificationsChange(current: NotificationSettings, raw: unknown): NotificationSettings {
+  if (!isRecord(raw)) throw badRequest("notifications must be an object");
+  const quiet = raw.quietHours;
+  if (quiet !== undefined && !isRecord(quiet)) throw badRequest("quietHours must be an object");
+  for (const name of ["start", "end"] as const) {
+    const value = quiet?.[name];
+    if (value !== undefined && (typeof value !== "string" || !CLOCK.test(value))) throw badRequest(`${name} must be a time like 22:00`);
+  }
+  const change = {
+    ...(booleanField(raw, "crewJobs") === undefined ? {} : { crewJobs: raw.crewJobs as boolean }),
+    ...(booleanField(raw, "prReviews") === undefined ? {} : { prReviews: raw.prReviews as boolean }),
+    ...(booleanField(raw, "automationRuns") === undefined ? {} : { automationRuns: raw.automationRuns as boolean }),
+    ...(quiet ? { quietHours: { ...(booleanField(quiet, "enabled") === undefined ? {} : { enabled: quiet.enabled as boolean }), ...(quiet.start ? { start: quiet.start as string } : {}), ...(quiet.end ? { end: quiet.end as string } : {}) } } : {}),
+  };
+  const next = withNotificationChange(current, change);
+  if (next.quietHours.start === next.quietHours.end) throw badRequest("Quiet hours must start and end at different times");
+  return next;
+}
 
 // ---------------------------------------------------------------- channels
 
