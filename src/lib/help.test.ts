@@ -167,3 +167,13 @@ describe("searching the help", () => {
     expect(countAnswers([{ ...HELP_SECTIONS[0], topics: [HELP_SECTIONS[0].topics[0]] }])).toBe("1 answer");
   });
 });
+
+describe("what Help says about deleting an account", () => {
+  it("matches the privacy page: workspace backups go with it, database backups within 7 days", () => {
+    const found = topics.find(({ topic }) => topic.id === "privacy-delete-account");
+    const words = topicText(found!.section, found!.topic);
+    expect(words).toContain("the backups of your workspace files");
+    expect(words).toContain("database backups within 7 days");
+    expect(words).not.toContain("30 days");
+  });
+});

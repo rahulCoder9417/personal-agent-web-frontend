@@ -93,7 +93,7 @@ function DeleteAccountRow() {
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="text-[13.5px] font-medium">Delete account</span>
           <p className="text-[12.5px] text-muted">
-            Removes your agent’s workspace, memory, messages and connected apps. Backups clear within 30 days. This can’t be undone.
+            Removes your agent’s workspace, memory, messages and connected apps, and the backups of your workspace files. The rest leaves our database backups within 7 days. This can’t be undone.
           </p>
         </div>
         {!asking && (
