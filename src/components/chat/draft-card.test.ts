@@ -124,6 +124,8 @@ describe("a draft in the chat", () => {
     expect(html).not.toMatch(/>Save<\/button>/);
     // Folded: the name and what became of it, not the steps.
     expect(text(html)).not.toContain("Apps Tex may use");
+    // Said once, in the foot: the head is just the name.
+    expect(text(html).split("Saved").length - 1).toBe(1);
   });
 
   it("says Tex made a newer version, with the way to it, once replaced", () => {
@@ -131,6 +133,12 @@ describe("a draft in the chat", () => {
     expect(text(html)).toContain("Tex made a newer version of this draft. Open it");
     expect(html).toContain('href="/automations/new?draft=drf_2"');
     expect(html).not.toMatch(/>Save<\/button>/);
+    // The foot says it; no "Replaced" label above the name as well.
+    expect(text(html)).not.toContain("Replaced");
+  });
+
+  it("keeps Tex's line and the card in one stack, so the card sits apart from the bubble", () => {
+    expect(draw(base)).toMatch(/^<div class="[^"]*flex-col[^"]*gap-2[^"]*">/);
   });
 
   it("says it expired, also when the API no longer has it, and that it was discarded", () => {
