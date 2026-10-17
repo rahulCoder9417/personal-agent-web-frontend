@@ -122,7 +122,7 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
         </div>
       ) : (
         result && (
-          <p className={cn("flex items-center gap-1.5 border-t border-line px-4 py-2.5 text-[13px] font-medium", TONE_CLASS[result.tone])}>
+          <p className={cn("flex items-center gap-1.5 border-t border-line px-4 py-3 text-[13px] leading-5 font-medium", TONE_CLASS[result.tone])}>
             {result.icon === "check" && <CheckIcon size={14} />}
             {result.icon === "close" && <CloseIcon size={14} />}
             {result.text}
@@ -142,9 +142,9 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
 export function ApprovalQuestion({ text, approvalId }: { text: string; approvalId: string }) {
   const question = approvalQuestion(text);
   return (
-    <>
+    <div className="flex w-full min-w-0 flex-col items-start gap-2">
       {question && <AgentBubble text={question} />}
       <ApprovalCard approvalId={approvalId} fallbackText={question ? undefined : text} />
-    </>
+    </div>
   );
 }

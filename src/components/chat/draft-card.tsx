@@ -24,21 +24,22 @@ function Settled({ draft }: { draft: AutomationDraft }) {
   const state = draftState(draft);
   if (draft.status === "saved" && draft.automationId)
     return (
-      <p className="flex items-center gap-1.5 border-t border-line px-4 py-2.5 text-[13px] font-medium text-success">
-        <CheckIcon size={14} />
-        Saved ·{" "}
+      <p className="flex items-center gap-1.5 border-t border-line px-4 py-3 text-[13px] leading-5 font-medium text-success">
+        <CheckIcon size={14} className="shrink-0" />
+        <span>Saved</span>
+        <span className="text-muted">·</span>
         <Link href={automationHref(draft.automationId)} className={LINK}>
           Open
         </Link>
       </p>
     );
   return (
-    <p className="border-t border-line px-4 py-2.5 text-[13px] text-muted">
+    <p className="border-t border-line px-4 py-3 text-[13px] leading-5 text-muted">
       {state.line}
       {draft.status === "replaced" && draft.replacedBy && (
         <>
           {" "}
-          <Link href={draftHref({ id: draft.replacedBy, changeOf: draft.changeOf })} className={LINK}>
+          <Link href={draftHref({ id: draft.replacedBy, changeOf: draft.changeOf })} className={cn(LINK, "whitespace-nowrap")}>
             Open it
           </Link>
         </>
@@ -59,7 +60,7 @@ export function DraftCard({ draftId }: { draftId: string }) {
     // Removed after 30 days (404), or it can't be read now.
     const gone = !error || (error instanceof ApiError && error.status === 404);
     return (
-      <div className="w-full max-w-[480px] rounded-2xl bg-surface px-4 py-3 text-[13px] text-muted shadow-[0_0_0_1px_var(--line)]">
+      <div className="w-full max-w-[480px] rounded-2xl bg-surface px-4 py-3.5 text-[13px] leading-5 text-muted shadow-[0_0_0_1px_var(--line)]">
         {gone ? "This draft expired. Ask Tex again." : "The draft didn’t load. Open the chat again to retry."}
       </div>
     );
@@ -83,14 +84,17 @@ export function DraftCard({ draftId }: { draftId: string }) {
         open ? "shadow-[0_0_0_1px_var(--accent),0_10px_30px_-14px_rgb(51_85_245/0.45)]" : "shadow-[0_0_0_1px_var(--line)]",
       )}
     >
-      <header className={cn("flex flex-col gap-1 px-4 pt-4", open ? "pb-3.5" : "pb-3")}>
-        <p className="flex flex-wrap items-center gap-x-1.5 text-[12px] leading-4">
-          <span className={cn("inline-flex items-center gap-1.5 font-semibold", open ? "text-accent" : "text-muted")}>
-            {open && <span aria-hidden className="size-1.5 rounded-full bg-accent" />}
-            {state.label}
-          </span>
-          {open && <span className="text-muted">· {draft.changeOf ? "a change to an automation" : "a new automation"}</span>}
-        </p>
+      {/* While open, the head says it isn't saved yet; once folded, the foot says what became of it, so the head is just the name. */}
+      <header className={cn("flex flex-col gap-1 px-4", open ? "pt-4 pb-3.5" : "py-3.5")}>
+        {open && (
+          <p className="flex flex-wrap items-center gap-x-1.5 text-[12px] leading-4">
+            <span className="inline-flex items-center gap-1.5 font-semibold text-accent">
+              <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+              {state.label}
+            </span>
+            <span className="text-muted">· {draft.changeOf ? "a change to an automation" : "a new automation"}</span>
+          </p>
+        )}
         <h3 className={cn("text-[16px] leading-snug font-semibold tracking-[-0.01em] break-words", !open && "text-nav")}>{draft.title}</h3>
       </header>
 
@@ -146,9 +150,9 @@ export function DraftCard({ draftId }: { draftId: string }) {
  */
 export function DraftQuestion({ message, draftId }: { message: Pick<Message, "text" | "channel">; draftId: string }) {
   return (
-    <>
+    <div className="flex w-full min-w-0 flex-col items-start gap-2">
       {message.channel === "web" && message.text && <AgentBubble text={message.text} />}
       <DraftCard draftId={draftId} />
-    </>
+    </div>
   );
 }
