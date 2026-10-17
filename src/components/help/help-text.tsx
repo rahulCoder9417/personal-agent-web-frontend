@@ -19,7 +19,7 @@ export function HelpLink({ href, className, children }: { href: string; classNam
       </a>
     );
   }
-  if (href.startsWith("#")) {
+  if (href.startsWith("#") || href.startsWith("mailto:")) {
     return (
       <a href={href} className={cn(HELP_LINK, className)}>
         {children}

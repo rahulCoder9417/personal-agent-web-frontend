@@ -8,7 +8,7 @@
 import { AUTOMATION_KINDS } from "./automations";
 import { CREDIT_COSTS } from "./credit-costs";
 import { CREW_EXAMPLES } from "./crew";
-import { ask, list, note, p, steps, table, type HelpSection, type HelpTopic } from "./help";
+import { ask, list, note, p, steps, table, type HelpSection, type HelpTopic, type PlaceId } from "./help";
 
 /** The crew's part of the page (`/help#crew`), where the old Crew screen's address leads (crew-address.ts). */
 export const CREW_SECTION_ID = "crew";
@@ -32,12 +32,12 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "start-first-steps",
-        title: "The first three things to do",
+        title: "What should I do first?",
         blocks: [
           steps(
-            "Connect your AI in {ai}. Tex can’t think without one. See [Your AI](#ai).",
-            "Connect an app, such as Gmail or GitHub, in {apps}.",
-            "Send Tex a first message in {chat}.",
+            "Give Tex an AI to think with in {ai}. If Textcrew AI shows as ready there, you can skip this. See [Your AI](#ai).",
+            "Connect an app, such as Gmail or GitHub, in {apps}. See [Connect Gmail](#apps-gmail).",
+            "Send Tex your first message in {chat}.",
           ),
           p("Then, when you like:"),
           list(
@@ -60,8 +60,24 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         ],
       },
       {
+        id: "start-whatsapp",
+        title: "Can I use Textcrew on WhatsApp or iMessage?",
+        blocks: [p("Not yet. Today you talk to Tex in the web app and on Telegram. Nothing else is live, and we will say here when it is.")],
+      },
+      {
+        id: "start-dots",
+        title: "What do the dots and counts mean?",
+        blocks: [
+          list(
+            "A dot on a conversation in your chat history, or on the button that shows the history on a phone: Tex wrote something you haven’t seen yet. It goes when you open it.",
+            "A dot beside the **Automations chat**: a new run of an automation has arrived. See [Where the results go](#automations-results).",
+            "A number beside **Approvals**: that many questions are waiting for your OK. See [Approvals](#approvals).",
+          ),
+        ],
+      },
+      {
         id: "start-conversations",
-        title: "Conversations and New chat",
+        title: "How do I start a new chat?",
         blocks: [
           p("Each conversation has its own context: Tex doesn’t see what was said in another one. What Tex remembers about you ({memory}) stays in all of them."),
           list(
@@ -210,7 +226,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         id: "telegram-link",
-        title: "Link Telegram",
+        title: "How do I link Telegram?",
         blocks: [
           steps(
             "Open {chatApps}. On a phone, Integrations is a tab at the bottom.",
@@ -276,7 +292,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "telegram-unlink",
-        title: "Unlink Telegram",
+        title: "How do I unlink Telegram?",
         blocks: [
           steps("Open {chatApps}.", "Press **Unlink** next to the chat, then **Unlink Telegram** to confirm."),
           p("Tex stops reading and answering that chat, and the bot only answers that it isn’t linked. Your chat history stays. To move the chat to another Textcrew account, unlink it first, then send that account’s code."),
@@ -294,7 +310,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         id: "ai-three-ways",
-        title: "The three ways, and what each costs",
+        title: "How do I connect my AI, and what does each way cost?",
         blocks: [
           table(
             ["Way", "What it costs"],
@@ -307,7 +323,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "ai-claude-plan",
-        title: "Connect your Claude plan",
+        title: "How do I use my Claude plan?",
         blocks: [
           steps(
             "Open {ai} and start **Connect your Claude plan**.",
@@ -320,7 +336,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "ai-own-key",
-        title: "Use your own API key",
+        title: "How do I use my own API key?",
         blocks: [
           steps(
             "Open {ai} and find **Your own API key**.",
@@ -357,7 +373,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         id: "apps-connect",
-        title: "Connect an app",
+        title: "How do I connect an app?",
         blocks: [
           steps(
             "Open {apps} (on a phone, Integrations is a tab at the bottom) and press **Connect** on the app.",
@@ -366,6 +382,28 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
             "You come back to Textcrew, which says the app is connected.",
           ),
           note("An app that says “Not available yet” can’t be connected on Textcrew yet."),
+        ],
+      },
+      {
+        id: "apps-gmail",
+        title: "How do I connect Gmail?",
+        blocks: [
+          steps(
+            "Open {apps} and press **Connect** on Gmail.",
+            "Read what Tex will be able to do, then press **Continue to Google**.",
+            "Choose your Google account and allow access. Google’s screen may name Composio: see [Why does Google’s screen say Composio?](#apps-composio).",
+            "You come back to Textcrew, which says Gmail is connected.",
+          ),
+          ask("Summarize my unread email from today."),
+          note("Tex reads and searches your mail for free. Sending an email asks for your OK first."),
+        ],
+      },
+      {
+        id: "apps-github",
+        title: "How do I connect GitHub?",
+        blocks: [
+          steps("Open {apps} and press **Connect** on GitHub.", "Sign in on GitHub’s own page and allow access.", "Back in Textcrew, ask Tex about a repo, or hand it to Byte or Patch. See [The crew](#crew)."),
+          note("Reviewing every pull request in a repo needs admin access to that repo."),
         ],
       },
       {
@@ -393,7 +431,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "apps-manage",
-        title: "Disconnect, reconnect or add an account",
+        title: "How do I disconnect or reconnect an app?",
         blocks: [
           list(
             "**Disconnect** removes Tex’s access to that account. It asks first, and names any automation that watches the app and would stop with it.",
@@ -424,7 +462,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         id: "approvals-what",
-        title: "What needs your OK",
+        title: "What does Tex ask my OK for?",
         blocks: [
           table(
             ["Kind of action", "For example"],
@@ -439,6 +477,18 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         ],
       },
       {
+        id: "approvals-why",
+        title: "Why did Tex ask for my OK?",
+        blocks: [
+          p("Because the action reaches other people, can’t be taken back easily, or changes something that is already there. Tex shows exactly what it will do, such as the email as it will be sent, and does nothing until you press **Approve**."),
+          list(
+            "Don’t want it? Press **Reject**, and Tex leaves it alone.",
+            "Tired of one kind of question? See [Can I stop Tex asking every time?](#approvals-skip).",
+            "Missed it? Every waiting question is in {approvals}. It expires after 24 hours.",
+          ),
+        ],
+      },
+      {
         id: "approvals-web",
         title: "Approve in the web app",
         blocks: [
@@ -450,7 +500,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "approvals-skip",
-        title: "Don’t ask again",
+        title: "Can I stop Tex asking every time?",
         blocks: [
           p("On a card for sending or changing something in an app, **Don’t ask again for this…** makes a skip rule. Pick **Only to** the people on that card (the default) or **Anyone**. That approves this one and saves the rule."),
           list(
@@ -503,7 +553,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "automations-make",
-        title: "Make one",
+        title: "How do I make an automation?",
         blocks: [
           p("Two ways. **Ask Tex** in chat, in plain words: Tex shows it back as a **draft** first, in the web chat a card with its steps drawn small and **Save**, on Telegram an outline with a link and a **Save** button. Or use **New automation** on {automations}: say it in words there and Tex checks it on the spot, then opens its draft on the canvas (or tells you why it can't be an automation, and what would work); or **build it by hand**, picking how it works (read, decide, then act; read and tell me; write without reading; or just Tex) or a template. Nothing runs until you save it."),
           ask("Every weekday at 10am, list the pull requests waiting for my review."),
@@ -607,7 +657,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "credits-zero",
-        title: "At zero credits",
+        title: "What happens when I run out of credits?",
         blocks: [
           list(
             "A new message gets a short reply, “You’re out of credits, so I can’t work on that right now.”, and nothing else runs.",
@@ -627,15 +677,20 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "credits-plans",
-        title: "The plans",
+        title: "Which plan do I need, and what does it cost?",
         blocks: [
           table(
             ["Plan", "What you get"],
             ["**Free**", "100 credits once, when you sign up. 10 apps. 1 automation."],
-            ["**Pro**", "1,500 credits every month. All apps. 5 automations. Top-ups."],
-            ["**Max**", "4,500 credits every month. All apps and your own MCP servers. 50 automations. Web search through Textcrew. First in line when the server is busy."],
+            ["**Pro** ($19 a month at launch)", "1,500 credits every month. All apps. 5 automations. Top-ups."],
+            ["**Max** ($30 a month at launch)", "4,500 credits every month. All apps and your own MCP servers. 50 automations. Web search through Textcrew. First in line when the server is busy."],
           ),
-          p("Prices and the rest are in {plans}. Plans and top-ups are bought in the web app, never in Telegram."),
+          list(
+            "The launch prices are lower than the regular ones ($30 for Pro, $50 for Max), which {plans} shows crossed out.",
+            "A top-up (Pro and Max) is $10 for 800 credits.",
+            "Waitlist members get 50% off their first month of Pro or Max. Checkout shows it before you pay, if it applies to you.",
+          ),
+          p("The full list is in {plans}. Plans and top-ups are bought in the web app, never in Telegram."),
           p("To cancel, press **Cancel plan** in {plans}. You keep the plan until the end of the period you’ve paid for, then move to Free. The credits you have stay until they expire."),
           p("Changed your mind before then? Press **Keep my plan** in {plans}. The plan renews as before, and nothing is charged that day."),
           p("Invoices, receipts and the card you pay with are on Polar’s billing page: press **Invoices and card** in {plans}. If a payment fails, the same button says **Update card**; Polar tries the new card at once."),
@@ -644,7 +699,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "credits-coupon",
-        title: "Redeem a coupon",
+        title: "How do I redeem a coupon code?",
         blocks: [
           p("Type the code in {credits} under **Redeem a code**, or send it to the Textcrew bot on Telegram. Codes look like `AGT-7KQ2-M9XP-4RWD-ABCD`."),
           note("A coupon works once per account. Your account needs a verified email and a linked chat app, such as Telegram."),
@@ -701,7 +756,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "privacy-delete-account",
-        title: "Delete your account",
+        title: "How do I delete my account?",
         blocks: [
           steps("Open {account}.", "Press **Delete my account and data**, then type DELETE to confirm."),
           p("This removes your agent and its workspace, your conversations, files, memories, approvals, activity log, connected apps, keys and automations, and the backups of your workspace files. The rest of your data leaves our database backups within 7 days. A paid plan stops renewing. Records of payments and credits are kept; your name and email are removed from them."),
@@ -843,12 +898,22 @@ export function helpSectionsFor(options: { autoTopUp: boolean }): readonly HelpS
 }
 
 export const HELP_POPULAR: readonly { topic: string; label: string }[] = [
+  { topic: "apps-gmail", label: "Connect Gmail" },
+  { topic: "approvals-why", label: "Why did Tex ask for my OK?" },
+  { topic: "credits-zero", label: "Out of credits" },
   { topic: "telegram-link", label: "Link Telegram" },
-  { topic: "telegram-commands", label: "Telegram commands, like /new" },
-  { topic: "ai-three-ways", label: "Connect your AI" },
-  { topic: "apps-composio", label: "Why Google’s screen says “Composio”" },
   { topic: "faq-no-answer", label: "Tex doesn’t answer" },
 ];
+
+/** "Get started in 3 steps", at the top of the page: each leads to the screen where it is done. */
+export const HELP_START_STEPS: readonly { title: string; body: string; place: PlaceId; topic: string }[] = [
+  { title: "Give Tex an AI", body: "Use Textcrew AI, your own API key or your Claude plan.", place: "ai", topic: "ai-three-ways" },
+  { title: "Connect an app", body: "Gmail or GitHub, so Tex can work in them.", place: "apps", topic: "apps-gmail" },
+  { title: "Say hi to Tex", body: "Ask in the chat, or link Telegram and text from your phone.", place: "chat", topic: "start-where" },
+];
+
+/** Where to write when the page doesn't answer. */
+export const HELP_CONTACT = "support@textcrew.in";
 
 /** What the foot of the page offers to ask Tex: it can see the apps, the plan and the automations. */
 export const HELP_ASK_TEX = "Which of my apps are connected, and which need reconnecting?";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { appRoutes, pathOf } from "@/test/app-routes";
 import { ask, countAnswers, groupAsks, isExternal, note, p, parseInline, PLACES, placeName, plainText, searchHelp, topicLinks, topicSentences, topicText, type HelpSection } from "./help";
-import { HELP_ASK_TEX, HELP_POPULAR, HELP_SECTIONS } from "./help-content";
+import { HELP_ASK_TEX, HELP_CONTACT, HELP_POPULAR, HELP_SECTIONS, HELP_START_STEPS } from "./help-content";
 
 const topics = HELP_SECTIONS.flatMap((section) => section.topics.map((topic) => ({ section, topic })));
 const ids = (sections: ReturnType<typeof searchHelp>) => sections.flatMap((section) => section.topics.map((topic) => topic.id));
@@ -175,5 +175,47 @@ describe("what Help says about deleting an account", () => {
     expect(words).toContain("the backups of your workspace files");
     expect(words).toContain("database backups within 7 days");
     expect(words).not.toContain("30 days");
+  });
+});
+
+describe("the first-time reader's way in", () => {
+  it("has three start steps, each leading to a real screen and an answer that exists", () => {
+    const routes = appRoutes();
+    const answers = new Set(topics.map(({ topic }) => topic.id));
+    expect(HELP_START_STEPS).toHaveLength(3);
+    for (const step of HELP_START_STEPS) {
+      expect(routes, step.place).toContain(pathOf(PLACES[step.place].href));
+      expect(answers, step.topic).toContain(step.topic);
+    }
+  });
+
+  it("has task questions for the things a new user asks first", () => {
+    const titles = topics.map(({ topic }) => topic.title);
+    for (const wanted of ["How do I connect Gmail?", "Why did Tex ask for my OK?", "What happens when I run out of credits?", "How do I link Telegram?"]) expect(titles).toContain(wanted);
+  });
+
+  it("finds the task answers by the words a user types", () => {
+    expect(ids(searchHelp(HELP_SECTIONS, "connect gmail"))[0]).toBe("apps-gmail");
+    expect(ids(searchHelp(HELP_SECTIONS, "why ask ok"))).toContain("approvals-why");
+    expect(ids(searchHelp(HELP_SECTIONS, "run out of credits"))[0]).toBe("credits-zero");
+  });
+
+  it("has no empty answer or section, and tells where to write", () => {
+    for (const section of HELP_SECTIONS) {
+      expect(section.summary.length, section.id).toBeGreaterThan(0);
+      for (const topic of section.topics) expect(topicSentences(topic).length, topic.id).toBeGreaterThan(0);
+    }
+    expect(HELP_CONTACT).toBe("support@textcrew.in");
+  });
+
+  it("says the launch prices, the top-up and the waitlist discount", () => {
+    const plans = topics.find(({ topic }) => topic.id === "credits-plans")!;
+    const words = topicText(plans.section, plans.topic);
+    for (const said of ["19 a month", "30 a month", "800 credits", "50 off"]) expect(words).toContain(said);
+  });
+
+  it("does not promise WhatsApp or iMessage", () => {
+    const found = topics.find(({ topic }) => topic.id === "start-whatsapp")!;
+    expect(topicText(found.section, found.topic)).toContain("not yet");
   });
 });

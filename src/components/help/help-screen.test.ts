@@ -36,7 +36,16 @@ describe("the Help page", () => {
   it("starts with what Textcrew is, and the answers most asked for", () => {
     expect(html).toContain(">How Textcrew works</h2>");
     expect(html).toContain("Most asked:");
-    expect(html).toContain('href="#telegram-commands"');
+    expect(html).toContain('href="#apps-gmail"');
+    expect(html).toContain('href="#approvals-why"');
+  });
+
+  it("offers three steps to get started, each opening its screen, and a way to write to us", () => {
+    expect(html).toContain(">Get started in 3 steps</h2>");
+    const start = /<section aria-labelledby="help-start"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
+    expect(start.match(/<li /g)).toHaveLength(3);
+    for (const href of ['href="/settings/agent"', 'href="/integrations/apps"', 'href="/"', 'href="#apps-gmail"']) expect(start).toContain(href);
+    expect(html).toContain('href="mailto:support@textcrew.in"');
   });
 
   it("lists the topics at the top, each leading to its part of the page", () => {
@@ -70,6 +79,7 @@ describe("the Help page", () => {
     expect(hrefs.length).toBeGreaterThan(80);
     for (const href of hrefs) {
       if (href.startsWith("#")) expect(idsOnPage, href).toContain(href.slice(1));
+      else if (href.startsWith("mailto:")) expect(href).toBe("mailto:support@textcrew.in");
       else if (/^https?:/.test(href)) expect(href).toBe("https://textcrew.in/privacy");
       else expect(routes, href).toContain(pathOf(href));
     }

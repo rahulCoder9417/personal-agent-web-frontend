@@ -5,7 +5,7 @@ import { chatDraftHref } from "@/lib/chat-link";
 import { cn } from "@/lib/format";
 import { countAnswers, PLACES, placeName, searchHelp, type HelpIconName, type HelpSection, type HelpTopic } from "@/lib/help";
 import { useAutoTopUp } from "@/lib/api/hooks";
-import { CREW_SECTION_ID, HELP_ASK_TEX, HELP_POPULAR, helpSectionsFor } from "@/lib/help-content";
+import { CREW_SECTION_ID, HELP_ASK_TEX, HELP_CONTACT, HELP_POPULAR, HELP_START_STEPS, helpSectionsFor } from "@/lib/help-content";
 import { AppIcon } from "../brand-icon";
 import { ApprovalsIcon, AppsIcon, AutomationsIcon, ChevronRightIcon, CloseIcon, CrewIcon, KeyIcon, LinkIcon, LockIcon, SearchIcon, WarningIcon } from "../icons";
 import { Columns, COLUMN_ITEM, Page, PageBody, PageHeader, READING } from "../page";
@@ -60,7 +60,7 @@ function SearchField({ value, onChange }: { value: string; onChange: (value: str
         onKeyDown={(event) => {
           if (event.key === "Escape") onChange("");
         }}
-        placeholder="Search help, e.g. /new or Composio"
+        placeholder="Search help, e.g. connect Gmail or credits"
         autoComplete="off"
         spellCheck={false}
         className={cn(inputClass, "pr-9 pl-9 [&::-webkit-search-cancel-button]:hidden")}
@@ -98,6 +98,39 @@ function Intro() {
           </div>
         </div>
       </div>
+    </section>
+  );
+}
+
+/** "Get started in 3 steps": each step is a card that opens the screen where it is done, with a link to its answer. */
+function StartSteps() {
+  return (
+    <section aria-labelledby="help-start" className="flex flex-col gap-3">
+      <h2 id="help-start" className="text-[17px] font-semibold tracking-[-0.01em]">
+        Get started in 3 steps
+      </h2>
+      <ol className="grid grid-cols-[repeat(auto-fit,minmax(min(240px,100%),1fr))] gap-3">
+        {HELP_START_STEPS.map((step, index) => (
+          <li key={step.title} className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+            <div className="flex items-start gap-3">
+              <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-[13px] font-semibold text-nav">{index + 1}</span>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <p className="text-[14.5px] font-semibold">{step.title}</p>
+                <p className="text-[13px] leading-snug text-muted">{step.body}</p>
+              </div>
+            </div>
+            <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+              <ButtonLink href={PLACES[step.place].href} size="sm">
+                Open {placeName(step.place)}
+                <ChevronRightIcon size={13} className="-mr-1 text-muted" />
+              </ButtonLink>
+              <a href={`#${step.topic}`} className={cn(HELP_LINK, "text-[13px]")}>
+                How?
+              </a>
+            </div>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }
@@ -220,9 +253,10 @@ function StillStuck() {
         <AgentFigure who="tex" mood="asking" glyph size={30} label="" />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="text-[14.5px] font-semibold">Still stuck? Ask Tex</p>
+        <p className="text-[14.5px] font-semibold">Still stuck? Ask Tex, or write to us</p>
         <p className="text-[13px] text-muted">
-          Tex can check your plan, which apps are connected or need reconnecting, and your automations. Our privacy policy is at{" "}
+          Tex can check your plan, which apps are connected or need reconnecting, and your automations. Or write to us at{" "}
+          <HelpLink href={`mailto:${HELP_CONTACT}`}>{HELP_CONTACT}</HelpLink>. Our privacy policy is at{" "}
           <HelpLink href={PLACES.privacy.href}>{PLACES.privacy.label}</HelpLink>.
         </p>
       </div>
@@ -255,6 +289,7 @@ export function HelpScreen() {
         ) : (
           <>
             <Intro />
+            <StartSteps />
             <Contents sections={sections} />
           </>
         )}
