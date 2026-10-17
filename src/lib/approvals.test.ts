@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APPROVAL_RESULT, approvalOutcome, approvalQuestion, approvalReason, approvalReasonOf, ownAction, splitDetails } from "./approvals";
+import { APPROVAL_RESULT, approvalOutcome, approvalQuestion, approvalReason, webApprovalLine, approvalReasonOf, ownAction, splitDetails } from "./approvals";
 
 describe("approvalReason", () => {
   it("spots actions that reach other people", () => {
@@ -116,5 +116,15 @@ describe("ownAction", () => {
     expect(approvalReasonOf({ kind: "command", action: "TEXTCREW_RUN_COMMAND", details: { tool: "Write", target: "/x" } }).label).toBe("Changes a file");
     expect(approvalReasonOf({ kind: "git_push", action: "TEXTCREW_GIT_PUSH", details: { repo: "a/b", branch: "c", force: true } })).toEqual({ label: "Rewrites a branch", tone: "danger" });
     expect(approvalReasonOf({ kind: "app_action", action: "GMAIL_SEND_EMAIL", details: {} }).label).toBe("Sends to someone else");
+  });
+});
+
+describe("webApprovalLine", () => {
+  it("shortens the backend's long ask to one line", () => {
+    expect(webApprovalLine('I\'d like to run this command: curl -s "https://x.example/' + "a".repeat(200) + '". Approve or Deny below.')).toBe("I need your OK for this.");
+  });
+  it("keeps a short message as it is, and leaves old asks to the card", () => {
+    expect(webApprovalLine("Should I go ahead?")).toBe("Should I go ahead?");
+    expect(webApprovalLine("Approval needed: Send it")).toBeNull();
   });
 });

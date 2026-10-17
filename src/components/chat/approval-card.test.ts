@@ -31,19 +31,34 @@ const draw = (text: string, status: Approval["status"], over: Partial<Approval> 
 const decode = (html: string) => html.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
 
 describe("ApprovalQuestion", () => {
-  it("says what Tex wants to do, above the card with Approve and Deny", () => {
+  it("says one short line above the card, not a copy of the long summary", () => {
     const html = decode(draw(QUESTION, "pending"));
-    expect(html).toContain(QUESTION);
-    expect(html.indexOf(QUESTION)).toBeLessThan(html.indexOf("Needs your OK"));
+    expect(html).not.toContain(QUESTION);
+    expect(html).toContain("I need your OK for this.");
+    expect(html.indexOf("I need your OK for this.")).toBeLessThan(html.indexOf("Needs your OK</span>"));
     expect(html).toMatch(/>Approve<\/button>/);
     expect(html).toMatch(/>Deny<\/button>/);
     expect(html).not.toContain("Reject");
   });
 
-  it("keeps the question once it is answered, and says how it was answered", () => {
-    expect(decode(draw(QUESTION, "approved"))).toContain(QUESTION);
+  it("turns into one tinted line once it is answered, and says how it was answered", () => {
+    const one = decode(draw(QUESTION, "approved"));
+    expect(one).toContain("bg-success-soft");
+    expect(one).not.toMatch(/>Approve<\/button>/);
+    expect(one).not.toContain("<details");
+    expect(decode(draw(QUESTION, "rejected"))).toContain("bg-danger-soft");
+    expect(one).toContain("I need your OK for this.");
     expect(decode(draw(QUESTION, "approved"))).toContain("You approved this");
     expect(decode(draw(QUESTION, "rejected"))).toContain("You denied this");
+  });
+
+  it("shows Approve and Deny as two buttons, the time left on its own line, and the fields collapsed", () => {
+    const html = decode(draw(QUESTION, "pending"));
+    expect(html).toContain("grid-cols-2");
+    expect(html).toMatch(/>Approve<\/button>/);
+    expect(html).toMatch(/>Deny<\/button>/);
+    expect(html).toContain("Show the details");
+    expect(html).toMatch(/<details(?![^>]*\bopen)/);
   });
 
   it("shows an older ask, which only repeated the summary, as the card alone", () => {
@@ -66,11 +81,16 @@ describe("the agent's own actions on the card", () => {
         details: { tool: "Bash", target: CURL, why: "it reaches the internet", folder: "/data/workspace", arguments: { tool: "Bash", target: CURL } },
       }),
     );
+    expect(html).not.toContain(CURL.slice(0, 5) + " https://example.com/data.json -H 'Accept: application/json'. Approve");
+    // The command sits behind a closed "Show the exact command" toggle; opening it reveals it.
+    expect(html).toMatch(/<details(?![^>]*\bopen)/);
+    expect(html).toContain("Show the exact command");
+    expect(html.indexOf("Show the exact command")).toBeLessThan(html.indexOf(`aria-label="Command"`));
     expect(html).toContain('aria-label="Command"');
     expect(html).toContain(`>${CURL}</pre>`);
     expect(html).toContain("It needs your OK because it reaches the internet.");
     expect(html).toContain("/data/workspace");
-    expect(html).toContain("· runs a command");
+    expect(html).toContain("I need your OK for this.");
     expect(html).toMatch(/>Approve<\/button>/);
     // Not shown as the raw fields of an app's action.
     expect(html).not.toContain("Target");
@@ -89,9 +109,8 @@ describe("the agent's own actions on the card", () => {
       );
     expect(push(false)).toContain("acme/web");
     expect(push(false)).toContain("develop");
-    expect(push(false)).toContain("· pushes code");
-    expect(push(false)).not.toContain("rewrites the branch");
-    expect(push(true)).toContain("· rewrites a branch");
+    expect(push(false)).toContain("Pushes code.");
+        expect(push(true)).toContain("A force push rewrites the branch’s history.");
     expect(push(true)).toContain("A force push rewrites the branch’s history");
   });
 
@@ -108,6 +127,6 @@ describe("the agent's own actions on the card", () => {
     expect(html).toContain("Fix the login in acme/web");
     expect(html).toContain("<li");
     expect(html).toContain('Push to the branch "develop" of acme/web, which already existed');
-    expect(html).toContain("· runs the job again");
+    expect(html).toContain("Runs the job again.");
   });
 });

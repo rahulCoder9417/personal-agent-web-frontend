@@ -122,6 +122,21 @@ export function approvalQuestion(text: string): string | null {
   return question;
 }
 
+/**
+ * The line in Tex's bubble above the card on the web. The backend's wording ("I'd like to <summary>. Approve or
+ * Deny below.") is what Telegram and WhatsApp get, and it often holds a long raw command or link; the card right
+ * under it already says what and why. Rule: a message ending in the "Approve or Deny below." tail becomes one fixed
+ * short line; any other message is kept only if it is already short (under 80 characters), else the same line.
+ * Older "Approval needed: ..." asks still give null (the card shows alone).
+ */
+export const APPROVAL_LINE = "I need your OK for this.";
+export function webApprovalLine(text: string): string | null {
+  const question = approvalQuestion(text);
+  if (!question) return null;
+  if (/approve or deny below\.?$/i.test(question) || question.length >= 80) return APPROVAL_LINE;
+  return question;
+}
+
 export type SettledStatus = Exclude<ApprovalStatus, "pending">;
 
 /**

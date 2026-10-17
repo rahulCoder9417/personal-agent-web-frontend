@@ -5,9 +5,9 @@ import { WarningIcon } from "../icons";
 /**
  * One of the agent's own actions, shown plainly so the user sees exactly what they approve: the command or the
  * file, word for word; the repository and the branch of a push, and a warning when it is a force push; the list
- * of what a crew job's run was refused. `compact`: the card in the chat; otherwise the Approvals screen.
+ * of what a crew job's run was refused. `compact`: the card in the chat; otherwise the Approvals screen. `hideWhy`: the card already says why above.
  */
-export function OwnActionDetails({ action, compact = false }: { action: OwnAction; compact?: boolean }) {
+export function OwnActionDetails({ action, compact = false, hideWhy = false }: { action: OwnAction; compact?: boolean; hideWhy?: boolean }) {
   const row = (label: string, value: React.ReactNode, mono = false) => (
     <div className="flex gap-3">
       <dt className={cn("shrink-0 text-muted", compact ? "w-[64px] text-[12.5px]" : "w-[84px] text-[12px] leading-5")}>{label}</dt>
@@ -32,7 +32,7 @@ export function OwnActionDetails({ action, compact = false }: { action: OwnActio
           </pre>
         </div>
         <dl className={cn("flex flex-col gap-1", compact ? "text-[13px]" : "text-[14px]")}>
-          {action.why && row("Why", `It needs your OK because ${action.why}.`)}
+          {action.why && !hideWhy && row("Why", `It needs your OK because ${action.why}.`)}
           {action.folder && row("Folder", action.folder, true)}
         </dl>
       </div>
