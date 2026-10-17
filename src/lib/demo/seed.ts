@@ -393,7 +393,8 @@ const FABLE_NOTE = "Pro: paid with usage credits. Max: up to half your weekly li
 /**
  * What Claude Code's model and effort can be set to, as the backend offers them (`claudeChoices`):
  * every Claude model Claude Code can use, the current ones first, each with the levels it takes.
- * Null in the settings is Default (Sonnet 5.5 at low effort).
+ * Null in the settings is Default: Sonnet 5.5 at low effort for Tex; for the crew what
+ * `crewDefaults` says (null there: the same as Tex).
  */
 export const CLAUDE_CHOICES: AgentSettings["claudeChoices"] = {
   models: [
@@ -412,6 +413,18 @@ export const CLAUDE_CHOICES: AgentSettings["claudeChoices"] = {
     { id: "claude-haiku-4-5", label: "Haiku 4.5", group: "older", efforts: [] },
   ],
   efforts: ALL_EFFORTS,
+  crewDefaults: {
+    byte: { model: "claude-opus-5-5", effort: "medium" },
+    patch: { model: "claude-opus-5-5", effort: "medium" },
+    scout: { model: null, effort: null },
+  },
+};
+
+/** Every crew member on Default. */
+export const CREW_ON_DEFAULT: AgentSettings["claudeCrew"] = {
+  byte: { model: null, effort: null },
+  patch: { model: null, effort: null },
+  scout: { model: null, effort: null },
 };
 
 /**
@@ -910,7 +923,8 @@ export function createNewAccount(now: Date, plan: PlanId = process.env.TEXTCREW_
       runtime: "hermes", effectiveRuntime: aiMode === "platform" ? "hermes" : null, aiAccess: aiMode === "platform" ? "platform" : "none",
       aiPreference: "auto", platformAvailable: aiMode === "platform",
       claude: { connected: false, connectedAt: null }, ownKeyProviders: [],
-      claudeModel: null, claudeEffort: null, claudeChoices: structuredClone(CLAUDE_CHOICES),
+      claudeModel: null, claudeEffort: null, claudeCrew: structuredClone(CREW_ON_DEFAULT),
+      claudeChoices: structuredClone(CLAUDE_CHOICES),
     },
     aiMode,
     crewAvailable: demoCrewAvailable(),
@@ -977,7 +991,8 @@ export function createSeed(now: Date, plan: PlanId = demoPlan(), account: DemoAc
       runtime: "hermes", effectiveRuntime: "hermes", aiAccess: "own_key",
       aiPreference: "auto", platformAvailable: aiMode === "platform",
       claude: { connected: false, connectedAt: null }, ownKeyProviders: ["anthropic"],
-      claudeModel: null, claudeEffort: null, claudeChoices: structuredClone(CLAUDE_CHOICES),
+      claudeModel: null, claudeEffort: null, claudeCrew: structuredClone(CREW_ON_DEFAULT),
+      claudeChoices: structuredClone(CLAUDE_CHOICES),
     },
     aiMode,
     crewAvailable: demoCrewAvailable(),

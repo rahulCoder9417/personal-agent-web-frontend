@@ -2,7 +2,8 @@
 
 import { PageBody } from "@/components/page";
 import { AI_CHOICES_INTRO, TextcrewAiSection } from "@/components/settings/agent-choice";
-import { CLAUDE_PLAN_ANCHOR, ClaudeCodeChoices, ClaudePlanSection } from "@/components/settings/agent-claude";
+import { ClaudePlanSection } from "@/components/settings/agent-claude";
+import { CrewModels, crewDescription } from "@/components/settings/agent-crew";
 import { ApiKeysSection } from "@/components/settings/agent-keys";
 import { RunningNowCard, RuntimeChoice } from "@/components/settings/agent-runtime";
 import { describeAiChoices } from "@/components/settings/agent-summary";
@@ -12,8 +13,8 @@ import { useAgentSettings } from "@/lib/api/hooks";
 
 /**
  * Settings → Agent & AI, in one column: what runs now (and how that is decided, folded away), then
- * the engine (which agent, and Claude Code's model and effort), then the three ways to give Tex its
- * AI, in the order we recommend them.
+ * the engine (which agent), the crew (Claude Code's model and effort for Tex and for each of the
+ * crew), then the three ways to give Tex its AI, in the order we recommend them.
  */
 export default function AgentSettingsPage() {
   const settings = useAgentSettings();
@@ -42,23 +43,16 @@ export default function AgentSettingsPage() {
     <PageBody className={SETTINGS_COLUMN}>
       <RunningNowCard settings={settings.data} />
 
-      <SettingsGroup id="engine" title="Engine" description="Which agent runs Tex. The model and thinking effort apply when Claude Code is the engine.">
+      <SettingsGroup id="engine" title="Engine" description="Which agent runs Tex. The models below apply when Claude Code is the engine.">
         <Card>
           <SettingRow wide label="Agent" help={connected ? undefined : "Claude Code becomes a choice once your Claude plan is connected."}>
             <RuntimeChoice settings={settings.data} />
           </SettingRow>
-          {connected ? (
-            <ClaudeCodeChoices settings={settings.data} />
-          ) : (
-            <SettingRow label="Model and thinking effort" help="Claude Code’s own choices, once your Claude plan is connected.">
-              <div className="flex sm:justify-end">
-                <a href={`#${CLAUDE_PLAN_ANCHOR}`} className="text-[13px] font-medium text-accent hover:text-accent-dark">
-                  Connect your Claude plan
-                </a>
-              </div>
-            </SettingRow>
-          )}
         </Card>
+      </SettingsGroup>
+
+      <SettingsGroup id="crew" title="Crew" description={crewDescription(settings.data)}>
+        <CrewModels settings={settings.data} />
       </SettingsGroup>
 
       <SettingsGroup id="ai-access" title="AI access" description={AI_CHOICES_INTRO}>

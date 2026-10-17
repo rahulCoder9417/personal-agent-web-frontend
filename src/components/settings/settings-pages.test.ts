@@ -113,19 +113,106 @@ describe("Settings → Agent & AI", () => {
     expect(text(html)).toContain("Open sign-in page");
   });
 
-  it("once it is connected, offers Claude Code's model and thinking effort as dropdowns in the Engine group", async () => {
+  it("once it is connected, offers Claude Code's model and thinking effort for Tex as dropdowns, before AI access", async () => {
     const html = draw(
       await seededClient((s) => ({ ...s, claude: { connected: true, connectedAt: "2026-10-01T10:00:00Z" }, claudeModel: null, claudeEffort: "high" })),
       createElement(AgentSettingsPage),
     );
-    const modelFor = html.match(/<label for="([^"]+)"[^>]*>Model<\/label>/)?.[1];
-    const effortFor = html.match(/<label for="([^"]+)"[^>]*>Thinking effort<\/label>/)?.[1];
+    const modelFor = html.match(/<label for="([^"]+)"[^>]*><span class="sr-only">Tex’s <\/span>Model<\/label>/)?.[1];
+    const effortFor = html.match(/<label for="([^"]+)"[^>]*><span class="sr-only">Tex’s <\/span>Thinking effort<\/label>/)?.[1];
     expect(modelFor && effortFor).toBeTruthy();
     expect(html).toMatch(new RegExp(`<button id="${modelFor}" type="button" role="combobox"[^>]*>.*?>Default \\(Sonnet 5\\.5, quick\\)<`));
     expect(html).toMatch(new RegExp(`<button id="${effortFor}" type="button" role="combobox"[^>]*>.*?>High<`));
     // Both sit before AI access.
-    expect(html.indexOf(">Thinking effort</label>")).toBeLessThan(html.indexOf(">AI access</h2>"));
+    expect(html.indexOf("</span>Thinking effort</label>")).toBeLessThan(html.indexOf(">AI access</h2>"));
     expect(html).not.toContain("<select");
+  });
+});
+
+describe("Settings → Agent & AI: the crew", () => {
+  const onClaudeCode = (s: AgentSettings): AgentSettings => ({
+    ...s,
+    runtime: "claude_code",
+    effectiveRuntime: "claude_code",
+    aiAccess: "claude_plan",
+    claude: { connected: true, connectedAt: "2026-10-01T10:00:00Z" },
+  });
+  /** The visible text of the combobox a `<label for>` with these words names. */
+  const chosen = (html: string, who: string, field: string) => {
+    const id = html.match(new RegExp(`<label for="([^"]+)"[^>]*><span class="sr-only">${who}’s </span>${field}</label>`))?.[1];
+    expect(id, `${who}’s ${field}`).toBeTruthy();
+    return text(html.match(new RegExp(`<button id="${id}" type="button" role="combobox"[^>]*>(.*?)</button>`))?.[1] ?? "").trim();
+  };
+
+  it("on Claude Code: a row for Tex, Byte, Patch and Scout, each with a model and an effort, Default first", async () => {
+    const html = draw(await seededClient(onClaudeCode), createElement(AgentSettingsPage));
+    const words = text(html);
+    expect(html).toContain(">Crew</h2>");
+    expect(html.indexOf(">Engine</h2>")).toBeLessThan(html.indexOf(">Crew</h2>"));
+    expect(html.indexOf(">Crew</h2>")).toBeLessThan(html.indexOf(">AI access</h2>"));
+    expect(words).toContain("Faster models answer sooner; stronger ones are more careful on hard code.");
+    for (const line of ["Tex Leads, talks to you", "Byte Writes code", "Patch Reviews code", "Scout Researches and uses the browser"]) {
+      expect(words).toContain(line);
+    }
+    expect(chosen(html, "Tex", "Model")).toBe("Default (Sonnet 5.5, quick)");
+    expect(chosen(html, "Tex", "Thinking effort")).toBe("Default (Low)");
+    expect(chosen(html, "Byte", "Model")).toBe("Default (Opus 5.5)");
+    expect(chosen(html, "Byte", "Thinking effort")).toBe("Default (Medium)");
+    expect(chosen(html, "Patch", "Model")).toBe("Default (Opus 5.5)");
+    expect(chosen(html, "Scout", "Model")).toBe("Default (same as Tex)");
+    expect(chosen(html, "Scout", "Thinking effort")).toBe("Default (same as Tex)");
+    expect(words).not.toContain("share one model");
+    expect(html).not.toContain("<select");
+  });
+
+  it("shows each member's own choice, and greys out an effort its model doesn't take", async () => {
+    const html = draw(
+      await seededClient((s) => ({
+        ...onClaudeCode(s),
+        claudeModel: "claude-opus-5-5",
+        claudeCrew: { ...s.claudeCrew, patch: { model: "claude-sonnet-5-5", effort: "low" }, byte: { model: "claude-haiku-4-5", effort: null } },
+      })),
+      createElement(AgentSettingsPage),
+    );
+    expect(chosen(html, "Tex", "Model")).toBe("Opus 5.5");
+    expect(chosen(html, "Patch", "Model")).toBe("Sonnet 5.5");
+    expect(chosen(html, "Patch", "Thinking effort")).toBe("Low");
+    // Tex's choice doesn't change Byte's Default.
+    expect(chosen(html, "Byte", "Model")).toBe("Haiku 4.5");
+    const byteEffort = html.match(/<label for="([^"]+)"[^>]*><span class="sr-only">Byte’s <\/span>Thinking effort<\/label>/)?.[1];
+    expect(html).toMatch(new RegExp(`<button id="${byteEffort}" type="button" role="combobox"[^>]*disabled=""`));
+    expect(text(html)).toContain("Byte: Haiku 4.5 has no thinking effort, so this setting doesn’t apply to it.");
+  });
+
+  it("on Hermes: Tex's choices stay, and a note says the crew shares one model there", async () => {
+    const html = draw(
+      await seededClient((s) => ({ ...s, claude: { connected: true, connectedAt: "2026-10-01T10:00:00Z" } })),
+      createElement(AgentSettingsPage),
+    );
+    const words = text(html);
+    expect(chosen(html, "Tex", "Model")).toBe("Default (Sonnet 5.5, quick)");
+    expect(words).toContain("On Hermes they share one model. Each gets its own here once Claude Code is the engine.");
+    expect(html).not.toContain("Byte’s </span>Model");
+  });
+
+  it("without a Claude plan: only the note, with the way to connect one", async () => {
+    const words = text(draw(await seededClient(), createElement(AgentSettingsPage)));
+    expect(words).toContain("On Hermes, Tex and the crew share one model.");
+    expect(words).not.toContain("Faster models answer sooner");
+  });
+
+  it("with an older backend that sends no crew choices: Tex's row only, as before", async () => {
+    const html = draw(
+      await seededClient((s) => {
+        const older = onClaudeCode(s) as Partial<AgentSettings>;
+        delete older.claudeCrew;
+        return older as AgentSettings;
+      }),
+      createElement(AgentSettingsPage),
+    );
+    expect(chosen(html, "Tex", "Model")).toBe("Default (Sonnet 5.5, quick)");
+    expect(html).not.toContain("Byte’s </span>Model");
+    expect(text(html)).not.toContain("share one model");
   });
 });
 
@@ -135,7 +222,8 @@ describe("Settings → Agent & AI: the model's own rules", () => {
       await seededClient((s) => ({ ...s, claude: { connected: true, connectedAt: "2026-10-01T10:00:00Z" }, claudeModel: "claude-opus-4-5", claudeEffort: null })),
       createElement(AgentSettingsPage),
     );
-    const effortFor = html.match(/<label for="([^"]+)"[^>]*>Thinking effort<\/label>/)?.[1];
+    const effortFor = html.match(/<label for="([^"]+)"[^>]*><span class="sr-only">Tex’s <\/span>Thinking effort<\/label>/)?.[1];
+    expect(effortFor).toBeTruthy();
     expect(html).toMatch(new RegExp(`<button id="${effortFor}" type="button" role="combobox"[^>]*disabled=""`));
     expect(text(html)).toContain("Opus 4.5 has no thinking effort, so this setting doesn’t apply to it.");
   });

@@ -4,6 +4,15 @@ import {
   choiceNotes,
   choiceValue,
   chosenModel,
+  CREW_HINT,
+  CREW_ROWS,
+  crewChoicesOffered,
+  crewDefaultOptions,
+  crewEffortApplies,
+  crewEffortOptions,
+  crewEfforts,
+  crewModelOptions,
+  crewNotes,
   effortApplies,
   effortLabel,
   effortOptions,
@@ -11,6 +20,7 @@ import {
   modelEfforts,
   modelOptions,
   optionGroups,
+  withCrewPatch,
 } from "./claude-code";
 import { CLAUDE_CHOICES } from "./demo/seed";
 
@@ -25,6 +35,11 @@ const CHOICES: Choices = {
     { id: "claude-haiku-4-5", label: "Haiku 4.5", group: "older", efforts: [] },
   ],
   efforts: ALL,
+  crewDefaults: {
+    byte: { model: "claude-opus-5-5", effort: "medium" },
+    patch: { model: "claude-opus-5-5", effort: "medium" },
+    scout: { model: null, effort: null },
+  },
 };
 
 const settings = (claudeModel: string | null, claudeEffort: AgentSettings["claudeEffort"] = null, claudeChoices = CHOICES) => ({
@@ -163,5 +178,71 @@ describe("choiceValue", () => {
   it("sends Default as null and anything else as it is", () => {
     expect(choiceValue("")).toBeNull();
     expect(choiceValue("xhigh")).toBe("xhigh");
+  });
+});
+
+describe("the crew's own models and efforts", () => {
+  type Crew = AgentSettings["claudeCrew"];
+  const onDefault: Crew = { byte: { model: null, effort: null }, patch: { model: null, effort: null }, scout: { model: null, effort: null } };
+  const crewSettings = (claudeCrew: Crew = onDefault, claudeModel: string | null = null) => ({ ...settings(claudeModel), claudeCrew });
+
+  it("lists Tex, then Byte, Patch and Scout, each with what it does, and one hint", () => {
+    expect(CREW_ROWS.map((row) => `${row.name}: ${row.does}`)).toEqual([
+      "Tex: Leads, talks to you",
+      "Byte: Writes code",
+      "Patch: Reviews code",
+      "Scout: Researches and uses the browser",
+    ]);
+    expect(CREW_HINT).toBe("Faster models answer sooner; stronger ones are more careful on hard code.");
+  });
+
+  it("says what Default runs, from what the backend says: Opus 5.5 at medium, or the same as Tex", () => {
+    const s = crewSettings();
+    expect(crewDefaultOptions(s, "byte")).toEqual({ model: { value: "", label: "Default (Opus 5.5)" }, effort: { value: "", label: "Default (Medium)" } });
+    expect(crewDefaultOptions(s, "patch").model.label).toBe("Default (Opus 5.5)");
+    expect(crewDefaultOptions(s, "scout")).toEqual({
+      model: { value: "", label: "Default (same as Tex)" },
+      effort: { value: "", label: "Default (same as Tex)" },
+    });
+    // The model list is Tex's, with the member's own Default first.
+    expect(crewModelOptions(s, "byte")).toEqual([{ value: "", label: "Default (Opus 5.5)" }, ...modelOptions(settings(null)).slice(1)]);
+  });
+
+  it("offers the levels of the member's model: the chosen one's, its default's, or Tex's for Scout", () => {
+    expect(crewEfforts(crewSettings(), "byte")).toEqual(ALL);
+    const chosen = crewSettings({ ...onDefault, patch: { model: "claude-sonnet-4-6", effort: "xhigh" } });
+    expect(crewEffortOptions(chosen, "patch").map((option) => option.label)).toEqual(["Default (Medium)", "Low", "Medium", "High", "Max", "Extra high"]);
+    // Scout on Default runs on Tex's model: Haiku 4.5 takes no effort, so Scout's doesn't apply either.
+    expect(crewEffortApplies(crewSettings(onDefault, "claude-haiku-4-5"), "scout")).toBe(false);
+    expect(crewEffortApplies(crewSettings(onDefault, "claude-haiku-4-5"), "byte")).toBe(true);
+    expect(crewEffortApplies(crewSettings({ ...onDefault, byte: { model: "claude-haiku-4-5", effort: null } }), "byte")).toBe(false);
+  });
+
+  it("says a model's note once, and an effort that doesn't apply by member", () => {
+    const s = crewSettings(
+      { byte: { model: "claude-fable-5-1", effort: null }, patch: { model: "claude-haiku-4-5", effort: null }, scout: { model: "claude-fable-5-1", effort: null } },
+      "claude-fable-5-1",
+    );
+    const tex = choiceNotes(s);
+    expect(tex).toEqual(["Fable 5.1: Uses usage credits on Pro."]);
+    expect(crewNotes(s, tex)).toEqual(["Patch: Haiku 4.5 has no thinking effort, so this setting doesn’t apply to it."]);
+    expect(crewNotes(crewSettings())).toEqual([]);
+  });
+
+  it("applies a change as the API will answer it: only the members and fields sent", () => {
+    const s = crewSettings({ ...onDefault, patch: { model: "claude-sonnet-4-6", effort: "low" } });
+    expect(withCrewPatch(s, { patch: { effort: null }, byte: { model: "claude-opus-5-5" } }).claudeCrew).toEqual({
+      byte: { model: "claude-opus-5-5", effort: null },
+      patch: { model: "claude-sonnet-4-6", effort: null },
+      scout: { model: null, effort: null },
+    });
+    expect(s.claudeCrew.patch.effort).toBe("low");
+  });
+
+  it("knows when the backend doesn't offer the crew's choices yet (an older one)", () => {
+    expect(crewChoicesOffered(crewSettings())).toBe(true);
+    const older = { claudeModel: null, claudeEffort: null, claudeChoices: { models: CHOICES.models, efforts: ALL } } as unknown as Parameters<typeof crewChoicesOffered>[0];
+    expect(crewChoicesOffered(older)).toBe(false);
+    expect(withCrewPatch(older, { byte: { model: "claude-opus-5-5" } })).toBe(older);
   });
 });
