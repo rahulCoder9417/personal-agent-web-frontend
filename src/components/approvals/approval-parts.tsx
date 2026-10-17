@@ -1,0 +1,82 @@
+import type { Approval } from "@/lib/api/client";
+import { APPROVAL_RESULT, approvalReasonOf, ownAction, splitDetails, type OwnAction, type SettledStatus } from "@/lib/approvals";
+import { cn } from "@/lib/format";
+import { CheckIcon, CloseIcon } from "../icons";
+import { OwnActionDetails } from "./own-action";
+
+type Parts = ReturnType<typeof splitDetails>;
+
+/** What the calm approval card and the Approvals page both show, worked out once from an approval. */
+export function approvalView(approval: Approval): { own: OwnAction | null; why: string | null; forcePush: boolean; toggle: string; hasDetails: boolean } & Parts {
+  const reason = approvalReasonOf(approval);
+  // One of the agent's own actions (a command, a push, a job run again): shown as it is, not as fields.
+  const own = ownAction(approval);
+  const { preview, fields } = own ? { preview: null, fields: [] } : splitDetails(approval.details);
+  const forcePush = own?.kind === "git_push" && own.force;
+  const why =
+    own?.kind === "command" && own.why
+      ? `It needs your OK because ${own.why}.`
+      : forcePush
+        ? "A force push rewrites the branch’s history."
+        : reason.label === "Needs your OK"
+          ? null
+          : `${reason.label}.`;
+  const toggle = own?.kind === "command" ? (own.tool === "Bash" ? "Show the exact command" : "Show the file") : "Show the details";
+  return { own, preview, fields, why, forcePush, toggle, hasDetails: own !== null || fields.length > 0 || preview !== null };
+}
+
+/** The title: plain, cut to two lines, long unbroken words (a link) wrap instead of running off the side. */
+export function ApprovalTitle({ summary, className }: { summary: string; className?: string }) {
+  return <span className={cn("line-clamp-2 text-[15px] leading-[1.35] font-semibold tracking-[-0.01em] [overflow-wrap:anywhere]", className)}>{summary}</span>;
+}
+
+/** The exact details, folded behind a quiet toggle (`open`: unfolded to begin with). */
+export function ApprovalDetailsFold({ approval, open = false, className }: { approval: Approval; open?: boolean; className?: string }) {
+  const { own, fields, preview, toggle, hasDetails } = approvalView(approval);
+  if (!hasDetails) return null;
+  return (
+    <details open={open} className={cn("group border-t border-accent/15 pt-3", className)}>
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-[13px] font-semibold text-accent [&::-webkit-details-marker]:hidden">
+        {toggle}
+        <span aria-hidden className="size-1.5 -translate-y-0.5 rotate-45 border-r-[1.5px] border-b-[1.5px] border-current transition-transform group-open:-rotate-[135deg] group-open:translate-y-0" />
+      </summary>
+      <div className="mt-3 flex flex-col gap-2 rounded-xl bg-surface px-3.5 py-3">
+        {own && <OwnActionDetails action={own} compact hideWhy />}
+        {fields.length > 0 && (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]">
+            {fields.slice(0, 4).map((field) => (
+              <div key={field.key} className="contents">
+                <dt className="text-muted">{field.label}</dt>
+                <dd className="min-w-0 [overflow-wrap:anywhere]">{field.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {preview && (
+          <p className={cn("max-h-[160px] overflow-auto text-[13.5px] leading-relaxed whitespace-pre-wrap text-fg-2 [overflow-wrap:anywhere]", fields.length > 0 && "border-t border-line pt-2")}>
+            {preview}
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
+const TONE_CLASS = { success: "text-success", danger: "text-danger", muted: "text-muted" } as const;
+
+/** After a decision: one tinted line, "You approved – <what>". */
+export function DecidedLine({ approval, className }: { approval: Approval; className?: string }) {
+  const result = APPROVAL_RESULT[approval.status as SettledStatus];
+  if (!result) return null;
+  const tint = result.tone === "success" ? "bg-success-soft" : result.tone === "danger" ? "bg-danger-soft" : "bg-surface-2";
+  return (
+    <div className={cn("flex w-full items-center gap-2 rounded-xl px-4 py-2 text-[13.5px] leading-5 font-medium", tint, TONE_CLASS[result.tone], className)}>
+      {result.icon === "check" && <CheckIcon size={14} className="shrink-0" />}
+      {result.icon === "close" && <CloseIcon size={14} className="shrink-0" />}
+      <span className="min-w-0 truncate">
+        {result.text}
+        <span className="font-normal text-muted"> – {approval.summary}</span>
+      </span>
+    </div>
+  );
+}

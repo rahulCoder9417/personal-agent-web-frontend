@@ -3,20 +3,13 @@
 import { ApiError, type Approval } from "@/lib/api/client";
 import { useDecideApproval } from "@/lib/api/hooks";
 import { cn, formatDateTime, titleCase } from "@/lib/format";
-import { READING } from "../page";
 import { toastError } from "../toast";
-import { Button, IconTile, Pill, type PillTone } from "../ui";
-import { ApprovalIcon } from "./approval-list";
-import { OwnActionDetails } from "./own-action";
-import { approvalOutcome, approvalReasonOf, ownAction, splitDetails, type ApprovalReason, type SettledStatus } from "@/lib/approvals";
+import { Button } from "../ui";
+import { ApprovalDetailsFold, DecidedLine, approvalView } from "./approval-parts";
+import { ApprovalIcon, CARD_EDGE } from "./approval-list";
+import { approvalOutcome, approvalReasonOf, ownAction, type SettledStatus } from "@/lib/approvals";
 
 type Decision = "approve" | "reject";
-
-const REASON_CHIP: Record<ApprovalReason["tone"], string> = {
-  info: "bg-accent-soft text-accent-dark",
-  danger: "bg-danger-soft text-danger",
-  neutral: "bg-surface-2 text-fg-2",
-};
 
 const STATUS_LABEL: Record<Approval["status"], string> = {
   pending: "Needs your OK",
@@ -24,13 +17,6 @@ const STATUS_LABEL: Record<Approval["status"], string> = {
   rejected: "Denied",
   expired: "Expired",
   replaced: "Replaced",
-};
-
-const STATUS_PILL: Record<SettledStatus, PillTone> = {
-  approved: "done",
-  rejected: "danger",
-  expired: "muted",
-  replaced: "muted",
 };
 
 function settledLine(approval: Approval): string {
@@ -48,7 +34,6 @@ export function ApprovalDetail({ approval, onDecided }: { approval: Approval; on
   const reason = approvalReasonOf(approval);
   // One of the agent's own actions (a command, a push, a job run again): shown as it is, not as fields.
   const own = ownAction(approval);
-  const { preview, fields } = own ? { preview: null, fields: [] } : splitDetails(approval.details);
   const pending = approval.status === "pending";
   const choosing = decide.isPending ? decide.variables?.decision : undefined;
 
@@ -66,76 +51,49 @@ export function ApprovalDetail({ approval, onDecided }: { approval: Approval; on
       },
     );
 
+  const { why, forcePush } = approvalView(approval);
+  // The kind of ask ("Runs a command") in words, quiet, beside the app when there is one.
+  const meta = [reason.label, !own && approval.app ? titleCase(approval.app) : null, !own ? approval.action : null].filter(Boolean).join(" · ");
+
   return (
-    // The card takes the pane's whole width; what is read (the message itself) keeps a comfortable line.
-    <article aria-label={approval.summary} className="flex flex-col gap-5 rounded-[20px] border border-line bg-surface p-6">
-      <div className="flex items-center gap-3.5">
-        <IconTile size={46}>
-          <ApprovalIcon app={approval.app} size={22} />
-        </IconTile>
+    <article aria-label={approval.summary} className={cn("flex w-full max-w-[640px] flex-col gap-4 rounded-2xl bg-accent-soft p-4 sm:p-5", CARD_EDGE)}>
+      <div className="flex items-start gap-3">
+        <span className="shrink-0 rounded-lg bg-surface p-0.5">
+          <ApprovalIcon app={approval.app} size={32} />
+        </span>
         <div className="flex min-w-0 flex-col gap-1">
-          <p className="flex items-center gap-[7px] text-[11.5px] text-muted">
-            <span aria-hidden className="h-3 w-1 bg-accent" />
-            {STATUS_LABEL[approval.status]}
-          </p>
-          <h2 className="text-[18px] leading-snug font-semibold tracking-[-0.01em]">{approval.summary}</h2>
+          <span className="text-[12px] font-semibold text-accent">{STATUS_LABEL[approval.status]}</span>
+          <h2 className="line-clamp-2 text-[15px] leading-[1.35] font-semibold tracking-[-0.01em] [overflow-wrap:anywhere] break-words">{approval.summary}</h2>
+          {pending && why && <p className={cn("text-[13.5px] leading-normal", forcePush ? "text-danger" : "text-fg-2")}>{why}</p>}
+          <p className="truncate text-[12px] text-muted">{meta}</p>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className={cn("rounded-full px-2.5 py-0.5 text-[12px] font-medium", REASON_CHIP[reason.tone])}>{reason.label}</span>
-        {!own && (approval.app || approval.action) && (
-          <span className="text-[12px] text-muted">
-            {[approval.app && titleCase(approval.app), approval.action].filter(Boolean).join(" · ")}
-          </span>
-        )}
-      </div>
-
-      {own && <OwnActionDetails action={own} />}
-
-      {fields.length > 0 && (
-        <dl className="flex flex-col gap-2">
-          {fields.map((field) => (
-            <div key={field.key} className="flex gap-4">
-              <dt className="w-[84px] shrink-0 text-[12px] leading-5 text-muted">{field.label}</dt>
-              <dd className="min-w-0 break-words">{field.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-
-      {preview && (
-        <div className="rounded-xl bg-surface-2 px-4 py-3.5">
-          <p className={cn("text-[14.5px] leading-relaxed whitespace-pre-wrap text-fg-2", READING)}>{preview}</p>
-        </div>
-      )}
+      {/* There is room on this page, so the exact command or fields start unfolded. */}
+      <ApprovalDetailsFold approval={approval} open className="-mt-1" />
 
       {pending ? (
-        // The two buttons keep a size a thumb or a pointer can aim at, however wide the card is.
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
-          <div className="grid w-full max-w-[440px] grid-cols-2 gap-2.5">
-            <Button size="lg" variant="secondary" pending={choosing === "reject"} disabled={decide.isPending} onClick={() => run("reject")}>
-              Deny
-            </Button>
-            <Button size="lg" variant="primary" pending={choosing === "approve"} disabled={decide.isPending} onClick={() => run("approve")}>
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="primary" pending={choosing === "approve"} disabled={decide.isPending} onClick={() => run("approve")}>
               Approve
             </Button>
+            <Button variant="secondary" pending={choosing === "reject"} disabled={decide.isPending} onClick={() => run("reject")}>
+              Deny
+            </Button>
           </div>
-          <p className="text-[12.5px] text-muted">The same buttons are waiting in your chat. Either place works.</p>
-        </div>
+          <p className="-mt-2 text-center text-[12px] text-muted">The same buttons are in your chat.</p>
+        </>
       ) : (
-        <div className="flex flex-wrap items-center gap-3">
-          <Pill tone={STATUS_PILL[approval.status as SettledStatus]} className="px-3 text-[12.5px]">
-            {STATUS_LABEL[approval.status]}
-          </Pill>
-          <span className="text-[13px] text-muted">{approvalOutcome(approval.status as SettledStatus)}</span>
+        <div className="flex flex-col gap-1.5">
+          <DecidedLine approval={approval} />
+          <p className="text-[12.5px] text-muted">{approvalOutcome(approval.status as SettledStatus)}</p>
         </div>
       )}
 
-      <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 border-t border-line pt-4 text-[12px] text-muted">
-        <span>Asked {formatDateTime(approval.createdAt)}</span>
-        <span>{settledLine(approval)}</span>
-      </div>
+      <p className="text-center text-[12px] text-muted tabular-nums">
+        Asked {formatDateTime(approval.createdAt)} · {settledLine(approval)}
+      </p>
     </article>
   );
 }
