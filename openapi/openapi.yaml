@@ -680,6 +680,87 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /v1/skip-rules:
+    get:
+      operationId: listSkipRules
+      tags: [approvals]
+      summary: The user's skip rules, newest first
+      description: |
+        A skip rule is the user's standing "don't ask again" for one risky app action. While it
+        holds, that action runs without a card and is kept in Approvals as `auto_approved`. Only
+        the user makes or removes rules, here, with their session: the agent has no tool for them.
+        At most 50.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/SkipRule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createSkipRule
+      tags: [approvals]
+      summary: Don't ask again for this action
+      description: |
+        Makes a rule from one of the user's approvals (the card's "Don't ask again for this…"):
+        the same app and action, with the scope picked from the approval's `skip.scopes`.
+        `listed`: `recipients` when given, else the approval's own recipients. The card then
+        approves that approval with `POST /v1/approvals/{approvalId}/decision`; this call does not.
+        A rule for the same action and scope that exists already is returned (a `listed` one gets
+        the new recipients added). 400 `not_skippable`: the action always asks (deleting, paying,
+        merging, Tex's own commands and pushes, crew jobs), or the scope isn't offered for it.
+        409 `too_many_rules`: 50 already.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approvalId, scope]
+              additionalProperties: false
+              properties:
+                approvalId: { type: string }
+                scope: { $ref: "#/components/schemas/SkipScope" }
+                recipients:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items: { type: string, minLength: 1, maxLength: 254 }
+                  description: For `listed` only. Left out, the approval's own recipients.
+      responses:
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SkipRule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The user has 50 rules already
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/skip-rules/{ruleId}:
+    delete:
+      operationId: deleteSkipRule
+      tags: [approvals]
+      summary: Remove a skip rule
+      description: The action asks again from now on. Approvals it let through stay in the log.
+      parameters:
+        - { name: ruleId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ---------------------------------------------------------------- apps (Composio)
   /v1/apps:
     get:
@@ -4774,7 +4855,75 @@ components:
         `replaced`: the agent asked again for the same action with corrected details, and this
         request was set aside for the newer one. It was not run and can no longer be answered.
         The user did not reject it.
-      enum: [pending, approved, rejected, expired, replaced]
+        `auto_approved`: nobody was asked. The user's skip rule (`skipRule`) covered it, so it ran
+        at once; `run` says how it went. It can't be answered.
+      enum: [pending, approved, rejected, expired, replaced, auto_approved]
+
+    SkipScope:
+      type: string
+      description: |
+        What a skip rule covers, for its one action:
+        - `listed`: only when the request names at least one recipient and every one is on the
+          rule's list (email addresses, a channel, or a GitHub repository as owner/repo).
+        - `anyone`: whoever or wherever it goes.
+        - `action`: an action that takes no recipients; it runs without asking when the request
+          names none (one that does name some still asks).
+      enum: [listed, anyone, action]
+
+    SkipOffer:
+      type: object
+      description: |
+        On a pending app action that a skip rule could cover: what the card's quiet "Don't ask
+        again for this…" offers. Null on one that always asks (deleting, paying, merging, Tex's own
+        commands and pushes, crew jobs) and on any approval that isn't pending.
+      required: [actionName, recipients, target, scopes]
+      properties:
+        actionName: { type: string, description: The action in words., examples: ["Send email"] }
+        recipients:
+          type: array
+          items: { type: string }
+          description: Who or where this request goes, lower-cased. Empty when it names none.
+          examples: [["priya@acme.com"]]
+        target:
+          type: string
+          enum: [people, repository]
+          description: "`repository`: the recipients are GitHub repositories (\"Only in …\"); `people`: addresses or channels (\"Only to …\")."
+        scopes:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/SkipScope" }
+          description: The choices to offer, the default first.
+
+    SkipRule:
+      type: object
+      required: [id, app, action, actionName, scope, recipients, createdAt]
+      properties:
+        id: { type: string }
+        app: { type: string, examples: [gmail] }
+        action: { type: string, examples: [GMAIL_SEND_EMAIL] }
+        actionName: { type: string, examples: ["Send email"] }
+        scope: { $ref: "#/components/schemas/SkipScope" }
+        recipients:
+          type: array
+          items: { type: string }
+          description: "`listed`: the list. Empty for the other scopes."
+        createdAt: { type: string, format: date-time }
+
+    ApprovalRun:
+      type: object
+      description: How an app action the platform ran went (one the user approved, or one a skip rule let through).
+      required: [state, at, result, error, creditsCharged]
+      properties:
+        state:
+          type: string
+          enum: [running, done, failed]
+          description: "`running`: started, no answer yet (after 5 minutes it never will: check in the app)."
+        at: { type: string, format: date-time }
+        result:
+          type: [string, "null"]
+          description: The app's short answer as text, cut to 600 characters. Null unless done.
+        error: { type: [string, "null"], description: "Why nothing was done, when it failed." }
+        creditsCharged: { type: integer }
 
     Approval:
       type: object
@@ -4803,7 +4952,30 @@ components:
         details: { type: object, additionalProperties: true }
         createdAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
-        decidedAt: { type: [string, "null"], format: date-time }
+        decidedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When it was answered; for `auto_approved`, when it ran.
+        skip:
+          description: Pending app actions only. What "Don't ask again for this…" may offer; null when it may not be offered.
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/SkipOffer"
+        skipRule:
+          description: "`auto_approved` only: the rule that let it run, as it was then (it may have been removed since)."
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [id, scope, recipients]
+              properties:
+                id: { type: string }
+                scope: { $ref: "#/components/schemas/SkipScope" }
+                recipients: { type: array, items: { type: string } }
+        run:
+          description: An app action the platform ran (after the yes, or by a skip rule) and how it went. Null otherwise.
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/ApprovalRun"
 
     App:
       type: object
@@ -6661,7 +6833,7 @@ components:
         action:
           type: string
           description: "What happened. `app_action_failed`: an app action that failed or was refused (the summary says why in plain words; never its inputs). `approval_request_refused`: a request for approval that was refused before the user saw it."
-          examples: [run_app_action, app_action_failed, approval_request_refused, send_message, approval_requested, approval_decided, coupon_redeemed, channel_linked, channel_unlinked, web_search, web_search_refused, read_page, read_page_refused, crew_progress, browser_enabled, browser_disabled, pr_review_requested, remember, recall, forget, memory_refused, memory_deleted, memories_cleared, chat_started, conversation_deleted]
+          examples: [run_app_action, app_action_failed, approval_request_refused, send_message, approval_requested, approval_decided, skip_rule_created, skip_rule_removed, coupon_redeemed, channel_linked, channel_unlinked, web_search, web_search_refused, read_page, read_page_refused, crew_progress, browser_enabled, browser_disabled, pr_review_requested, remember, recall, forget, memory_refused, memory_deleted, memories_cleared, chat_started, conversation_deleted]
         summary: { type: string }
         crew:
           type: [string, "null"]
