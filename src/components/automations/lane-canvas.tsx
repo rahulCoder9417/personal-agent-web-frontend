@@ -111,6 +111,9 @@ type EmptyData = Shared & { empty: CanvasEmpty; onAdd: () => void };
 type ResultsData = Shared & { title: string; line: string };
 type HeadData = { head: CanvasHead; onSkip: (lane: "read" | "write") => void; editing: boolean; lane: Lane | "start" | "steps" };
 
+// React Flow gives a node `pointer-events: none` when it is not selectable, draggable or given
+// onNodeClick, which is how this board is set; each node says `pointer-events-auto` so its own
+// click (and its buttons) work.
 const HIDDEN = "!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent";
 
 function Ends() {
@@ -140,7 +143,7 @@ function BoxNode({ data }: NodeProps<Node<BoxData, "box">>) {
       }}
       style={{ width: BOX_WIDTH }}
       className={cn(
-        "group relative flex cursor-pointer flex-col gap-3 rounded-[14px] bg-surface p-4 text-left outline-none transition-shadow",
+        "pointer-events-auto group relative flex cursor-pointer flex-col gap-3 rounded-[14px] bg-surface p-4 text-left outline-none transition-shadow",
         selected
           ? "shadow-[0_0_0_2px_var(--accent),0_12px_28px_-14px_rgb(21_21_21/0.35)]"
           : box.problem
@@ -207,7 +210,7 @@ function EmptyNode({ data }: NodeProps<Node<EmptyData, "empty">>) {
     <div
       style={{ width: BOX_WIDTH }}
       className={cn(
-        "flex flex-col items-center gap-1 rounded-[14px] border-[1.5px] border-dashed bg-surface/60 p-4 text-center transition-colors",
+        "pointer-events-auto flex flex-col items-center gap-1 rounded-[14px] border-[1.5px] border-dashed bg-surface/60 p-4 text-center transition-colors",
         zone === "on" ? (over ? "border-accent bg-[#dfe5ff] shadow-[0_0_0_4px_var(--accent-soft)]" : "border-accent bg-accent-soft") : "border-line-strong",
         zone === "off" && "opacity-40",
       )}
@@ -234,7 +237,7 @@ function ResultsNode({ data }: NodeProps<Node<ResultsData, "results">>) {
       style={{ width: RESULTS_WIDTH }}
       aria-label={`${line} ${title}`}
       className={cn(
-        "flex h-[52px] items-center gap-3 rounded-full bg-surface pr-6 pl-3 text-left outline-none transition-shadow",
+        "pointer-events-auto flex h-[52px] items-center gap-3 rounded-full bg-surface pr-6 pl-3 text-left outline-none transition-shadow",
         selected ? "shadow-[0_0_0_2px_var(--accent)]" : "shadow-[0_0_0_1px_var(--line-strong)] hover:shadow-[0_0_0_1px_#c3bdb1]",
         "focus-visible:shadow-[0_0_0_2px_var(--accent)]",
       )}
@@ -252,7 +255,7 @@ function ResultsNode({ data }: NodeProps<Node<ResultsData, "results">>) {
 function HeadNode({ data }: NodeProps<Node<HeadData, "head">>) {
   const { head, editing, onSkip, lane } = data;
   return (
-    <div style={{ width: BOX_WIDTH }} className="flex h-7 items-center justify-between px-1">
+    <div style={{ width: BOX_WIDTH }} className="pointer-events-auto flex h-7 items-center justify-between px-1">
       <span className={cn(T3, "font-semibold tracking-[0.02em] text-muted")}>{head.text}</span>
       {editing && head.skip && (lane === "read" || lane === "write") && (
         <button type="button" onClick={() => onSkip(lane)} className={cn(T3, "nodrag font-medium text-accent-dark hover:text-fg")}>
