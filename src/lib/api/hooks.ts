@@ -57,6 +57,7 @@ import {
   serverHasAutomationsChat,
   type ConversationList,
 } from "../conversations";
+import { withCrewPatch, type CrewPatch } from "../claude-code";
 import type { ProgressLine } from "../crew";
 import { withNotificationChange, type NotificationSettingsUpdate } from "../notifications";
 import { withRun } from "../automation-steps";
@@ -1238,6 +1239,27 @@ export function useUpdateClaudeCode() {
       return { previous };
     },
     onError: (_error, _body, context) => {
+      if (context?.previous) qc.setQueryData(qk.agentSettings, context.previous);
+    },
+    onSuccess: (settings) => qc.setQueryData(qk.agentSettings, settings),
+  });
+}
+
+/**
+ * A crew member's model or thinking effort on Claude Code (null is that member's Default). Shown as
+ * chosen at once; put back if the API says no.
+ */
+export function useUpdateClaudeCrew() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (claudeCrew: CrewPatch) => unwrap(api.PATCH("/v1/agent/settings", { body: { claudeCrew } })),
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: qk.agentSettings });
+      const previous = qc.getQueryData<AgentSettings>(qk.agentSettings);
+      if (previous) qc.setQueryData<AgentSettings>(qk.agentSettings, withCrewPatch(previous, patch));
+      return { previous };
+    },
+    onError: (_error, _patch, context) => {
       if (context?.previous) qc.setQueryData(qk.agentSettings, context.previous);
     },
     onSuccess: (settings) => qc.setQueryData(qk.agentSettings, settings),

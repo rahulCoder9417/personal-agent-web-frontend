@@ -1045,6 +1045,44 @@ describe("setup", () => {
     expect((await call<AgentSettings>("GET", "agent/settings")).body).toMatchObject({ claudeModel: null, claudeEffort: null });
   });
 
+  it("saves each crew member's model and effort on its own; null goes back to its Default", async () => {
+    const start = (await call<AgentSettings>("GET", "agent/settings")).body;
+    const onDefault = { model: null, effort: null };
+    expect(start.claudeCrew).toEqual({ byte: onDefault, patch: onDefault, scout: onDefault });
+    expect(start.claudeChoices.crewDefaults).toEqual({
+      byte: { model: "claude-opus-5-5", effort: "medium" },
+      patch: { model: "claude-opus-5-5", effort: "medium" },
+      scout: onDefault,
+    });
+    const chosen = await call<AgentSettings>("PATCH", "agent/settings", { claudeCrew: { patch: { model: "claude-sonnet-5-5", effort: "low" } } });
+    expect(chosen.status).toBe(200);
+    expect(chosen.body.claudeCrew).toEqual({ byte: onDefault, patch: { model: "claude-sonnet-5-5", effort: "low" }, scout: onDefault });
+    const effortOnly = await call<AgentSettings>("PATCH", "agent/settings", { claudeCrew: { patch: { effort: "high" } } });
+    expect(effortOnly.body.claudeCrew.patch).toEqual({ model: "claude-sonnet-5-5", effort: "high" });
+    expect(effortOnly.body.claudeModel).toBeNull();
+    const back = await call<AgentSettings>("PATCH", "agent/settings", { claudeCrew: { patch: { model: null, effort: null } } });
+    expect(back.body.claudeCrew.patch).toEqual(onDefault);
+    // A model picked for Tex: Byte's and Patch's Default is the same as Tex; back to Default, Opus 5.5 again.
+    const texPicked = await call<AgentSettings>("PATCH", "agent/settings", { claudeModel: "claude-haiku-5-5" });
+    expect(texPicked.body.claudeChoices.crewDefaults).toEqual({ byte: onDefault, patch: onDefault, scout: onDefault });
+    const texBack = await call<AgentSettings>("PATCH", "agent/settings", { claudeModel: null });
+    expect(texBack.body.claudeChoices.crewDefaults).toEqual(start.claudeChoices.crewDefaults);
+    for (const body of [
+      { claudeCrew: { tex: { model: "claude-opus-5-5" } } },
+      { claudeCrew: { byte: { model: "gpt-6.1-sol" } } },
+      { claudeCrew: { byte: { effort: "extreme" } } },
+      { claudeCrew: { byte: {} } },
+      { claudeCrew: { byte: { model: "claude-opus-5-5", color: "red" } } },
+      { claudeCrew: {} },
+      { claudeCrew: "byte" },
+    ]) {
+      const refused = await call<ErrorBody>("PATCH", "agent/settings", body);
+      expect(refused.status, JSON.stringify(body)).toBe(400);
+      expect(refused.body.error.code).toBe("invalid_request");
+    }
+    expect((await call<AgentSettings>("GET", "agent/settings")).body.claudeCrew).toEqual({ byte: onDefault, patch: onDefault, scout: onDefault });
+  });
+
   it("drops the Textcrew AI choice when a Claude plan is connected", async () => {
     await call("PATCH", "agent/settings", { aiPreference: "platform" });
     const login = await call<{ loginId: string }>("POST", "agent/claude/login");

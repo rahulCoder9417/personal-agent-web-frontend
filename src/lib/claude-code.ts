@@ -1,10 +1,12 @@
 // Claude Code's model and thinking effort, as the settings offer them. The backend says what can
 // be chosen (`claudeChoices`): every model, its group, the levels it takes and a note. Null in the
-// settings is "Default": Sonnet 5.5 at low effort, for quick answers (the Bridge, in the vm-manager),
-// with Byte and Patch on Opus 5.5 at medium effort. An effort left on Default with a chosen model is
-// Claude Code's own for that model.
+// settings is "Default": for Tex, Sonnet 5.5 at low effort, for quick answers (the Bridge, in the
+// vm-manager); an effort left on Default with a chosen model is Claude Code's own for that model.
+// Byte, Patch and Scout each have their own choice (`claudeCrew`). What Default is for each, the
+// backend says for this user (`claudeChoices.crewDefaults`): the same as Tex when a model is picked
+// for Tex; with Tex on Default, Byte and Patch on Opus 5.5 at medium. Scout: always Tex's.
 
-import type { AgentSettings, ClaudeEffort } from "./api/client";
+import type { AgentSettings, AgentSettingsUpdate, ClaudeEffort } from "./api/client";
 import { titleCase } from "./format";
 
 /**
@@ -131,4 +133,125 @@ export function choiceNotes(settings: Choices): string[] {
 /** A select's value as the API takes it: "Default" is null. */
 export function choiceValue<T extends string>(value: string): T | null {
   return value === "" ? null : (value as T);
+}
+
+// ---------------------------------------------------------------- the crew
+
+/** A crew member whose model and effort can be chosen (Tex, the lead, has the fields above). */
+export type CrewMemberId = keyof AgentSettings["claudeCrew"];
+type CrewChoice = AgentSettings["claudeCrew"][CrewMemberId];
+/** What `PATCH /v1/agent/settings` takes for the crew: only the members and fields sent change. */
+export type CrewPatch = NonNullable<AgentSettingsUpdate["claudeCrew"]>;
+
+/** The lead and the crew, in the order the settings list them, each with what it does. */
+export const CREW_ROWS: { id: "tex" | CrewMemberId; name: string; does: string }[] = [
+  { id: "tex", name: "Tex", does: "Leads, talks to you" },
+  { id: "byte", name: "Byte", does: "Writes code" },
+  { id: "patch", name: "Patch", does: "Reviews code" },
+  { id: "scout", name: "Scout", does: "Researches and uses the browser" },
+];
+
+/** The one hint under the crew's choices. */
+export const CREW_HINT = "Faster models answer sooner; stronger ones are more careful on hard code.";
+
+type CrewChoices = Pick<AgentSettings, "claudeModel" | "claudeEffort" | "claudeChoices"> & {
+  // An older backend sends neither: the web app can go live before it.
+  claudeCrew?: AgentSettings["claudeCrew"];
+};
+
+/** The backend takes a model and effort for each crew member (an older one doesn't). */
+export function crewChoicesOffered(settings: CrewChoices): boolean {
+  return Boolean(settings.claudeCrew && settings.claudeChoices.crewDefaults);
+}
+
+const NO_CHOICE: CrewChoice = { model: null, effort: null };
+
+function crewChoice(settings: CrewChoices, member: CrewMemberId): CrewChoice {
+  return settings.claudeCrew?.[member] ?? NO_CHOICE;
+}
+
+function crewDefault(settings: CrewChoices, member: CrewMemberId): CrewChoice {
+  return settings.claudeChoices.crewDefaults?.[member] ?? NO_CHOICE;
+}
+
+const modelLabel = (settings: CrewChoices, id: string) => settings.claudeChoices.models.find((model) => model.id === id)?.label ?? id;
+
+/**
+ * The "Default" options of a member's two selects, saying what Default runs: its own model and
+ * effort (Byte and Patch with Tex on Default: Opus 5.5 at medium), or Tex's.
+ */
+export function crewDefaultOptions(settings: CrewChoices, member: CrewMemberId): { model: SelectOption; effort: SelectOption } {
+  const own = crewDefault(settings, member);
+  return {
+    model: { value: "", label: own.model ? `Default (${modelLabel(settings, own.model)})` : "Default (same as Tex)" },
+    effort: { value: "", label: own.effort ? `Default (${effortLabel(own.effort)})` : "Default (same as Tex)" },
+  };
+}
+
+/** The member's settings in the shape of Tex's, so the rules above apply to it as they are. */
+function asChoices(settings: CrewChoices, member: CrewMemberId): Choices {
+  return { claudeModel: crewChoice(settings, member).model, claudeEffort: crewChoice(settings, member).effort, claudeChoices: settings.claudeChoices };
+}
+
+/** A member's "Model" select: its Default first, then the models as for Tex. */
+export function crewModelOptions(settings: CrewChoices, member: CrewMemberId): SelectOption[] {
+  return [crewDefaultOptions(settings, member).model, ...modelOptions(asChoices(settings, member)).slice(1)];
+}
+
+/**
+ * The levels the member's model takes: the chosen one's; on Default, its default model's, or Tex's
+ * when it runs as Tex does (Scout).
+ */
+export function crewEfforts(settings: CrewChoices, member: CrewMemberId): ClaudeEffort[] {
+  const chosen = crewChoice(settings, member).model ?? crewDefault(settings, member).model;
+  if (!chosen) return modelEfforts(settings);
+  return settings.claudeChoices.models.find((model) => model.id === chosen)?.efforts ?? settings.claudeChoices.efforts;
+}
+
+/** The effort means something for the member's model (Opus 4.5 and Haiku 4.5 take none). */
+export function crewEffortApplies(settings: CrewChoices, member: CrewMemberId): boolean {
+  return crewEfforts(settings, member).length > 0;
+}
+
+/** A member's "Thinking effort" select: its Default first, then the levels its model takes. */
+export function crewEffortOptions(settings: CrewChoices, member: CrewMemberId): SelectOption[] {
+  const efforts = crewEfforts(settings, member).map((effort) => ({ value: effort, label: effortLabel(effort) }));
+  return [crewDefaultOptions(settings, member).effort, ...withSaved(efforts, crewChoice(settings, member).effort, effortLabel)];
+}
+
+/**
+ * What to say under the selects about the crew's chosen models and efforts: a model's note once,
+ * however many use it (Tex's notes come first and are not said again), and an effort that doesn't
+ * apply, by member.
+ */
+export function crewNotes(settings: CrewChoices, already: string[] = []): string[] {
+  const notes: string[] = [];
+  const said = new Set(already);
+  for (const row of CREW_ROWS) {
+    if (row.id === "tex") continue;
+    for (const note of choiceNotes(asChoices(settings, row.id))) {
+      // A model's own note ("Fable 5.1: …") is the same for everyone; the others are about this member.
+      const line = settings.claudeChoices.models.some((model) => model.note && note === `${model.label}: ${model.note}`) ? note : `${row.name}: ${note}`;
+      if (!said.has(line)) {
+        said.add(line);
+        notes.push(line);
+      }
+    }
+  }
+  return notes;
+}
+
+/** The settings with a crew change applied, as the API will answer it (to show it at once). */
+export function withCrewPatch<T extends CrewChoices>(settings: T, patch: CrewPatch): T {
+  if (!settings.claudeCrew) return settings;
+  const crew = { ...settings.claudeCrew };
+  for (const member of Object.keys(patch) as CrewMemberId[]) {
+    const change = patch[member];
+    if (!change || !crew[member]) continue;
+    crew[member] = {
+      model: change.model !== undefined ? change.model : crew[member].model,
+      effort: change.effort !== undefined ? change.effort : crew[member].effort,
+    };
+  }
+  return { ...settings, claudeCrew: crew };
 }

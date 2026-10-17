@@ -12,7 +12,12 @@ const base: AgentSettings = {
   ownKeyProviders: ["anthropic"],
   claudeModel: null,
   claudeEffort: null,
-  claudeChoices: { models: [{ id: "claude-opus-5-5", label: "Opus 5.5", group: "current", efforts: ["low", "high"] }], efforts: ["low", "high"] },
+  claudeCrew: { byte: { model: null, effort: null }, patch: { model: null, effort: null }, scout: { model: null, effort: null } },
+  claudeChoices: {
+    models: [{ id: "claude-opus-5-5", label: "Opus 5.5", group: "current", efforts: ["low", "high"] }],
+    efforts: ["low", "high"],
+    crewDefaults: { byte: { model: "claude-opus-5-5", effort: "low" }, patch: { model: "claude-opus-5-5", effort: "low" }, scout: { model: null, effort: null } },
+  },
 };
 
 const onTextcrewAi: AgentSettings = { ...base, aiAccess: "platform", ownKeyProviders: [] };

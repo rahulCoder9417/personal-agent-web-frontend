@@ -137,7 +137,24 @@ export function syncAgentSettings(state: DemoState): void {
   else if (connected) access = { effectiveRuntime: "claude_code", aiAccess: "claude_plan" };
   else access = { effectiveRuntime: null, aiAccess: "none" };
 
-  state.agentSettings = { ...settings, runtime, ownKeyProviders, platformAvailable, ...access };
+  state.agentSettings = {
+    ...settings,
+    runtime,
+    ownKeyProviders,
+    platformAvailable,
+    ...access,
+    claudeChoices: { ...settings.claudeChoices, crewDefaults: crewDefaultsFor(settings.claudeModel) },
+  };
+}
+
+/**
+ * What Default is for each of the crew, as the backend says it: the same as Tex (null) when a model
+ * is picked for Tex; with Tex on Default, Byte and Patch on Opus 5.5 at medium. Scout: always Tex's.
+ */
+function crewDefaultsFor(texModel: string | null): AgentSettings["claudeChoices"]["crewDefaults"] {
+  const sameAsTex = { model: null, effort: null };
+  const own = texModel ? sameAsTex : { model: "claude-opus-5-5", effort: "medium" as const };
+  return { byte: own, patch: own, scout: sameAsTex };
 }
 
 export const listByokKeys: Handler = ({ state }) => json({ items: state.byok });
@@ -197,7 +214,9 @@ export const getAgentSettings: Handler = ({ state }) => {
   return json(state.agentSettings);
 };
 
-const SETTINGS_FIELDS = ["runtime", "aiPreference", "claudeModel", "claudeEffort"];
+const SETTINGS_FIELDS = ["runtime", "aiPreference", "claudeModel", "claudeEffort", "claudeCrew"];
+type CrewMemberId = keyof AgentSettings["claudeCrew"];
+const CREW_MEMBERS: readonly CrewMemberId[] = ["byte", "patch", "scout"];
 
 /**
  * Claude Code's model or effort: absent leaves it, null goes back to Claude Code's default, and
@@ -206,6 +225,33 @@ const SETTINGS_FIELDS = ["runtime", "aiPreference", "claudeModel", "claudeEffort
 function claudeChoice<T extends string>(value: unknown, allowed: readonly T[], name: string): T | null | undefined {
   if (value === undefined || value === null) return value;
   return oneOf(value, allowed, name);
+}
+
+/**
+ * The crew's choices as the backend takes them: one or more members, each with a model, an effort
+ * or both (null: back to Default). Anyone else, or anything else, is refused.
+ */
+function crewChanges(value: unknown, settings: AgentSettings): Partial<AgentSettings["claudeCrew"]> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length === 0) {
+    throw badRequest("claudeCrew must name one or more of: byte, patch, scout");
+  }
+  const out: Partial<AgentSettings["claudeCrew"]> = {};
+  for (const [name, change] of Object.entries(value)) {
+    const member = oneOf(name, CREW_MEMBERS, "claudeCrew member");
+    if (!change || typeof change !== "object" || Array.isArray(change)) throw badRequest(`claudeCrew.${member} must be an object`);
+    const keys = Object.keys(change);
+    if (keys.length === 0 || keys.some((key) => key !== "model" && key !== "effort")) {
+      throw badRequest(`claudeCrew.${member} takes a model, an effort or both`);
+    }
+    const { model, effort } = change as { model?: unknown; effort?: unknown };
+    const choices = settings.claudeChoices;
+    const nextModel = claudeChoice(model, choices.models.map((m) => m.id), `claudeCrew.${member}.model`);
+    const nextEffort = claudeChoice(effort, choices.efforts as ClaudeEffort[], `claudeCrew.${member}.effort`);
+    const now = settings.claudeCrew[member];
+    out[member] = { model: nextModel === undefined ? now.model : nextModel, effort: nextEffort === undefined ? now.effort : nextEffort };
+  }
+  return out;
 }
 
 /**
@@ -224,6 +270,7 @@ export const updateAgentSettings: Handler = async ({ state, request }) => {
   const choices = state.agentSettings.claudeChoices;
   const claudeModel = claudeChoice(body.claudeModel, choices.models.map((model) => model.id), "claudeModel");
   const claudeEffort = claudeChoice(body.claudeEffort, choices.efforts as ClaudeEffort[], "claudeEffort");
+  const claudeCrew = crewChanges(body.claudeCrew, state.agentSettings);
 
   syncAgentSettings(state);
   if (runtime === "claude_code" && !state.agentSettings.claude.connected) {
@@ -234,6 +281,7 @@ export const updateAgentSettings: Handler = async ({ state, request }) => {
   }
   if (claudeModel !== undefined) state.agentSettings.claudeModel = claudeModel;
   if (claudeEffort !== undefined) state.agentSettings.claudeEffort = claudeEffort;
+  if (claudeCrew) state.agentSettings.claudeCrew = { ...state.agentSettings.claudeCrew, ...claudeCrew };
   if (runtime) state.agentSettings.runtime = runtime;
   if (aiPreference && aiPreference !== state.agentSettings.aiPreference) {
     state.agentSettings.aiPreference = aiPreference;

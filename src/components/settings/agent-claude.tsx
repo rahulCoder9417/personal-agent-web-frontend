@@ -2,20 +2,16 @@
 
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { CheckIcon, ExternalIcon } from "@/components/icons";
-import { Select } from "@/components/select";
 import { toastError } from "@/components/toast";
 import { Button, inputClass, Meta } from "@/components/ui";
 import { refusedTypedValue } from "@/lib/action-errors";
-import type { AgentSettings, ClaudeEffort, ClaudeLoginStart } from "@/lib/api/client";
-import { useCompleteClaudeLogin, useDisconnectClaude, useStartClaudeLogin, useUpdateClaudeCode } from "@/lib/api/hooks";
-import { choiceNotes, choiceValue, effortApplies, effortOptions, modelOptions, optionGroups, type SelectOption } from "@/lib/claude-code";
-import type { ListItem, ListOption } from "@/lib/listbox";
+import type { AgentSettings, ClaudeLoginStart } from "@/lib/api/client";
+import { useCompleteClaudeLogin, useDisconnectClaude, useStartClaudeLogin } from "@/lib/api/hooks";
 import { openInNewTab } from "@/lib/navigate";
 import { cn, formatDate, formatTime } from "@/lib/format";
 import { ConfirmButton } from "@/components/confirm-button";
 import { CHOICE_TAG, ChoiceCard } from "./agent-choice";
 import type { AiChoiceState } from "./agent-summary";
-import { SettingRow } from "./settings-rows";
 
 function Step({ n, state, title, children }: { n: number; state: "todo" | "now" | "done"; title: ReactNode; children?: ReactNode }) {
   return (
@@ -138,102 +134,6 @@ export function ClaudeConnectSteps() {
         )}
       </Step>
     </ol>
-  );
-}
-
-/** The options as the dropdown takes them: under their headings, with a model's note as its second line. */
-function listItems(options: SelectOption[]): ListItem[] {
-  return optionGroups(options).flatMap((group): ListItem[] => {
-    const items: ListOption[] = group.options.map(({ value, label, note }) => (note ? { value, label, description: note } : { value, label }));
-    return group.label ? [{ label: group.label, options: items }] : items;
-  });
-}
-
-function ChoiceSelect({
-  id,
-  label,
-  help,
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  help: ReactNode;
-  value: string | null;
-  options: SelectOption[];
-  disabled?: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <SettingRow label={label} htmlFor={id} help={help}>
-      <Select id={id} label={label} value={value ?? ""} options={listItems(options)} disabled={disabled} onChange={onChange} minListWidth={300} />
-    </SettingRow>
-  );
-}
-
-/** "Saved", after the help of the choice that was just saved. */
-function SavedNote() {
-  return (
-    <span role="status" className="text-success">
-      {" "}
-      · Saved
-    </span>
-  );
-}
-
-/**
- * Which Claude model Claude Code uses and how hard it thinks, as two rows of the Engine group.
- * "Default" is Sonnet 5.5 at low effort, for quick answers (Byte and Patch keep Opus 5.5). Each change is saved as it is made; it applies to turns that
- * run on Claude Code. Only offered once a Claude plan is connected.
- */
-export function ClaudeCodeChoices({ settings }: { settings: AgentSettings }) {
-  const update = useUpdateClaudeCode();
-  const id = useId();
-  // The select goes back to what is saved when a change is refused; the toast says why.
-  const refused = { onError: (error: unknown) => toastError("Couldn’t save that choice", error) };
-  const saved = update.isSuccess ? (update.variables && "claudeModel" in update.variables ? "model" : "effort") : null;
-  const notes = choiceNotes(settings);
-
-  return (
-    <>
-      <ChoiceSelect
-        id={`${id}-model`}
-        label="Model"
-        help={
-          <>
-            The Claude model Claude Code runs. Default is Sonnet 5.5 at low effort, for quick answers; Byte and Patch then work on Opus 5.5.
-            {saved === "model" && <SavedNote />}
-          </>
-        }
-        value={settings.claudeModel}
-        options={modelOptions(settings)}
-        onChange={(value) => update.mutate({ claudeModel: choiceValue(value) }, refused)}
-      />
-      <ChoiceSelect
-        id={`${id}-effort`}
-        label="Thinking effort"
-        help={
-          <>
-            How hard Claude Code thinks before it answers. Default is low on the default model, and Claude Code’s own for a model you pick.
-            {saved === "effort" && <SavedNote />}
-          </>
-        }
-        value={settings.claudeEffort}
-        options={effortOptions(settings)}
-        disabled={!effortApplies(settings)}
-        onChange={(value) => update.mutate({ claudeEffort: choiceValue<ClaudeEffort>(value) }, refused)}
-      />
-      {notes.length > 0 && (
-        // What the chosen model and effort come to, under the two rows, at the foot of the card.
-        <div className="flex flex-col gap-1 rounded-b-[11px] bg-surface-2/60 px-5 py-3 text-[12.5px] text-muted">
-          {notes.map((note) => (
-            <p key={note}>{note}</p>
-          ))}
-        </div>
-      )}
-    </>
   );
 }
 

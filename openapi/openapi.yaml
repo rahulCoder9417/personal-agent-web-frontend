@@ -207,6 +207,11 @@ paths:
 
         Every message carries its `conversationId`.
 
+        A copy sent to a chat app of something kept in the web app (an automation's question or
+        answer, a crew job's notice, sent to Telegram) is never listed: the web app shows the
+        message it copies, in the conversation that keeps it (the Automations chat for an
+        automation's), and the copy lives only in the chat app.
+
         `chatStartedAt` is kept for older clients: when the web chat's newest conversation started,
         or null if the user never started a new chat in web chat.
       parameters:
@@ -310,7 +315,9 @@ paths:
 
         Without `channel`, every channel's conversations are listed. Web conversations can be
         opened and written in; Telegram conversations are listed for reading only (Telegram always
-        writes in its chat's latest one, and `/new` there starts a new one).
+        writes in its chat's latest one, and `/new` there starts a new one). A Telegram
+        conversation with nothing said in it yet (no message from the user or the agent there) is
+        left out until something is.
 
         Every run of every automation answers in one conversation of its own, the Automations chat
         (`kind: automations`, at most one per user). `kind=chat` leaves it out of the list, and
@@ -1730,11 +1737,15 @@ paths:
         `aiPreference: platform`, and go back with `aiPreference: auto`. `aiAccess` always says
         what pays for the AI right now.
 
-        `claudeModel` and `claudeEffort` are the Claude model and the thinking effort Claude Code
-        uses (null: Default, which is Sonnet 5.5 at low effort for Tex's chat; Byte and Patch then
-        keep Opus 5.5 at medium effort, and a chosen effort applies on Sonnet 5.5). They apply to turns that run on Claude Code, and
-        can be set whatever the engine is now. `claudeChoices` lists what may be chosen: every
-        Claude model Claude Code can use, each with the effort levels it takes.
+        `claudeModel` and `claudeEffort` are the Claude model and the thinking effort Tex (the lead)
+        uses on Claude Code (null: Default, which is Sonnet 5.5 at low effort for Tex's chat, and a
+        chosen effort applies on Sonnet 5.5). `claudeCrew` is the same choice for each of the crew
+        (Byte, Patch, Scout), on its own. A member left on Default runs as
+        `claudeChoices.crewDefaults` says for this user: the same as Tex when a model is picked for
+        Tex; with Tex on Default, Byte and Patch on Opus 5.5 at medium effort and Scout the same as
+        Tex. They apply to turns that run on Claude Code, and can be set whatever the engine is now;
+        on Hermes the crew shares one model. `claudeChoices` lists what may be chosen: every Claude
+        model Claude Code can use, each with the effort levels it takes.
       responses:
         "200":
           description: OK
@@ -1755,6 +1766,12 @@ paths:
         to Default (Sonnet 5.5, quick). They can be set whatever the engine is now; they take effect
         on turns that run on Claude Code. A model id that isn't in `claudeChoices.models` is
         400 `invalid_request`. Example: `{ claudeModel: claude-opus-5-5, claudeEffort: xhigh }`.
+
+        `claudeCrew` sets a crew member's model and effort the same way: only the members and the
+        fields sent change, and null goes back to that member's Default
+        (`claudeChoices.crewDefaults`). A model id that isn't in `claudeChoices.models`, or a member
+        other than `byte`, `patch` and `scout`, is 400 `invalid_request`. Example:
+        `{ claudeCrew: { patch: { model: claude-sonnet-5-5, effort: low } } }`.
       requestBody:
         required: true
         content:
@@ -1775,6 +1792,15 @@ paths:
                   type: [string, "null"]
                   enum: [low, medium, high, xhigh, max, null]
                   description: Null for the default.
+                claudeCrew:
+                  type: object
+                  minProperties: 1
+                  additionalProperties: false
+                  description: The crew members to change; a member left out keeps its choice.
+                  properties:
+                    byte: { $ref: "#/components/schemas/ClaudeCrewChoiceUpdate" }
+                    patch: { $ref: "#/components/schemas/ClaudeCrewChoiceUpdate" }
+                    scout: { $ref: "#/components/schemas/ClaudeCrewChoiceUpdate" }
       responses:
         "200":
           description: Updated
@@ -1782,7 +1808,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AgentSettings" }
         "400":
-          description: Invalid input, or a Claude model id that isn't on the list
+          description: Invalid input, a Claude model id that isn't on the list, or an unknown crew member
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -3541,7 +3567,7 @@ paths:
       description: |
         `engine`: the chosen engine goes back to Hermes (a Claude plan stays connected; the user
         can choose Claude Code again). `model` and `effort`: Claude Code's model and thinking effort
-        go back to Default (Sonnet 5.5, quick). `browser`: Scout's browser switch is set again
+        go back to Default (Sonnet 5.5, quick), Tex's and each crew member's alike. `browser`: Scout's browser switch is set again
         from the user's plan and the deployment, as a plan change does. The same functions the user's
         own settings use make each change, so the vm-manager is told the same way.
       parameters:
@@ -4783,7 +4809,13 @@ components:
             required: [id, status]
             properties:
               id: { type: string }
-              accountLabel: { type: [string, "null"], examples: [work@acme.com] }
+              accountLabel:
+                type: [string, "null"]
+                description: |
+                  Who the connection is signed in as: the email address (Gmail) or the username
+                  (GitHub). The app is asked once, when Tex first looks at the user's apps; null
+                  until then, and for apps that cannot say.
+                examples: [work@acme.com, rahulcoder9417]
               status: { type: string, enum: [active, expired, error] }
 
     McpServer:
@@ -5941,7 +5973,10 @@ components:
         app: { type: string, examples: [gmail] }
         appName: { type: string, examples: [Gmail] }
         status: { type: string, enum: [pending, active, expired, error] }
-        accountLabel: { type: [string, "null"], examples: [work@acme.com] }
+        accountLabel:
+          type: [string, "null"]
+          description: Who the connection is signed in as (an email or a GitHub username), when known
+          examples: [work@acme.com, rahulcoder9417]
         setupSource: { $ref: "#/components/schemas/AdminAppSetupSource" }
         connectable: { type: boolean, description: The app can be connected on this server today }
         connectedAt:
@@ -6450,7 +6485,7 @@ components:
 
     AgentSettings:
       type: object
-      required: [runtime, effectiveRuntime, aiAccess, aiPreference, platformAvailable, claude, ownKeyProviders, claudeModel, claudeEffort, claudeChoices]
+      required: [runtime, effectiveRuntime, aiAccess, aiPreference, platformAvailable, claude, ownKeyProviders, claudeModel, claudeEffort, claudeCrew, claudeChoices]
       properties:
         runtime:
           $ref: "#/components/schemas/AgentRuntime"
@@ -6480,23 +6515,30 @@ components:
         claudeModel:
           type: [string, "null"]
           description: |
-            The Claude model Claude Code uses, one of `claudeChoices.models`. Null: Default, Sonnet
-            5.5 (`claude-sonnet-5-5`) for Tex, with Byte and Patch on Opus 5.5 at medium effort.
-            Applies when Claude Code is the engine.
+            The Claude model Tex (the lead) uses on Claude Code, one of `claudeChoices.models`.
+            Null: Default, Sonnet 5.5 (`claude-sonnet-5-5`). A crew member left on Default follows a
+            model picked here (`claudeChoices.crewDefaults`). Applies when Claude Code is the engine.
           examples: [claude-opus-5-5]
         claudeEffort:
           type: [string, "null"]
           enum: [low, medium, high, xhigh, max, null]
           description: |
-            How hard Claude Code thinks. Null: Default, which is `low` when the model is on Default
-            too, and Claude Code's own default for a chosen model. Applies when Claude Code is the
-            engine.
+            How hard Tex thinks on Claude Code. Null: Default, which is `low` when the model is on
+            Default too, and Claude Code's own default for a chosen model. Applies when Claude Code
+            is the engine.
+        claudeCrew:
+          $ref: "#/components/schemas/ClaudeCrew"
+          description: |
+            The model and effort each crew member uses on Claude Code, chosen for each on its own.
+            Null in a field: that member's Default (`claudeChoices.crewDefaults`). Applies when
+            Claude Code is the engine; on Hermes the crew shares one model.
         claudeChoices:
           type: object
           description: |
-            What may be chosen for `claudeModel` and `claudeEffort`, in display order: the current
-            models first, then the older ones Claude still offers, newest first.
-          required: [models, efforts]
+            What may be chosen for `claudeModel`, `claudeEffort` and `claudeCrew`, in display
+            order: the current models first, then the older ones Claude still offers, newest first.
+            `crewDefaults` says what Default is for each crew member, for this user right now.
+          required: [models, efforts, crewDefaults]
           properties:
             models:
               type: array
@@ -6528,6 +6570,52 @@ components:
               description: Every effort level, lowest first.
               items: { type: string, enum: [low, medium, high, xhigh, max] }
               examples: [[low, medium, high, xhigh, max]]
+            crewDefaults:
+              $ref: "#/components/schemas/ClaudeCrew"
+              description: |
+                What a crew member left on Default runs on Claude Code for this user. It follows
+                `claudeModel`, so it changes when Tex's model does. Null here means "the same as
+                Tex": that member runs on Tex's model at Tex's effort. Scout is always the same as
+                Tex. Byte and Patch are the same as Tex when a model is picked for Tex
+                (`claudeModel` set), and Opus 5.5 (`claude-opus-5-5`) at `medium` when Tex is on
+                Default.
+
+    ClaudeCrew:
+      type: object
+      description: One model and effort per crew member (Byte writes code, Patch reviews it, Scout researches).
+      required: [byte, patch, scout]
+      properties:
+        byte: { $ref: "#/components/schemas/ClaudeCrewChoice" }
+        patch: { $ref: "#/components/schemas/ClaudeCrewChoice" }
+        scout: { $ref: "#/components/schemas/ClaudeCrewChoice" }
+
+    ClaudeCrewChoice:
+      type: object
+      required: [model, effort]
+      properties:
+        model:
+          type: [string, "null"]
+          description: One of the ids in `claudeChoices.models`.
+          examples: [claude-sonnet-5-5]
+        effort:
+          type: [string, "null"]
+          enum: [low, medium, high, xhigh, max, null]
+
+    ClaudeCrewChoiceUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: A field left out keeps its choice; null goes back to the member's Default.
+      properties:
+        model:
+          type: [string, "null"]
+          maxLength: 100
+          description: One of the ids in `claudeChoices.models`, or null for the member's Default.
+          examples: [claude-sonnet-5-5]
+        effort:
+          type: [string, "null"]
+          enum: [low, medium, high, xhigh, max, null]
+          description: Null for the member's Default.
 
     ClaudeLoginStart:
       type: object
