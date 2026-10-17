@@ -142,7 +142,7 @@ describe("the first seconds after sending", () => {
     screen.close();
   });
 
-  it("ends after a quick reply whose 'delivered' never arrived: the API is asked after the answer", async () => {
+  it("ends with a quick reply whose 'delivered' never arrives: the reply is enough", async () => {
     const screen = await opened();
     screen.event("message.created", saved());
     expect(screen.activity()).toBe("working");
@@ -150,9 +150,11 @@ describe("the first seconds after sending", () => {
     await vi.advanceTimersByTimeAsync(2_000);
     screen.server.thread = [{ ...answer, status: "sent" }, saved({ status: "delivered" }), earlier];
     screen.event("message.created", { ...answer, createdAt: new Date().toISOString() });
-    expect(screen.activity()).toBe("working");
+    expect(screen.activity()).toBeNull();
+    expect(cachedThread(screen.qc, CONVERSATION)?.find((item) => item.id === "msg_new")?.status).toBe("delivered");
+    // Nothing is left to ask the API about.
     await vi.advanceTimersByTimeAsync(SETTLE_CHECK_MS);
-    expect(screen.asked.thread).toBe(1);
+    expect(screen.asked).toEqual({ thread: 0, status: 0 });
     expect(screen.activity()).toBeNull();
     screen.close();
   });

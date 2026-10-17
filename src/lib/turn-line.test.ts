@@ -78,8 +78,8 @@ describe("threadFoot", () => {
     expect(foot({ turn: { steps: [], writing: null, live: true } })).toBe("start");
     expect(foot({ turn: writingTurn })).toBe("writing");
     expect(foot({ turn: stepsTurn })).toBe("working");
-    // Tex said something in the middle of the turn: the line stays under it.
-    expect(foot({ messages: [tex("on-it", 4_000), asked("processing")] })).toBe("working");
+    // Tex posted an automation's draft in the middle of the turn: the line stays under it.
+    expect(foot({ messages: [tex("draft-card", 4_000, { automationDraftId: "drf_1" }), asked("processing")] })).toBe("working");
   });
 
   it("goes when the turn is over: the message delivered or failed, or the agent no longer busy", () => {
@@ -236,32 +236,36 @@ describe("a turn of several steps keeps one line from its first step to its end"
     screen.progress("Read a web page");
     await screen.wait(4_000);
     screen.progress("Read a web page");
-    // The answer, written, then saved; the turn ends half a second later (`answer_sent` to `finished`).
+    // The answer, written, then saved: the line goes with it. The turn ends half a second later
+    // (`answer_sent` to `finished`), and nothing comes back.
     await screen.write(ANSWER);
     screen.send("message.created", tex("msg_answer", 40_000, { text: ANSWER }));
+    expect(screen.foot()).toBeNull();
     await screen.wait(500);
-    expect(screen.foot()).toBe("working");
     ended(screen);
 
-    expect(screen.shown()).toEqual(["start", "working", "writing", "working", "writing", "working", null]);
+    expect(screen.shown()).toEqual(["start", "working", "writing", "working", "writing", null]);
     expectSteady(screen.shown());
     screen.close();
   });
 
-  it("through a message Tex sends in the middle of the turn, and the check 10 seconds after it", async () => {
+  it("through an automation's draft Tex posts in the middle of the turn (it is not the answer)", async () => {
     const screen = chatScreen();
     await vi.advanceTimersByTimeAsync(0);
     await taken(screen);
     screen.progress("Looked at your apps");
-    screen.send("message.created", tex("msg_on_it", 5_000, { text: "On it: checking your 3 repositories now." }));
+    const card = tex("msg_draft", 5_000, { text: "Here is a draft: a summary of your open pull requests every morning.", automationDraftId: "drf_1" });
+    screen.send("message.created", card);
     expect(screen.foot()).toBe("working");
-    // The turn carries on: the API, asked again 10 seconds after Tex wrote, says so.
-    screen.server.thread = [tex("msg_on_it", 5_000), asked("processing")];
+    expect(cachedThread(screen.qc, CONVERSATION)?.find((item) => item.id === "msg_in")?.status).toBe("processing");
+    // The turn carries on: the API, asked again later, says so too.
+    screen.server.thread = [card, asked("processing")];
     screen.server.status = { state: "busy", lastActiveAt: at(1_500) };
     screen.progress("Scout: reading 4 pages", "scout");
     await screen.wait(SETTLE_CHECK_MS);
     await screen.wait(20_000);
     screen.send("message.created", tex("msg_answer", 40_000, { text: ANSWER }));
+    expect(screen.foot()).toBeNull();
     await screen.wait(500);
     ended(screen);
 
@@ -289,7 +293,7 @@ describe("a turn of several steps keeps one line from its first step to its end"
     ended(screen);
 
     expectSteady(screen.shown());
-    expect(screen.shown()).toEqual(["start", "working", "writing", "working", "writing", "working", null]);
+    expect(screen.shown()).toEqual(["start", "working", "writing", "working", "writing", null]);
     screen.close();
   });
 });
@@ -318,7 +322,7 @@ describe("from Send", () => {
     screen.close();
   });
 
-  it("keeps one line through a quick reply (no agent: the message is never taken), until it is delivered", async () => {
+  it("keeps the bubble through a quick reply (no agent: the message is never taken), until the reply", async () => {
     const screen = chatScreen();
     await vi.advanceTimersByTimeAsync(0);
     screen.send("message.created", asked("queued"));
@@ -326,7 +330,197 @@ describe("from Send", () => {
     screen.send("message.created", tex("msg_hi", 1_200, { text: "Hey! How can I help you today?" }));
     await screen.wait(100);
     screen.send("message.status", asked("delivered"));
-    expect(screen.shown()).toEqual(["start", "working", null]);
+    expect(screen.shown()).toEqual(["start", null]);
+    screen.close();
+  });
+});
+
+describe("Tex's answer ends the turn on screen at once, whatever comes of the turn's last events", () => {
+  // The founder's "list all the pr across repo" (web chat, 17 October, 10:58:45 UTC). The container
+  // was made again for a new image as the message woke it (about 4 seconds); the answer, a table of
+  // his pull requests, was sent 27 seconds after the message, and the turn ended on the server 0.4
+  // seconds later (the message `delivered`, then the agent awake). In the web app "Tex is working…"
+  // stayed under the answer for a while: the line waited for those two events, and only the check 10
+  // seconds after the answer ended it when they didn't come.
+  const TABLE = "| Repo | Pull request | State |\n|---|---|---|\n| textcrew | Fix the login redirect | open |\n| textcrew | Add CSV export | open |";
+  const answer = tex("msg_answer", 27_040, { text: TABLE });
+  const statusOf = (screen: ReturnType<typeof chatScreen>, id: string) => cachedThread(screen.qc, CONVERSATION)?.find((item) => item.id === id)?.status;
+
+  async function upToTheAnswer(screen: ReturnType<typeof chatScreen>) {
+    screen.send("message.created", asked("queued"));
+    await screen.wait(340);
+    screen.send("agent.status", { state: "waking", lastActiveAt: null });
+    await screen.wait(4_100);
+    screen.send("agent.status", { state: "busy", lastActiveAt: at(4_440) });
+    screen.send("message.status", asked("processing"));
+    screen.progress("Looked at your apps");
+    await screen.wait(5_000);
+    screen.progress("Ran an app action");
+    await screen.wait(12_000);
+    await screen.write(TABLE);
+    // What the API says once the turn is over, whenever it is asked.
+    screen.server.thread = [answer, asked("delivered")];
+    screen.server.status = { state: "awake", lastActiveAt: at(27_450) };
+  }
+  const answered = (screen: ReturnType<typeof chatScreen>) => {
+    screen.send("message.created", answer);
+    expect(screen.foot()).toBeNull();
+    expect(statusOf(screen, "msg_in")).toBe("delivered");
+  };
+  const delivered = (screen: ReturnType<typeof chatScreen>) => screen.send("message.status", asked("delivered"));
+  const idle = (screen: ReturnType<typeof chatScreen>) => screen.send("agent.status", { state: "awake", lastActiveAt: at(27_450) });
+
+  const orders: [string, (screen: ReturnType<typeof chatScreen>) => Promise<void>][] = [
+    [
+      "after it, as the backend sends them",
+      async (screen) => {
+        answered(screen);
+        await screen.wait(200);
+        delivered(screen);
+        await screen.wait(200);
+        idle(screen);
+      },
+    ],
+    [
+      "after it, held on the way for 8 seconds",
+      async (screen) => {
+        answered(screen);
+        await screen.wait(8_000);
+        delivered(screen);
+        idle(screen);
+      },
+    ],
+    ["never", async (screen) => answered(screen)],
+    [
+      "before it",
+      async (screen) => {
+        delivered(screen);
+        idle(screen);
+        answered(screen);
+      },
+    ],
+    [
+      "the agent's idle state before it, the message's `delivered` never",
+      async (screen) => {
+        idle(screen);
+        answered(screen);
+      },
+    ],
+    [
+      "the message's `delivered` after it, the agent's idle state never",
+      async (screen) => {
+        answered(screen);
+        await screen.wait(300);
+        delivered(screen);
+      },
+    ],
+    [
+      "the agent's idle state after it, the message's `delivered` never",
+      async (screen) => {
+        answered(screen);
+        await screen.wait(300);
+        idle(screen);
+      },
+    ],
+  ];
+
+  it.each(orders)("the line goes with the answer: its last events %s", async (_, rest) => {
+    const screen = chatScreen();
+    await vi.advanceTimersByTimeAsync(0);
+    await upToTheAnswer(screen);
+    expect(screen.foot()).toBe("writing");
+    await rest(screen);
+    // Nothing brings it back: not the events, nor the check 10 seconds after the answer.
+    await screen.wait(SETTLE_CHECK_MS);
+
+    expect(screen.shown()).toEqual(["start", "working", "writing", null]);
+    expect(statusOf(screen, "msg_in")).toBe("delivered");
+    // What the lost events said is asked for: the agent isn't left busy.
+    expect(screen.qc.getQueryData<AgentStatus>(qk.agentStatus)?.state).toBe("awake");
+    screen.close();
+  });
+
+  // The founder's "Review every new pull request in code smith" (web chat, 17 October, 11:17:14 UTC):
+  // a plain answer, no card, no tool. The turn started 0.3 seconds after the message; its draft came
+  // 7.8 seconds later, the answer 10.3 seconds after the start, and the turn ended on the server 0.4
+  // seconds after the answer. The answer took the draft's place, and the line went back to "Tex is
+  // working…" under it, waiting for the turn's last two events.
+  const REVIEW = "Done: every new pull request in code-smith gets a review from Patch, and I post it on the pull request for you.";
+  const reviewAnswer = tex("msg_review", 10_563, { text: REVIEW });
+  const fates: [string, (screen: ReturnType<typeof chatScreen>) => Promise<void>][] = [
+    [
+      "come as the backend sends them",
+      async (screen) => {
+        await screen.wait(200);
+        delivered(screen);
+        await screen.wait(200);
+        idle(screen);
+      },
+    ],
+    [
+      "are held on the way for 8 seconds",
+      async (screen) => {
+        await screen.wait(8_000);
+        delivered(screen);
+        idle(screen);
+      },
+    ],
+    ["never come", async () => {}],
+  ];
+
+  it.each(fates)("a plain answer written as a draft first: the line goes as the answer takes the draft's place, and the turn's last events %s", async (_, rest) => {
+    const screen = chatScreen();
+    await vi.advanceTimersByTimeAsync(0);
+    screen.send("message.created", asked("queued"));
+    await screen.wait(300);
+    screen.send("agent.status", { state: "busy", lastActiveAt: at(1_500) });
+    screen.send("message.status", asked("processing"));
+    await screen.wait(6_600);
+    await screen.write(REVIEW);
+    expect(screen.foot()).toBe("writing");
+    screen.server.thread = [reviewAnswer, asked("delivered")];
+    screen.server.status = { state: "awake", lastActiveAt: at(10_900) };
+    screen.send("message.created", reviewAnswer);
+    expect(screen.foot()).toBeNull();
+    expect(statusOf(screen, "msg_in")).toBe("delivered");
+    await rest(screen);
+    await screen.wait(SETTLE_CHECK_MS);
+
+    expect(screen.shown()).toEqual(["start", "writing", null]);
+    expect(screen.qc.getQueryData<AgentStatus>(qk.agentStatus)?.state).toBe("awake");
+    screen.close();
+  });
+
+  it("but a message sent while Tex worked waits for a turn of its own: the line stays after the first answer, and goes with the second", async () => {
+    const screen = chatScreen();
+    await vi.advanceTimersByTimeAsync(0);
+    await taken(screen);
+    screen.progress("Looked at your apps");
+    await screen.write(LONG_LINE);
+    await screen.wait(500);
+    const second = (status: Message["status"]) => message("msg_b", { text: "and the closed ones?", status, createdAt: at(5_000) });
+    screen.send("message.created", second("queued"));
+    screen.draft("");
+    screen.send("message.created", tex("msg_answer", 9_000, { text: ANSWER }));
+    expect(screen.foot()).toBe("working");
+    expect(statusOf(screen, "msg_in")).toBe("delivered");
+    expect(statusOf(screen, "msg_b")).toBe("queued");
+    ended(screen);
+    expect(screen.foot()).toBe("working");
+
+    // The second message's turn.
+    await screen.wait(1_000);
+    screen.send("agent.status", { state: "busy", lastActiveAt: at(11_000) });
+    screen.send("message.status", second("processing"));
+    screen.send("message.draft", { conversationId: CONVERSATION, turnId: "evt_b", messageId: "msg_b", text: `${LONG_LINE} And the closed ones too.`, at: at(12_000) });
+    expect(screen.foot()).toBe("writing");
+    screen.send("message.created", tex("msg_answer_b", 14_000, { text: "Here are the closed ones." }));
+    expect(screen.foot()).toBeNull();
+    expect(statusOf(screen, "msg_b")).toBe("delivered");
+    screen.send("message.status", second("delivered"));
+    screen.send("agent.status", { state: "awake", lastActiveAt: at(14_500) });
+
+    expect(screen.shown()).toEqual(["start", "working", "writing", "working", "writing", null]);
     screen.close();
   });
 });
