@@ -64,7 +64,7 @@ export const onboardedHere = {
       // Storage refused: the chat waits for the account next time, as for a new browser.
     }
   },
-  /** Every account's note, on signing out or deleting the account. */
+  /** Every account's notes (this one and `openedChatHere`), on signing out or deleting the account. */
   forgetAll(store: Store | null = browserStore()): void {
     showCoverHint(false);
     if (!store) return;
@@ -72,7 +72,7 @@ export const onboardedHere = {
       const keys: string[] = [];
       for (let index = 0; index < store.length; index++) {
         const key = store.key(index);
-        if (key?.startsWith(ONBOARDED_PREFIX)) keys.push(key);
+        if (key?.startsWith(ONBOARDED_PREFIX) || key?.startsWith(OPENED_CHAT_PREFIX)) keys.push(key);
       }
       for (const key of keys) store.removeItem(key);
     } catch {
@@ -81,7 +81,36 @@ export const onboardedHere = {
   },
 };
 
-function currentAccount(mode: AuthMode): string | null {
+/**
+ * This browser's note of the conversation the chat opened by itself last time (the active web
+ * chat), one per account, so the next visit asks for its messages beside the list of chats instead
+ * of after it: one wait for the database less before the chat shows, about 0.3 seconds. Only an id,
+ * never what was said. A note gone stale (a new chat started elsewhere) costs one request nobody
+ * waits for: the chat opens what the list says, as before.
+ */
+export const OPENED_CHAT_PREFIX = "tc:opened-chat:";
+
+export const openedChatHere = {
+  get(account: string | null, store: Store | null = browserStore()): string | null {
+    if (!account || !store) return null;
+    try {
+      return store.getItem(OPENED_CHAT_PREFIX + account) || null;
+    } catch {
+      return null;
+    }
+  },
+  set(account: string | null, conversationId: string, store: Store | null = browserStore()): void {
+    if (!account || !store) return;
+    try {
+      if (store.getItem(OPENED_CHAT_PREFIX + account) !== conversationId) store.setItem(OPENED_CHAT_PREFIX + account, conversationId);
+    } catch {
+      // Storage refused: the next visit asks for the list first, as before.
+    }
+  },
+};
+
+/** The signed-in account here, as the notes are kept by (null outside a browser, or when it can't be read). */
+export function currentAccount(mode: AuthMode): string | null {
   try {
     return accountHere(mode, document.cookie);
   } catch {

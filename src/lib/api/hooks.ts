@@ -61,6 +61,7 @@ import type { ProgressLine } from "../crew";
 import { withNotificationChange, type NotificationSettingsUpdate } from "../notifications";
 import { withRun } from "../automation-steps";
 import { draftSaveBody } from "../draft-save";
+import { freshSession } from "../fresh-session";
 
 // One place for every query key, so the event stream and mutations invalidate the same things.
 export const qk = {
@@ -309,6 +310,12 @@ export function pageAfterCache(qc: QueryClient, conversationId: string, page: Me
   return { ...page, items: page.items.map((message) => (known.has(message.id) ? laterMessage(known.get(message.id)!, message) : message)) };
 }
 
+/** One page of a conversation's messages from the API, newest first, kept as far along as the cache has them. */
+async function threadPage(qc: QueryClient, conversationId: string | null, cursor: string | undefined): Promise<MessagePage> {
+  const page = await unwrap(api.GET("/v1/messages", { params: { query: { limit: PAGE, cursor, conversationId: conversationId ?? undefined } } }));
+  return conversationId ? pageAfterCache(qc, conversationId, page) : page;
+}
+
 /** One conversation's messages, newest first. Nothing is asked for until a conversation is known. */
 export function useThread(conversationId: string | null) {
   const qc = useQueryClient();
@@ -316,11 +323,22 @@ export function useThread(conversationId: string | null) {
     queryKey: qk.thread(conversationId ?? ""),
     enabled: conversationId !== null,
     initialPageParam: undefined as string | undefined,
-    queryFn: async ({ pageParam }): Promise<MessagePage> => {
-      const page = await unwrap(api.GET("/v1/messages", { params: { query: { limit: PAGE, cursor: pageParam, conversationId: conversationId ?? undefined } } }));
-      return conversationId ? pageAfterCache(qc, conversationId, page) : page;
-    },
+    queryFn: ({ pageParam }) => threadPage(qc, conversationId, pageParam),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+}
+
+/**
+ * Asks for a conversation's newest messages before a thread shows them (`useThread` then finds them
+ * there, or on their way, and doesn't ask again). Nothing when they are known already.
+ */
+export function prefetchThread(qc: QueryClient, conversationId: string): Promise<void> {
+  if (qc.getQueryData(qk.thread(conversationId))) return Promise.resolve();
+  return qc.prefetchInfiniteQuery({
+    queryKey: qk.thread(conversationId),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) => threadPage(qc, conversationId, pageParam),
+    getNextPageParam: (last: MessagePage) => last.nextCursor ?? undefined,
   });
 }
 
@@ -591,6 +609,8 @@ export function useUploadAttachment() {
       const form = new FormData();
       form.append("file", file);
       let response: Response;
+      // A good sign-in token first, as for every other call (`freshSession`).
+      await freshSession();
       try {
         response = await fetch("/api/v1/attachments", { method: "POST", body: form });
       } catch {

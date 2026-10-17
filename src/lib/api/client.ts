@@ -1,8 +1,18 @@
-import createClient from "openapi-fetch";
+import createClient, { type Middleware } from "openapi-fetch";
+import { freshSession } from "../fresh-session";
 import type { components, paths } from "./schema";
 
 /** Typed client for the Next.js proxy at /api/v1/*, which forwards to the backend's /v1/*. */
 export const api = createClient<paths>({ baseUrl: "/api" });
+
+/** Each call goes with a good sign-in token in the cookie, not one that ran out in a background tab (`freshSession`). */
+export const freshSessionFirst: Middleware = {
+  async onRequest({ request }) {
+    await freshSession();
+    return request;
+  },
+};
+api.use(freshSessionFirst);
 
 type Schemas = components["schemas"];
 
