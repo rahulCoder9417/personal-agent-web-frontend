@@ -1,5 +1,5 @@
-import type { Approval } from "@/lib/api/client";
-import { APPROVAL_RESULT, approvalReasonOf, ownAction, splitDetails, type OwnAction, type SettledStatus } from "@/lib/approvals";
+import type { Approval, ApprovalRun } from "@/lib/api/client";
+import { APPROVAL_RESULT, approvalReasonOf, ownAction, runLine, splitDetails, type OwnAction, type SettledStatus } from "@/lib/approvals";
 import { cn } from "@/lib/format";
 import { CheckIcon, CloseIcon } from "../icons";
 import { OwnActionDetails } from "./own-action";
@@ -77,6 +77,24 @@ export function DecidedLine({ approval, className }: { approval: Approval; class
         {result.text}
         <span className="font-normal text-muted"> – {approval.summary}</span>
       </span>
+    </div>
+  );
+}
+
+/** How the platform's run of an app action went (after the yes, or by a skip rule): one line, then the app's short answer. */
+export function RunResult({ run, className }: { run: ApprovalRun; className?: string }) {
+  const line = runLine(run);
+  return (
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      <p className={cn("text-[13px] leading-5 font-medium [overflow-wrap:anywhere]", TONE_CLASS[line.tone])}>{line.text}</p>
+      {run.result && (
+        <pre
+          aria-label="What the app answered"
+          className="max-h-[140px] overflow-auto rounded-xl bg-surface px-3.5 py-2.5 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-fg-2 [overflow-wrap:anywhere]"
+        >
+          {run.result}
+        </pre>
+      )}
     </div>
   );
 }
