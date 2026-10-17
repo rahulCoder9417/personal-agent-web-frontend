@@ -5,13 +5,7 @@ import { cn, formatDate, formatTimeLeft } from "@/lib/format";
 import { BrandIcon } from "../brand-icon";
 import { ApprovalsIcon } from "../icons";
 import { IconTile } from "../ui";
-import { approvalReasonOf, type ApprovalReason } from "@/lib/approvals";
-
-export const REASON_TEXT: Record<ApprovalReason["tone"], string> = {
-  info: "text-accent-dark",
-  danger: "text-danger",
-  neutral: "text-muted",
-};
+import { approvalReasonOf } from "@/lib/approvals";
 
 export function ApprovalIcon({ app, size = 18 }: { app?: string | null; size?: number }) {
   return app ? <BrandIcon name={app} size={size} /> : <ApprovalsIcon size={size} className="text-nav" />;
@@ -23,7 +17,12 @@ function rowWhen(approval: Approval): string {
   return formatDate(approval.status === "expired" ? approval.expiresAt : (approval.decidedAt ?? approval.createdAt));
 }
 
-/** The master list: one button per approval, the selected one outlined. */
+/** Same neutral edge for every card and for the detail panel (the app's `--line` is warm, so this is the ink colour at 10%). */
+export const CARD_EDGE = "border border-fg/10";
+export const CARD_ON = "border-accent/25 bg-accent-soft";
+export const CARD_OFF = "bg-surface hover:bg-surface-2";
+
+/** The master list: one button per approval, the selected one filled softly. */
 export function ApprovalList({
   approvals,
   selectedId,
@@ -37,26 +36,26 @@ export function ApprovalList({
     <ul className="flex flex-col gap-2">
       {approvals.map((approval) => {
         const on = approval.id === selectedId;
-        const reason = approvalReasonOf(approval);
+        const kind = approvalReasonOf(approval).label;
         return (
           <li key={approval.id}>
             <button
               type="button"
               aria-pressed={on}
               onClick={() => onSelect(approval.id)}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-xl border p-3.5 text-left transition-colors",
-                on ? "border-fg-2 bg-surface" : "border-line hover:border-line-strong hover:bg-surface/60",
-              )}
+              className={cn("flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors", CARD_EDGE, on ? CARD_ON : CARD_OFF)}
             >
-              <IconTile size={38}>
+              <IconTile size={36} className={on ? "bg-surface" : undefined}>
                 <ApprovalIcon app={approval.app} />
               </IconTile>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="truncate text-[14px] font-semibold">{approval.summary}</span>
-                <span className={cn("text-[12.5px]", REASON_TEXT[reason.tone])}>{reason.label}</span>
+                <span className="truncate text-[12.5px] text-muted">
+                  {kind}
+                  <span aria-hidden> · </span>
+                  {rowWhen(approval)}
+                </span>
               </span>
-              <span className="shrink-0 text-[12px] text-muted">{rowWhen(approval)}</span>
             </button>
           </li>
         );

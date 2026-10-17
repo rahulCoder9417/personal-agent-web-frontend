@@ -77,7 +77,7 @@ function Approvals({ initial }: { initial: string | null }) {
             className="scroll-pane w-[clamp(330px,34%,480px)] shrink-0 overflow-y-auto pt-2 pr-4 pb-6 pl-8 max-lg:w-full max-lg:overflow-visible max-lg:px-4 max-lg:pb-3 md:max-lg:px-8"
           >
             {current.isPending ? (
-              <SkeletonRows rows={3} className="rounded-xl border border-line" />
+              <SkeletonRows rows={3} className="rounded-xl border border-fg/10" />
             ) : approvals.length > 0 ? (
               <ApprovalList approvals={approvals} selectedId={active?.id ?? null} onSelect={setSelected} />
             ) : (
@@ -90,7 +90,7 @@ function Approvals({ initial }: { initial: string | null }) {
             className="scroll-pane min-w-0 flex-1 overflow-y-auto pt-2 pr-8 pb-6 pl-3 max-lg:flex-none max-lg:overflow-visible max-lg:px-4 md:max-lg:px-8"
           >
             {current.isPending ? (
-              <div aria-hidden className="h-[320px] animate-pulse rounded-[20px] border border-line bg-surface" />
+              <div aria-hidden className="h-[240px] max-w-[640px] animate-pulse rounded-2xl border border-fg/10 bg-surface" />
             ) : active ? (
               <ApprovalDetail
                 key={active.id}
