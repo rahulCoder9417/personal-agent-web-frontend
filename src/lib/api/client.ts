@@ -40,7 +40,7 @@ export type ConversationKind = Schemas["ConversationKind"];
 export type Conversation = Omit<Schemas["Conversation"], "kind" | "unread"> & { kind?: ConversationKind; unread?: boolean };
 export type Approval = Schemas["Approval"];
 export type ApprovalStatus = Schemas["ApprovalStatus"];
-/** The user's "don't ask again" for one risky app action (Settings → Approvals). */
+/** The user's "don't ask again" for one risky app action (Approvals → Skip rules). */
 export type SkipRule = Schemas["SkipRule"];
 export type SkipScope = Schemas["SkipScope"];
 /** What a pending card's "Don't ask again for this…" may offer. */

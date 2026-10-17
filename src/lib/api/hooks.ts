@@ -76,7 +76,7 @@ export const qk = {
   /** One conversation's messages. */
   thread: (conversationId: string) => ["messages", conversationId] as const,
   approvals: (status: ApprovalStatus = "pending") => ["approvals", status] as const,
-  /** The user's skip rules (Settings → Approvals). */
+  /** The user's skip rules (Approvals → Skip rules). */
   skipRules: ["skip-rules"] as const,
   apps: ["apps"] as const,
   mcpServers: ["mcp-servers"] as const,
@@ -687,7 +687,7 @@ export function useSkipRules() {
 export function useCreateSkipRule() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { approvalId: string; scope: SkipScope }) => unwrap(api.POST("/v1/skip-rules", { body: input })),
+    mutationFn: (input: { approvalId: string; scope: SkipScope; recipients?: string[] }) => unwrap(api.POST("/v1/skip-rules", { body: input })),
     onSettled: () => qc.invalidateQueries({ queryKey: qk.skipRules }),
   });
 }

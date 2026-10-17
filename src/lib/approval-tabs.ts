@@ -7,7 +7,8 @@ export type ApprovalTab = ApprovalStatus;
 
 /**
  * In order. "Replaced" holds the requests Tex asked again with corrected details: nothing was done
- * with them, and the newer request is in Pending or wherever its answer took it.
+ * with them, and the newer request is in Pending or wherever its answer took it. "Auto-approved"
+ * holds what ran without asking, because the user's skip rule covered it.
  */
 export const APPROVAL_TABS: { value: ApprovalTab; label: string }[] = [
   { value: "pending", label: "Pending" },
@@ -15,6 +16,7 @@ export const APPROVAL_TABS: { value: ApprovalTab; label: string }[] = [
   { value: "rejected", label: "Denied" },
   { value: "expired", label: "Expired" },
   { value: "replaced", label: "Replaced" },
+  { value: "auto_approved", label: "Auto-approved" },
 ];
 
 export const APPROVAL_EMPTY: Record<ApprovalTab, { mood: Mood; title: string; body: string }> = {
@@ -42,5 +44,10 @@ export const APPROVAL_EMPTY: Record<ApprovalTab, { mood: Mood; title: string; bo
     mood: "ready",
     title: "Nothing replaced",
     body: "When an app can’t take a request as you approved it, Tex asks again with corrected details. The earlier request is kept here. Nothing was done with it.",
+  },
+  auto_approved: {
+    mood: "ready",
+    title: "Nothing ran without asking",
+    body: "When you pick “Don’t ask again for this…” on an approval card, what your rule covers runs at once. Each one is kept here: what ran, when, by which rule, and how it went.",
   },
 };

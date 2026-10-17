@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { APPROVAL_RESULT, approvalOutcome, approvalQuestion, approvalReason, webApprovalLine, approvalReasonOf, ownAction, splitDetails } from "./approvals";
+import {
+  APPROVAL_RESULT,
+  approvalOutcome,
+  approvalQuestion,
+  approvalReason,
+  webApprovalLine,
+  approvalReasonOf,
+  ownAction,
+  recipientList,
+  ruleSavedToast,
+  ruleScopeLine,
+  runLine,
+  skipChoices,
+  splitDetails,
+} from "./approvals";
 
 describe("approvalReason", () => {
   it("spots actions that reach other people", () => {
@@ -126,5 +140,53 @@ describe("webApprovalLine", () => {
   it("keeps a short message as it is, and leaves old asks to the card", () => {
     expect(webApprovalLine("Should I go ahead?")).toBe("Should I go ahead?");
     expect(webApprovalLine("Approval needed: Send it")).toBeNull();
+  });
+});
+
+describe("Don't ask again (skip rules)", () => {
+  const email = { actionName: "Send email", recipients: ["maya@acme.com"], target: "people" as const, scopes: ["listed" as const, "anyone" as const] };
+
+  it("offers only to the card’s recipients first, then anyone with a one-line warning", () => {
+    const [only, anyone] = skipChoices(email);
+    expect(only).toEqual({ scope: "listed", label: "Only to maya@acme.com", hint: "Anyone else still asks, also in cc or bcc.", warning: null });
+    expect(anyone).toMatchObject({ scope: "anyone", label: "Anyone", warning: "Tex could send email to anyone without asking you." });
+  });
+
+  it("says repositories for GitHub, and a post that names nobody can only be for anyone", () => {
+    const [only, any] = skipChoices({ actionName: "Create an issue comment", recipients: ["acme/web"], target: "repository", scopes: ["listed", "anyone"] });
+    expect(only.label).toBe("Only in acme/web");
+    expect(any).toMatchObject({ label: "Any repository", warning: "Tex could create an issue comment in any of your repositories without asking you." });
+    const post = skipChoices({ actionName: "Create linked in post", recipients: [], target: "people", scopes: ["anyone"] });
+    expect(post).toHaveLength(1);
+    expect(post[0].warning).toBe("Tex could create linked in post without asking you, where everyone can see it.");
+    expect(skipChoices({ actionName: "Close an issue", recipients: [], target: "repository", scopes: ["action"] })[0]).toMatchObject({ label: "Every time", warning: null });
+  });
+
+  it("keeps a long list short on the card", () => {
+    expect(recipientList(["a@x.com"])).toBe("a@x.com");
+    expect(recipientList(["a@x.com", "b@x.com"])).toBe("a@x.com and b@x.com");
+    expect(recipientList(["a@x.com", "b@x.com", "c@x.com", "d@x.com"])).toBe("a@x.com, b@x.com and 2 more");
+  });
+
+  it("words a rule's scope and the toast after saving one", () => {
+    expect(ruleScopeLine({ action: "GMAIL_SEND_EMAIL", scope: "listed", recipients: ["a@x.com", "b@x.com"] })).toBe("Only to a@x.com, b@x.com");
+    expect(ruleScopeLine({ action: "GMAIL_SEND_EMAIL", scope: "anyone", recipients: [] })).toBe("To anyone");
+    expect(ruleScopeLine({ action: "GITHUB_CLOSE_AN_ISSUE", scope: "listed", recipients: ["acme/web"] })).toBe("Only in acme/web");
+    expect(ruleScopeLine({ action: "GITHUB_CLOSE_AN_ISSUE", scope: "anyone", recipients: [] })).toBe("In any repository");
+    expect(ruleScopeLine({ action: "GOOGLECALENDAR_UPDATE_EVENT", scope: "action", recipients: [] })).toBe("Every time it names nobody");
+    expect(ruleSavedToast({ action: "GMAIL_SEND_EMAIL", actionName: "Send email", scope: "anyone", recipients: [] }).body).toBe(
+      "Send email to anyone. It’s under Skip rules on the Approvals page, where you can remove it.",
+    );
+  });
+
+  it("says how a run went, and what an auto-approved one is", () => {
+    expect(runLine({ state: "done", at: "2026-10-17T08:00:00Z", result: "{}", error: null, creditsCharged: 1 })).toEqual({ text: "Done · 1 credit", tone: "success" });
+    expect(runLine({ state: "failed", at: "2026-10-17T08:00:00Z", result: null, error: "Invalid recipient", creditsCharged: 0 })).toEqual({
+      text: "Didn’t go through, so nothing was done: Invalid recipient",
+      tone: "danger",
+    });
+    expect(runLine({ state: "running", at: "2026-10-17T08:00:00Z", result: null, error: null, creditsCharged: 0 }).tone).toBe("muted");
+    expect(APPROVAL_RESULT.auto_approved.text).toBe("Ran without asking, by your skip rule");
+    expect(approvalOutcome("auto_approved")).toBe("Nobody was asked: your skip rule covered it, so it ran at once.");
   });
 });
