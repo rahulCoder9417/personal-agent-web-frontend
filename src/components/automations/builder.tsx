@@ -31,7 +31,7 @@ import {
   useUpdateAutomation,
 } from "@/lib/api/hooks";
 import { appHealth } from "@/lib/automation-apps";
-import { conditionPill, stepLine, triggerText } from "@/lib/automation-boxes";
+import { conditionBox, conditionPill, stepLine, triggerText } from "@/lib/automation-boxes";
 import {
   appChoices,
   editorFrom,
@@ -92,8 +92,8 @@ import { ChatIcon, ChevronRightIcon, PencilIcon, TrashIcon } from "../icons";
 import { toast, toastError } from "../toast";
 import { Switch } from "../ui";
 import { automationState, isFinished } from "./automation-status";
-import { AppsForm, AsksForm, InstructionForm, Problems, ResultsForm, TriggerForm, type EditorContext } from "./editor-forms";
-import { Details, HealthChip, InspectorFooter, InspectorHeader, PanelSection } from "./inspector";
+import { AppsForm, AsksForm, InstructionForm, LABEL, NOTE, Problems, ResultsForm, TriggerForm, type EditorContext } from "./editor-forms";
+import { Details, HealthChip, InspectorBody, InspectorFooter, InspectorHeader, PanelSection } from "./inspector";
 import type { CanvasBox, CanvasCondition, CanvasEmpty, CanvasHead } from "./lane-canvas";
 import { Palette } from "./palette";
 import { Btn, Chip, Crumbs, Dot, MoreMenu, Notice, T2, T3, type ChipTone } from "./parts";
@@ -149,12 +149,13 @@ function useDebounced<T>(value: T, ms: number): T {
 const TRAIL_TONE: Record<TrailTone, ChipTone> = { done: "ok", waiting: "warn", danger: "danger", muted: "neutral", running: "blue" };
 const RUN_DOT: Record<TrailTone, "ok" | "warn" | "danger" | "muted" | "running"> = { done: "ok", waiting: "warn", danger: "danger", muted: "muted", running: "running" };
 
+/** Each lane's name, beside the line into its first box: short, so it keeps to the left of the line. */
 const HEAD_TEXT: Record<Lane | "start" | "steps", string> = {
-  start: "START WHEN",
-  read: "READ · OPTIONAL",
-  tex: "TEX AND THE CREW",
-  write: "WRITE OR SEND · OPTIONAL",
-  steps: "STEPS, IN THE ORDER THEY RUN",
+  start: "Start when",
+  read: "Read · optional",
+  tex: "Tex and the crew",
+  write: "Write · optional",
+  steps: "Steps, as they run",
 };
 
 const EMPTY_TEXT: Record<Lane, Omit<CanvasEmpty, "key" | "lane">> = {
@@ -269,15 +270,21 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
   };
   const changedChip = (boxKey: string): CanvasBox["chips"] => (changed?.has(boxKey) ? [{ text: "Changed", tone: "blue" }] : []);
 
+  // Each box: its name, a muted line (what kind of box it is), and its key settings as read-only chips.
   const boxes = new Map<string, CanvasBox>();
   {
     const text = triggerText(source, editor.mode, accountZone);
     boxes.set("trigger", {
       key: "trigger",
       ...text,
+      line: editor.mode ? `${text.label} · starts ${editor.mode === "once" ? "the" : "each"} run` : text.line,
       iconUrl: iconOf(text.logo),
       problem: shown.get("trigger")?.[0] ?? null,
-      chips: [...(editor.mode === "event" && editor.event.app ? (connectChip(editor.event.app) ?? []) : []), ...(changedChip("trigger") ?? [])],
+      chips: [
+        ...(editor.mode && text.line ? [{ text: text.line }] : []),
+        ...(editor.mode === "event" && editor.event.app ? (connectChip(editor.event.app) ?? []) : []),
+        ...(changedChip("trigger") ?? []),
+      ],
       dim: saved ? !saved.enabled : false,
     });
   }
@@ -287,16 +294,29 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
     const box = flowByKey.get(boxKey);
     const mark = trail?.get(step.id);
     const action = step.type === "action";
+    const app = step.app ? appName(step.app) : null;
+    const title = box?.title ?? shape.title;
+    const found = action && step.app && step.action ? lookup(step.app, step.action) : undefined;
+    // An app step: what it does in which app, the action and its first fixed input. A Tex step: its
+    // instruction when the box isn't named after it, and the apps it reads.
+    const kindLine = action ? (app ? (lanes[index] === "read" ? `Reads from ${app}` : lanes[index] === "write" ? `Writes in ${app}` : app) : "Pick an app") : null;
+    const texLine = action ? null : stepLine(shape);
+    const [input] = action ? Object.entries(step.inputs).filter(([, value]) => value !== "" && value !== null && value !== undefined) : [];
+    const inputText = input ? (Array.isArray(input[1]) ? input[1].join(", ") : typeof input[1] === "object" ? JSON.stringify(input[1]) : String(input[1])) : null;
+    const reads = !action && step.readApps.length ? `Reads ${listNames(step.readApps.map(appName), "and")}` : null;
     boxes.set(boxKey, {
       key: boxKey,
       logo: action ? step.app || "app" : "tex",
       iconUrl: action ? iconOf(step.app) : null,
-      label: `Step ${index + 1} · ${action ? (step.app ? appName(step.app) : "An app") : "Tex"}`,
-      title: box?.title ?? shape.title,
-      line: stepLine(shape, action && step.app && step.action ? lookup(step.app, step.action)?.description : null),
+      label: `Step ${index + 1} · ${action ? (app ?? "An app") : "Tex"}`,
+      title,
+      line: `Step ${index + 1} · ${kindLine ?? (texLine && !texLine.startsWith("Reads ") ? texLine : "Tex")}`,
       problem: shown.get(boxKey)?.[0] ?? null,
       removable: canRemoveStep(editor.steps, step.id),
       chips: [
+        ...(found && found.name !== title ? [{ text: found.name }] : []),
+        ...(input && inputText ? [{ text: inputText, mono: true, title: `${input[0]}: ${inputText}` }] : []),
+        ...(reads ? [{ text: reads }] : []),
         ...(action && (step.askFirst || step.risky) ? [{ text: "Asks you first", lock: true }] : []),
         ...(action && step.app ? (connectChip(step.app) ?? []) : []),
         ...(mark ? [{ text: mark.label, tone: TRAIL_TONE[mark.tone] }] : []),
@@ -328,13 +348,15 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
     text: HEAD_TEXT[head.lane],
     ...(head.skip ? { skip: head.lane === "read" ? "Skip reading" : "Skip writing" } : {}),
   }));
+  // A step's "only if", drawn as a condition box on the line into it, with its Stop.
   const conditions = new Map<string, CanvasCondition>();
   editor.steps.forEach((step, index) => {
     if (!hasCondition(step, index)) return;
     const pill = conditionPill(preview[index].onlyIf, index);
-    if (pill) conditions.set(stepKeyOf(step), { text: pill, warn: warnings.has(step.id) });
+    const words = conditionBox(preview[index].onlyIf, index);
+    if (pill && words) conditions.set(stepKeyOf(step), { text: pill, ...words, warn: warnings.has(step.id) });
   });
-  const results = { title: "Automations chat", line: editor.copyTo ? `Results go to · and ${titleCase(editor.copyTo)}` : "Results go to" };
+  const results = { title: "Automations chat", line: editor.copyTo ? `Where each run answers · and ${titleCase(editor.copyTo)}` : "Where each run answers" };
 
   // ---------------------------------------------------------------- the palette
 
@@ -520,31 +542,39 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
       const times = saved ? describeAutomationTimes(saved) : null;
       return (
         <>
-          <InspectorHeader logo="tex" label="This automation" title={name} />
-          {editing ? (
-            <InstructionForm editor={editor} onChange={changeBox("instruction")} problems={stepped ? (shown.get("instruction") ?? []) : []} context={context} />
-          ) : null}
-          {times && (
-            <dl className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1">
-                <dt className={cn(T3, "text-muted")}>Next run</dt>
-                <dd className={cn(T2, "font-medium")}>{times.next}</dd>
-              </div>
-              <div className="flex flex-col gap-1">
-                <dt className={cn(T3, "text-muted")}>Last run</dt>
-                <dd className={cn(T2, "font-medium")}>{times.last}</dd>
-              </div>
-            </dl>
-          )}
-          {costLine && <p className={cn(T3, "rounded-xl bg-bg px-4 py-3 text-fg-2")}>{costLine}</p>}
+          <InspectorHeader kind="tex" logo="tex" label="This automation" title={name} />
+          <InspectorBody>
+            {editing ? <InstructionForm editor={editor} onChange={changeBox("instruction")} problems={stepped ? (shown.get("instruction") ?? []) : []} context={context} /> : null}
+            {times && (
+              <PanelSection title="Runs">
+                <dl className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <dt className={LABEL}>Next run</dt>
+                    <dd className={cn(T2, "text-fg-2")}>{times.next}</dd>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <dt className={LABEL}>Last run</dt>
+                    <dd className={cn(T2, "text-fg-2")}>{times.last}</dd>
+                  </div>
+                </dl>
+              </PanelSection>
+            )}
+            {costLine && (
+              <PanelSection title="Cost">
+                <p className={NOTE}>{costLine}</p>
+              </PanelSection>
+            )}
+          </InspectorBody>
         </>
       );
     }
     if (selected === "results") {
       return (
         <>
-          <InspectorHeader logo="chat" label="Results" title="Automations chat" />
-          {editing ? <ResultsForm editor={editor} onChange={changeBox("results")} problems={shown.get("results") ?? []} context={context} /> : <Details details={flowBox("results")?.details ?? []} note={flowBox("results")?.note} />}
+          <InspectorHeader kind="end" logo="chat" label="Results" title="Automations chat" />
+          <InspectorBody>
+            {editing ? <ResultsForm editor={editor} onChange={changeBox("results")} problems={shown.get("results") ?? []} context={context} /> : <Details details={flowBox("results")?.details ?? []} note={flowBox("results")?.note} />}
+          </InspectorBody>
         </>
       );
     }
@@ -552,60 +582,79 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
       const text = boxes.get("trigger")!;
       return (
         <>
-          <InspectorHeader logo={text.logo} iconUrl={text.iconUrl} label={text.label === "Start when" ? "Start when" : `Start when · ${text.label}`} title={text.title} status={editor.mode === "event" && editor.event.app ? <HealthChip health={health(editor.event.app)} /> : undefined} />
-          {editing ? (
-            <>
-              <TriggerForm editor={editor} onChange={changeBox("trigger")} problems={shown.get("trigger") ?? []} context={context} />
-              {runs && <p className={cn(T3, "rounded-xl bg-accent-soft/70 px-4 py-3 text-fg-2")}>{runs}</p>}
-            </>
-          ) : (
-            <Details details={flowBox("trigger")?.details ?? []} note={flowBox("trigger")?.note} />
-          )}
+          <InspectorHeader
+            kind="trigger"
+            logo={text.logo}
+            iconUrl={text.iconUrl}
+            label={text.label === "Start when" ? "Start when" : `Start when · ${text.label}`}
+            title={text.title}
+            status={editor.mode === "event" && editor.event.app ? <HealthChip health={health(editor.event.app)} /> : undefined}
+          />
+          <InspectorBody>
+            {editing ? (
+              <>
+                <TriggerForm editor={editor} onChange={changeBox("trigger")} problems={shown.get("trigger") ?? []} context={context} />
+                {runs && <p className="rounded-xl bg-accent-soft/70 px-4 py-3 text-[12px] leading-relaxed text-fg-2">{runs}</p>}
+              </>
+            ) : (
+              <Details details={flowBox("trigger")?.details ?? []} note={flowBox("trigger")?.note} />
+            )}
+          </InspectorBody>
         </>
       );
     }
     if (selected === "instruction" && !stepped) {
       return (
         <>
-          <InspectorHeader logo="tex" label="Tex" title={editor.title.trim() || "What Tex does"} />
-          {editing ? (
-            <>
-              <InstructionForm editor={editor} onChange={changeBox("instruction")} problems={shown.get("instruction") ?? []} context={context} />
-              <PanelSection>
-                <AppsForm editor={editor} onChange={changeBox("apps")} problems={shown.get("apps") ?? []} context={context} />
-              </PanelSection>
-              <PanelSection title="When Tex asks you first">
-                <AsksForm editor={editor} onChange={changeBox("asks")} problems={shown.get("asks") ?? []} context={context} />
-              </PanelSection>
-              <InspectorFooter note="Uses credits like a chat reply" />
-            </>
-          ) : (
-            <Details details={flowBox("instruction")?.details ?? []} note={flowBox("instruction")?.note} />
-          )}
+          <InspectorHeader kind="tex" logo="tex" label="What Tex does" title={editor.title.trim() || "What Tex does"} />
+          <InspectorBody>
+            {editing ? (
+              <>
+                <InstructionForm editor={editor} onChange={changeBox("instruction")} problems={shown.get("instruction") ?? []} context={context} />
+                <PanelSection title="Apps">
+                  <AppsForm editor={editor} onChange={changeBox("apps")} problems={shown.get("apps") ?? []} context={context} />
+                </PanelSection>
+                <PanelSection title="When Tex asks you first">
+                  <AsksForm editor={editor} onChange={changeBox("asks")} problems={shown.get("asks") ?? []} context={context} />
+                </PanelSection>
+              </>
+            ) : (
+              <Details details={flowBox("instruction")?.details ?? []} note={flowBox("instruction")?.note} />
+            )}
+          </InspectorBody>
+          {editing && <InspectorFooter note="Uses credits like a chat reply" />}
         </>
       );
     }
     const index = editor.steps.findIndex((step) => stepKeyOf(step) === selected);
-    if (index < 0) return <p className={cn(T2, "text-muted")}>Click a box on the canvas to change it.</p>;
+    if (index < 0)
+      return (
+        <InspectorBody>
+          <p className={cn(T2, "text-muted")}>Click a box on the canvas to change it.</p>
+        </InspectorBody>
+      );
     const step = editor.steps[index];
     const box = boxes.get(selected)!;
     const lane = diagram.mode === "lanes" ? lanes[index] : null;
     const action = step.type === "action";
     const found = action && step.app && step.action ? lookup(step.app, step.action) : undefined;
-    const laneName = lanes[index] === "read" ? "Read" : lanes[index] === "write" ? "Write or send" : "Tex";
+    const app = step.app ? appName(step.app) : null;
+    const kind = lanes[index];
+    const kindLabel = action ? (app ? (kind === "read" ? `Reads from ${app}` : kind === "write" ? `Writes in ${app}` : app) : "Pick an app") : "Tex step";
     const note = action ? (found ? (found.changesSomething ? "1 credit when it runs" : "Free to read") : step.risky ? "1 credit when it runs" : null) : "Uses credits like a chat reply";
     const move = (by: -1 | 1) => () => setEditor((current) => ({ ...current, steps: moveWithinLane(current.steps, stepLanes(current.steps, changes), step.id, by) }));
     return (
       <>
         <InspectorHeader
+          kind={kind}
           logo={box.logo}
           iconUrl={box.iconUrl}
-          label={action ? `${laneName} · ${step.app ? appName(step.app) : "Pick an app"}` : "Tex"}
+          label={`Step ${index + 1} · ${kindLabel}`}
           title={box.title}
           status={action && step.app ? <HealthChip health={health(step.app)} /> : undefined}
         />
-        {editing ? (
-          <>
+        <InspectorBody>
+          {editing ? (
             <StepForm
               step={step}
               index={index}
@@ -621,11 +670,11 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
               previousId={index > 0 ? editor.steps[index - 1].id : null}
               apps={apps.data}
             />
-            <InspectorFooter onRemove={canRemoveStep(editor.steps, step.id) ? () => removeBox(selected) : undefined} note={note} />
-          </>
-        ) : (
-          <Details details={flowBox(selected)?.details ?? []} note={flowBox(selected)?.note} />
-        )}
+          ) : (
+            <Details details={flowBox(selected)?.details ?? []} note={flowBox(selected)?.note} />
+          )}
+        </InspectorBody>
+        {editing && <InspectorFooter onRemove={canRemoveStep(editor.steps, step.id) ? () => removeBox(selected) : undefined} note={note} />}
       </>
     );
   }
@@ -877,7 +926,7 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
           <aside
             ref={inspectorRef}
             aria-label="Settings for the open box"
-            className="flex flex-col gap-6 border-t border-line bg-surface p-6 @min-[1040px]/builder:overflow-y-auto @min-[1040px]/builder:border-t-0 @min-[1040px]/builder:border-l"
+            className="flex min-w-0 flex-col border-t border-line bg-surface @min-[1040px]/builder:overflow-y-auto @min-[1040px]/builder:border-t-0 @min-[1040px]/builder:border-l"
           >
             {panel()}
           </aside>

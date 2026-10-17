@@ -140,6 +140,35 @@ describe("a saved automation's canvas", () => {
     expect(words).toContain("Remove step");
   });
 
+  it("lays a step's settings out in sections: a header in its kind's colour, then the fields in one rhythm", async () => {
+    const qc = await seeded();
+    const html = await page(qc, await priyaSaved());
+    const panel = html.slice(html.indexOf('aria-label="Settings for the open box"'));
+    const words = text(panel);
+    // The header stays put: Tex's tile, what kind of step it is, in Tex's colour, and its name.
+    expect(panel).toMatch(/<header data-kind="tex" class="sticky top-0[^"]*"/);
+    expect(words).toContain("Step 2 · Tex step");
+    // The sections, in order, each with its small heading.
+    const sections = ["Instructions", "Apps Tex may read", "When it runs", "The result", "Place"].map((title) => panel.indexOf(`>${title}</h3>`));
+    expect(sections.every((at) => at > 0)).toBe(true);
+    expect([...sections].sort((a, b) => a - b)).toEqual(sections);
+    expect(panel).toMatch(/<h3 class="[^"]*uppercase[^"]*">Instructions<\/h3>/);
+    // 24px between sections; a label at 13px, 6px above its field; the text padded inside its box.
+    expect(panel).toContain('class="flex flex-col gap-6"');
+    expect(panel).toMatch(/<label for="[^"]+" class="text-\[length:13px\][^"]*">What Tex does in this step<\/label>/);
+    expect(panel).toContain("flex min-w-0 flex-col gap-1.5");
+    expect(panel).toMatch(/<textarea[^>]*class="[^"]*px-4 py-3[^"]*leading-6/);
+    // "Only if" is a segmented control of the four real choices; the step has no model of its own.
+    expect(panel).toMatch(/role="radiogroup" aria-labelledby="[^"]+-only-if"/);
+    for (const choice of ["Always", "Found", "Words", "Ask Tex"]) expect(panel).toMatch(new RegExp(`role="radio"[^>]*>(<[^>]+>)*${choice}<`));
+    expect(words).toContain("Uses Tex’s model.");
+    expect(panel).toContain('href="/settings/agent"');
+    expect(words).not.toMatch(/Model for this step/);
+    // Its name is a field, at the top; the footer keeps Remove and the cost.
+    expect(panel.indexOf("Name of the step")).toBeLessThan(sections[0]);
+    expect(panel).toMatch(/<footer class="sticky bottom-0[^"]*">/);
+  });
+
   it("marks what the server found in amber, says how many to fix, and shows a full plan as a notice", async () => {
     const qc = await seeded();
     const automation = await priyaSaved();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conditionPill, stepLine, triggerText } from "./automation-boxes";
+import { conditionBox, conditionPill, stepLine, triggerText } from "./automation-boxes";
 import { emptyEditor, previewSource, type EditorParts } from "./automation-editor";
 
 const NOW = new Date("2026-10-01T14:30:00");
@@ -50,5 +50,16 @@ describe("the 'only if' pill", () => {
     expect(conditionPill({ kind: "tex", question: "Is it urgent?" }, 1)).toBe("Only if Tex says yes");
     expect(conditionPill({ kind: "always" }, 1)).toBeNull();
     expect(conditionPill({ kind: "found" }, 0)).toBeNull();
+  });
+});
+
+describe("the 'only if' condition box", () => {
+  it("names the condition shortly, says what happens otherwise or Tex's question, and is nothing on step 1", () => {
+    expect(conditionBox({ kind: "found" }, 1)).toEqual({ title: "Only if: found something", line: "Otherwise the run stops here" });
+    expect(conditionBox({ kind: "mentions", words: ["urgent", "asap", "now"] }, 2)?.title).toBe("Only if: it mentions “urgent” or “asap” +1");
+    expect(conditionBox({ kind: "mentions", words: [] }, 2)?.title).toBe("Only if: it mentions… (no words yet)");
+    expect(conditionBox({ kind: "tex", question: "Is it urgent?" }, 1)).toEqual({ title: "Only if: Tex says yes", line: "“Is it urgent?”" });
+    expect(conditionBox({ kind: "always" }, 1)).toBeNull();
+    expect(conditionBox({ kind: "found" }, 0)).toBeNull();
   });
 });
