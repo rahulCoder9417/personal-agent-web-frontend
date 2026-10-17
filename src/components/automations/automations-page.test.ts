@@ -14,7 +14,9 @@ vi.mock("next/navigation", () => ({
 }));
 
 import AutomationsPage from "@/app/(app)/automations/page";
-import type { Automation, AutomationRun } from "@/lib/api/client";
+import { TEMPLATE_CARD, TEMPLATE_GRID } from "@/components/automations/templates";
+import { GUTTER } from "@/components/page";
+import type { App, Automation, AutomationRun } from "@/lib/api/client";
 import { qk } from "@/lib/api/hooks";
 import { handleDemoRequest, resetDemoStore } from "@/lib/demo";
 import { getStore } from "@/lib/demo/store";
@@ -30,6 +32,10 @@ const client = () => new QueryClient({ defaultOptions: { queries: { staleTime: I
 const draw = (qc: QueryClient, node: ReactNode) => renderToStaticMarkup(createElement(QueryClientProvider, { client: qc }, node));
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ");
 const hrefs = (html: string) => [...html.matchAll(/href="([^"]*)"/g)].map((match) => match[1].replaceAll("&amp;", "&"));
+/** The classes of the screen's scrolling body: what sets its width and its gutters. */
+const bodyClass = (html: string) => html.match(/class="type-scale scroll-pane[^"]*"><div class="([^"]*)"/)?.[1] ?? "";
+/** One template card's markup, found by its title. */
+const templateCard = (html: string, title: string) => html.split("<li ").find((part) => part.startsWith(`class="${TEMPLATE_CARD}"`) && part.includes(`>${title}<`)) ?? "";
 
 async function seeded() {
   const qc = client();
@@ -180,5 +186,38 @@ describe("the Automations screen", () => {
     expect(html.match(/text-\[24px\]/g)?.length).toBe(1);
     // The type guard (globals.css) brings any shared control drawn inside to those three.
     expect(html).toContain("type-scale");
+  });
+});
+
+describe("the Automations screen's layout", () => {
+  it("takes the whole width of the sheet, with the gutters every other screen has", async () => {
+    const body = bodyClass(draw(await seeded(), createElement(AutomationsPage)));
+    expect(body).toContain(GUTTER);
+    expect(body).not.toMatch(/max-w-|mx-auto/);
+  });
+
+  it("sets the templates 48px below the note on what a run costs: the page's 32 and 16 more", async () => {
+    const html = draw(await seeded(), createElement(AutomationsPage));
+    expect(bodyClass(html).split(" ")).toContain("gap-8");
+    expect(html.match(/<section aria-labelledby="templates" class="([^"]*)"/)?.[1].split(" ")).toContain("mt-4");
+  });
+
+  it("lays its four templates four, two or one across, each in the shared card", async () => {
+    const html = draw(await seeded(), createElement(AutomationsPage));
+    expect(html).toContain(`<ul class="grid gap-4 ${TEMPLATE_GRID.pick}">`);
+    expect(html.split(`<li class="${TEMPLATE_CARD}"`).length - 1).toBe(4);
+  });
+
+  it("keeps what a template needs connected inside its card: beside the logos, or under them when there is no room", async () => {
+    const qc = await seeded();
+    const apps = qc.getQueryData<{ items: App[] }>(qk.apps)!;
+    qc.setQueryData(qk.apps, { items: apps.items.map((app) => (app.slug === "googlecalendar" ? { ...app, connections: [] } : app)) });
+    const meeting = templateCard(draw(qc, createElement(AutomationsPage)), "Meeting prep");
+    expect(text(meeting)).toContain("Connect Google Calendar");
+    // The logos and the chip share a row that wraps; the chip is never wider than the card and its words may wrap.
+    expect(meeting).toMatch(/<span class="flex min-w-0 flex-wrap [^"]*"><span role="img"/);
+    const chip = meeting.match(/<span class="([^"]*)">Connect (?:<!-- -->)?Google Calendar/)?.[1] ?? "";
+    expect(chip).toContain("max-w-full");
+    expect(chip).not.toContain("whitespace-nowrap");
   });
 });

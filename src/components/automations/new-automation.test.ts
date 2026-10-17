@@ -13,7 +13,9 @@ vi.mock("next/navigation", () => ({
 }));
 
 import nextConfig from "../../../next.config";
-import { NewAutomation, NewBuilder } from "@/components/automations/new-automation";
+import { NewAutomation, NewBuilder, SHAPE_GRID } from "@/components/automations/new-automation";
+import { allTemplates, TEMPLATE_CARD, TEMPLATE_GRID } from "@/components/automations/templates";
+import { GUTTER } from "@/components/page";
 import { qk } from "@/lib/api/hooks";
 import { OLD_AUTOMATION_ADDRESSES, PR_REVIEW_NEW_PATH } from "@/lib/automation-address";
 import { SHAPES } from "@/lib/automation-lanes";
@@ -86,6 +88,30 @@ describe("the new-automation page", () => {
     const html = draw(await seeded(), createElement(NewAutomation));
     expect(html).toContain('id="templates"');
     expect(hrefs(html)).toEqual(expect.arrayContaining([PR_REVIEW_NEW_PATH, "/automations/new?template=daily-briefing", "/automations/new?template=urgent-boss-mail"]));
+  });
+});
+
+describe("the new-automation page's layout", () => {
+  it("takes the whole width of the sheet, with the gutters every other screen has", async () => {
+    const html = draw(await seeded(), createElement(NewAutomation));
+    const body = html.match(/class="type-scale scroll-pane[^"]*"><div class="([^"]*)"/)?.[1] ?? "";
+    expect(body).toContain(GUTTER);
+    expect(body).not.toMatch(/max-w-|mx-auto/);
+  });
+
+  it("draws every template in the Automations list's own card, in as many columns as fit, none narrower than 280px", async () => {
+    const html = draw(await seeded(), createElement(NewAutomation));
+    expect(html).toContain(`<ul class="grid gap-4 ${TEMPLATE_GRID.all}">`);
+    expect(html.split(`<li class="${TEMPLATE_CARD}"`).length - 1).toBe(allTemplates().length);
+  });
+
+  it("keeps each shape's picture inside its card on a phone: the lines give way first, then the words wrap", async () => {
+    const html = draw(await seeded(), createElement(NewAutomation));
+    expect(html).toContain(`<ul class="grid gap-4 ${SHAPE_GRID}">`);
+    expect(html).toContain("h-0.5 min-w-0 flex-1");
+    const pill = html.match(/<span class="([^"]*)">No reading</)?.[1] ?? "";
+    expect(pill).toContain("border-dashed");
+    expect(pill).not.toContain("whitespace-nowrap");
   });
 });
 
