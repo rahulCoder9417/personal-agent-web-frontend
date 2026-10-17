@@ -214,13 +214,16 @@ function NodeChip({ chip }: { chip: BoxChip }) {
   );
 }
 
-/** The top of every box: its tile, its name in bold and its line, muted, one line each. 40px high. */
+/**
+ * The top of every box: its tile, its name in bold (on two lines at most) and its line, muted, on
+ * one. 40px high, or 56 with a name on two lines: on the grid either way.
+ */
 function NodeHead({ kind, logo, iconUrl, title, line, dim, room }: { kind: NodeKind; logo: string; iconUrl?: string | null; title: string; line?: string | null; dim?: boolean; room?: boolean }) {
   return (
-    <span className={cn("flex h-10 min-w-0 items-center gap-3", room && "pr-8")}>
+    <span className={cn("flex min-h-10 min-w-0 items-center gap-3", room && "pr-8")}>
       <NodeTile kind={kind} logo={logo} iconUrl={iconUrl} size={36} className={cn(dim && "opacity-50")} />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className={cn(T2, "truncate font-semibold", dim ? "text-muted" : "text-fg")}>{title}</span>
+        <span className={cn(T2, "line-clamp-2 font-semibold break-words", dim ? "text-muted" : "text-fg")}>{title}</span>
         {line && <span className={cn(T3, "truncate text-muted")}>{line}</span>}
       </span>
     </span>

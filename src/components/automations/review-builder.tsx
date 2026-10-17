@@ -374,7 +374,7 @@ export function ReviewBuilder({ automation }: { automation: Automation | null })
         />
         <InspectorBody>
           <GitHubNotice />
-          <PanelSection title="Repo">
+          <PanelSection title="Review">
             {automation ? <RepoSettings automation={automation} /> : <RepoForm />}
             <p className={cn(T3, "text-muted")}>Turning it on is your OK for Patch to comment on pull requests in this repo. Merging and anything else risky still ask first.</p>
             {patch && !patch.available && (

@@ -32,7 +32,7 @@ export function HealthChip({ health }: { health: AppHealth | undefined }) {
 /** The top of the settings: the box's tile, its kind in its colour, its name, and how its app stands. */
 export function InspectorHeader({ kind, logo, iconUrl, label, title, status }: { kind: NodeKind; logo: string; iconUrl?: string | null; label: string; title: string; status?: ReactNode }) {
   return (
-    <header data-kind={kind} className="sticky top-0 z-10 flex min-h-[72px] items-center gap-3 border-b border-line bg-surface px-6 py-4">
+    <header data-kind={kind} className="sticky top-0 z-10 flex min-h-[72px] items-center gap-3 border-b border-line bg-surface px-4 py-4 md:px-6">
       <NodeTile kind={kind} logo={logo} iconUrl={iconUrl} size={40} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className={cn(T3, "truncate font-semibold tracking-[0.04em] text-[var(--k-ink)] uppercase")}>{label}</span>
@@ -43,16 +43,16 @@ export function InspectorHeader({ kind, logo, iconUrl, label, title, status }: {
   );
 }
 
-/** The settings' sections, 24px apart, 24px in from the sides. */
+/** The settings' sections, 24px apart, 24px in from the sides (16px on a phone). */
 export function InspectorBody({ children }: { children: ReactNode }) {
-  return <div className="flex min-w-0 flex-1 flex-col gap-6 px-6 py-6">{children}</div>;
+  return <div className="flex min-w-0 flex-1 flex-col gap-6 px-4 py-6 md:px-6">{children}</div>;
 }
 
 /** "Remove step" (grey, with a bin, red only under the pointer) and what the box costs, at the foot. */
 export function InspectorFooter({ onRemove, removeLabel = "Remove step", note }: { onRemove?: () => void; removeLabel?: string; note?: string | null }) {
   if (!onRemove && !note) return null;
   return (
-    <footer className="sticky bottom-0 z-10 flex min-h-[68px] items-center justify-between gap-3 border-t border-line bg-surface px-6 py-4">
+    <footer className="sticky bottom-0 z-10 flex min-h-[68px] items-center justify-between gap-3 border-t border-line bg-surface px-4 py-4 md:px-6">
       {onRemove ? (
         <Btn variant="remove" onClick={onRemove} className="shadow-[inset_0_0_0_1px_var(--line-strong)]">
           <TrashIcon size={14} />
