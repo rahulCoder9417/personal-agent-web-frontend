@@ -714,10 +714,7 @@ export default function LaneCanvas(props: LaneCanvasProps) {
         zoomOnDoubleClick={false}
         preventScrolling={!compact}
         aria-label={label}
-        proOptions={{ hideAttribution: false }}
-        // The column sits left of centre when a Stop is beside it: the zoom buttons go bottom right,
-        // where the boxes aren't, and React Flow's link top right.
-        attributionPosition="top-right"
+        proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.3} color="#d2cdc2" />
         {!compact && <Zoom />}

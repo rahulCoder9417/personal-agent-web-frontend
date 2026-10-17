@@ -837,7 +837,7 @@ export function Builder({ target, start, accountZone, revealProblems = false, re
   return (
     <div className="type-scale flex min-h-0 flex-1 flex-col bg-bg">
       {topBar}
-      <div className="@container/builder flex min-h-0 flex-1 flex-col overflow-y-auto @min-[1040px]/builder:overflow-hidden">
+      <div className="@container/builder flex min-h-0 flex-1 flex-col overflow-y-auto @min-[1040px]/builder:overflow-clip">
         {(banner || read.planLimit || read.stepsList.length > 0 || (editing && diagram.mode === "mixed") || readOnly) && (
           <div className="flex shrink-0 flex-col gap-3 border-b border-line bg-surface px-4 py-3 md:px-6">
             {readOnly && <p className={cn(T2, "text-fg-2")}>{readOnly}</p>}
