@@ -250,25 +250,23 @@ function DayDivider({ iso }: { iso: string }) {
 const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString();
 
 /**
- * What Tex is doing while it works. Until a progress line arrives it just says so; then it shows
- * the latest line of each crew member at work, so it is clear who is on what.
+ * What Tex is doing while it works, as the bubble beside Tex's logo (the logo is `TurnInProgress`'s,
+ * not drawn here). Until a progress line arrives it just says so; then it shows the latest line of
+ * each crew member at work, so it is clear who is on what.
  */
 function Working({ lines }: { lines: ProgressLine[] }) {
   return (
-    <div className="flex items-start gap-2.5">
-      <TexAvatar working />
-      <div className="flex min-w-0 max-w-[560px] flex-col gap-1.5 rounded-[18px] rounded-bl-[6px] bg-surface-2 px-4 py-2.5 text-[13.5px] text-muted">
-        {lines.length === 0
-          ? "Tex is working…"
-          : lines.map((line) => (
-              <span key={line.who} className="flex min-w-0 items-center gap-2">
-                <AgentFigure who={line.who} mood="working" glyph size={18} label="" className="shrink-0" />
-                <span className="min-w-0 break-words">
-                  <span className="font-medium text-fg">{line.name}</span> · {line.text}
-                </span>
+    <div className="flex min-w-0 max-w-[560px] flex-col gap-1.5 rounded-[18px] rounded-bl-[6px] bg-surface-2 px-4 py-2.5 text-[13.5px] text-muted">
+      {lines.length === 0
+        ? "Tex is working…"
+        : lines.map((line) => (
+            <span key={line.who} className="flex min-w-0 items-center gap-2">
+              <AgentFigure who={line.who} mood="working" glyph size={18} label="" className="shrink-0" />
+              <span className="min-w-0 break-words">
+                <span className="font-medium text-fg">{line.name}</span> · {line.text}
               </span>
-            ))}
-      </div>
+            </span>
+          ))}
     </div>
   );
 }
@@ -278,30 +276,44 @@ function Working({ lines }: { lines: ProgressLine[] }) {
  * the answer will be, Markdown included (half-written Markdown reads well enough until the answer
  * takes its place, in the same place and at the same width). "Tex is writing…" is the turn's line
  * under it (`TurnLine`). Screen readers hear once that Tex is writing, not every few words; the
- * answer is read out when it arrives.
+ * answer is read out when it arrives. Tex's logo is `TurnInProgress`'s, not drawn here.
  */
 function Writing({ text }: { text: string }) {
   return (
-    <div className="flex items-start gap-2.5">
-      <TexAvatar working />
-      <div className="flex min-w-0 flex-1 flex-col items-start">
-        <AgentBubble text={text} writing />
-      </div>
+    <div className="flex min-w-0 flex-1 flex-col items-start">
+      <AgentBubble text={text} writing />
     </div>
   );
 }
 
 /**
- * The turn being written in this conversation: its steps, then the text being written or, before
- * anything of the turn is on screen (`start`), the "working" bubble. Between two runs of text the
- * turn's line under them says Tex is at work (`TurnLine`). After a turn that ended without its
- * answer, only the steps are left, until the next message.
+ * The turn being written in this conversation, laid out like a finished message: Tex's logo on the
+ * left (one logo for the whole turn, in the same place from the first moment to the answer), and
+ * beside it the steps, then the text being written or, before anything of the turn is on screen
+ * (`start`), the "working" bubble. The logo works while the turn runs (`working`); after a turn
+ * that ended without its answer only the steps are left, with the logo at rest, until the next
+ * message. Between two runs of text the turn's line under it says Tex is at work (`TurnLine`).
  */
-function TurnInProgress({ steps, writing, start, lines }: { steps: readonly DraftStep[]; writing: string | null; start: boolean; lines: ProgressLine[] }) {
+export function TurnInProgress({
+  steps,
+  writing,
+  start,
+  lines,
+  working = true,
+}: {
+  steps: readonly DraftStep[];
+  writing: string | null;
+  start: boolean;
+  lines: ProgressLine[];
+  working?: boolean;
+}) {
   return (
-    <div className="flex flex-col">
-      {steps.length > 0 && <StepTrail steps={steps} live className="ml-[42px] pb-2" />}
-      {writing !== null ? <Writing text={writing} /> : start && <Working lines={lines} />}
+    <div className="flex items-start gap-2.5">
+      <TexAvatar working={working} />
+      <div className="flex min-w-0 flex-1 flex-col items-start">
+        {steps.length > 0 && <StepTrail steps={steps} live className="w-full pb-2" />}
+        {writing !== null ? <Writing text={writing} /> : start && <Working lines={lines} />}
+      </div>
     </div>
   );
 }
@@ -539,7 +551,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
         ))}
 
         {(stepCount > 0 || writing !== null || foot === "start") && (
-          <TurnInProgress steps={turn?.steps ?? []} writing={writing} start={foot === "start"} lines={progress} />
+          <TurnInProgress steps={turn?.steps ?? []} writing={writing} start={foot === "start"} lines={progress} working={foot !== null} />
         )}
         {/* In the same place for the whole turn, so it is never taken away and put back while the turn runs. */}
         {foot !== null && foot !== "start" && <TurnLine foot={foot} lines={foot === "working" && stepCount === 0 ? progress : []} />}
