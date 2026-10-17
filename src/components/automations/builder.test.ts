@@ -17,11 +17,13 @@ vi.mock("next/navigation", () => ({
 
 import { AutomationScreen } from "@/components/automations/automation-screen";
 import { DraftScreen } from "@/components/automations/draft-screen";
+import { RepoPicker, type PickerStatus } from "@/components/automations/repo-picker";
 import { ReviewBuilder } from "@/components/automations/review-builder";
-import { ApiError, type App, type Automation, type AutomationCheck, type AutomationDraft } from "@/lib/api/client";
+import { ApiError, type GithubRepo, type App, type Automation, type AutomationCheck, type AutomationDraft } from "@/lib/api/client";
 import { qk } from "@/lib/api/hooks";
 import { EDITOR_TEMPLATES, editorFrom, emptyEditor, partsKey, toParts } from "@/lib/automation-editor";
 import { changedSteps } from "@/lib/automation-flow";
+import { repoChoices, typedRepo } from "@/lib/pr-review";
 import { handleDemoRequest, resetDemoStore } from "@/lib/demo";
 
 const NOW = new Date("2026-10-01T14:30:00");
@@ -314,5 +316,85 @@ describe("a draft on the canvas", () => {
       .build(qc, { queryKey: qk.automationDraft("drf_gone") })
       .setState({ status: "error", error: new ApiError(404, "not_found", "Draft not found"), fetchStatus: "idle", data: undefined });
     expect(text(draw(qc, createElement(DraftScreen, { draftId: "drf_gone" })))).toContain("This draft isn’t here");
+  });
+});
+
+describe("the repo picker", () => {
+  const repo = (owner: string, name: string, priv: boolean, pushedAt: string | null): GithubRepo => ({ owner, name, fullName: `${owner}/${name}`, private: priv, defaultBranch: "main", pushedAt });
+  const REPOS = [
+    repo("acme", "old", false, "2026-08-01T10:00:00Z"),
+    repo("rahulcoder9417", "Code-Smith", true, "2026-09-30T10:00:00Z"),
+    repo("acme", "website", false, "2026-09-29T10:00:00Z"),
+  ];
+  const picker = (props: { status?: PickerStatus; query?: string; reviewed?: { owner: string; repo: string }[]; repos?: GithubRepo[] } = {}) =>
+    text(
+      renderToStaticMarkup(
+        createElement(RepoPicker, {
+          id: "x",
+          status: props.status ?? "ready",
+          repos: props.repos ?? REPOS,
+          reviewed: props.reviewed ?? [],
+          query: props.query ?? "",
+          onQuery: () => {},
+          chosen: null,
+          onChoose: () => {},
+          now: NOW,
+        }),
+      ),
+    );
+
+  it("lists owner/name, the most recently pushed first, with a Private tag and when it was pushed", () => {
+    const words = picker();
+    expect(words).toContain("rahulcoder9417/ Code-Smith");
+    expect(words.indexOf("Code-Smith")).toBeLessThan(words.indexOf("website"));
+    expect(words.indexOf("website")).toBeLessThan(words.indexOf("old"));
+    expect(words.match(/Private/g)).toHaveLength(1);
+    expect(words).toContain("pushed yesterday");
+    expect(words).toContain("pushed 1 Aug");
+  });
+
+  it("filters by owner or name", () => {
+    expect(repoChoices(REPOS, "acme", []).map((choice) => choice.repo.name)).toEqual(["website", "old"]);
+    expect(repoChoices(REPOS, "SMITH", []).map((choice) => choice.repo.name)).toEqual(["Code-Smith"]);
+    expect(repoChoices(REPOS, "acme / web", []).map((choice) => choice.repo.name)).toEqual(["website"]);
+    const words = picker({ query: "smith" });
+    expect(words).toContain("Code-Smith");
+    expect(words).not.toContain("website");
+  });
+
+  it("shows Review on for a repo already reviewed and disables it", () => {
+    const html = renderToStaticMarkup(
+      createElement(RepoPicker, { id: "x", status: "ready", repos: REPOS, reviewed: [{ owner: "ACME", repo: "website" }], query: "", onQuery: () => {}, chosen: null, onChoose: () => {}, now: NOW }),
+    );
+    expect(text(html)).toContain("Review on");
+    expect(html.match(/<button[^>]*disabled=""/g)).toHaveLength(1);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[^]*?website/);
+  });
+
+  it("offers a typed owner/repo or link that isn't in the list as a Use row", () => {
+    expect(picker({ query: "zed/tool" })).toContain("Use zed/tool");
+    expect(picker({ query: "https://github.com/zed/tool/pull/3" })).toContain("Use zed/tool");
+    expect(picker({ query: "acme/website" })).not.toContain("Use acme/website");
+    expect(typedRepo(REPOS, "not a repo")).toBeNull();
+    expect(typedRepo(REPOS, "")).toBeNull();
+  });
+
+  it("says so when the repos can't be loaded, and typing still works", () => {
+    const words = picker({ status: "error", repos: [], query: "zed/tool" });
+    expect(words).toContain("Couldn’t load your repos right now — type owner/repo instead.");
+    expect(words).toContain("Use zed/tool");
+    expect(picker({ status: "connect", repos: [] })).toContain("Connect GitHub");
+  });
+
+  it("draws skeleton rows while loading, and the new review page lists the account's repos from the demo", async () => {
+    const html = renderToStaticMarkup(createElement(RepoPicker, { id: "x", status: "loading", repos: [], reviewed: [], query: "", onQuery: () => {}, chosen: null, onChoose: () => {} }));
+    expect(html.match(/animate-pulse/g)).toHaveLength(3);
+    const items = (await demo<{ items: GithubRepo[] }>("github/repos")).items;
+    expect(items.length).toBeGreaterThan(2);
+    const qc = await seeded();
+    qc.setQueryData(qk.githubRepos, { items });
+    const page = text(draw(qc, createElement(ReviewBuilder, { automation: null })));
+    expect(page).toContain("northwind/ website");
+    expect(page).toContain("Review on");
   });
 });

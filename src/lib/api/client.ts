@@ -26,6 +26,7 @@ export type Me = Schemas["Me"];
 export type MeUpdate = Schemas["MeUpdate"];
 export type PlanId = Schemas["PlanId"];
 export type ChannelType = Schemas["ChannelType"];
+export type GithubRepo = Schemas["GithubRepo"];
 export type ChannelLink = Schemas["ChannelLink"];
 export type LinkCode = Schemas["LinkCode"];
 export type Message = Schemas["Message"];
