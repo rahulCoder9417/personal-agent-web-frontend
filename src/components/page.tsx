@@ -6,10 +6,17 @@ export function Page({ children, className }: { children: ReactNode; className?:
   return <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", className)}>{children}</div>;
 }
 
+/**
+ * The space either side of a screen: 16px on a phone, 32px from 768px. The header and the body
+ * use it, and so do the screens that draw their own scrolling body (Automations, New automation),
+ * so every screen's content starts and ends at the same place.
+ */
+export const GUTTER = "px-4 md:px-8";
+
 /** The screen's name, large, with its controls on the same line. */
 export function PageHeader({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <header className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2.5 px-4 pt-4 pb-3 md:min-h-[68px] md:px-8 md:pt-5">
+    <header className={cn("flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2.5 pt-4 pb-3 md:min-h-[68px] md:pt-5", GUTTER)}>
       <h1 className="text-[21px] leading-none font-semibold tracking-[-0.02em] whitespace-nowrap">{title}</h1>
       {children}
     </header>
@@ -25,7 +32,7 @@ export function PageHeader({ title, children }: { title: string; children?: Reac
 export function PageBody({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div className="scroll-pane min-h-0 flex-1 overflow-y-auto">
-      <div className={cn("flex flex-col gap-7 px-4 pt-2 pb-10 md:px-8", className)}>{children}</div>
+      <div className={cn("flex flex-col gap-7 pt-2 pb-10", GUTTER, className)}>{children}</div>
     </div>
   );
 }
