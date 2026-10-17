@@ -13,6 +13,7 @@ import { EDITOR_TEMPLATES, emptyEditor } from "@/lib/automation-editor";
 import { findShape, SHAPES, shapeSteps, type Shape } from "@/lib/automation-lanes";
 import { chatDraftHref } from "@/lib/chat-link";
 import { cn } from "@/lib/format";
+import { GUTTER } from "../page";
 import { CanvasFrame } from "./automation-screen";
 import { Builder } from "./builder";
 import { AppLogo, Btn, Crumbs, T1, T2, T3 } from "./parts";
@@ -25,14 +26,19 @@ const IDEAS = [
   { label: "Remind me every Friday", ask: "Remind me every Friday at 5pm to send the weekly report." },
 ];
 
+/** The ways it can work, by the width the list has (a container query, so the sidebar counts). */
+export const SHAPE_GRID = "grid-cols-1 @min-[600px]:grid-cols-2 @min-[1520px]:grid-cols-4";
+
 /** A shape in small: the trigger, reading (or "No reading"), Tex, writing (or "No writing"). */
 function Mini({ shape }: { shape: Shape }) {
-  const gap = <span aria-hidden className="h-0.5 min-w-2 flex-1 rounded-sm bg-line-strong" />;
+  // On a narrow card (a phone) the lines give up their length first, then a "No reading" goes onto
+  // two lines, so the picture always stays inside its card.
+  const gap = <span aria-hidden className="h-0.5 min-w-0 flex-1 rounded-sm bg-line-strong" />;
   const skipped = (text: string) => (
-    <span className={cn(T3, "inline-flex h-7 items-center rounded-lg border-[1.5px] border-dashed border-line-strong px-2 font-medium whitespace-nowrap text-faint")}>{text}</span>
+    <span className={cn(T3, "inline-flex min-h-7 items-center rounded-lg border-[1.5px] border-dashed border-line-strong px-2 py-0.5 text-center font-medium text-faint")}>{text}</span>
   );
   return (
-    <span aria-hidden className="flex min-h-14 items-center gap-2 rounded-xl bg-bg p-3">
+    <span aria-hidden className="flex min-h-14 min-w-0 items-center gap-1.5 rounded-xl bg-bg p-3">
       <AppLogo slug="schedule" size={28} />
       {gap}
       {shape.read ? <AppLogo slug="gmail" size={28} /> : skipped("No reading")}
@@ -54,7 +60,8 @@ export function NewAutomation() {
 
   return (
     <div className="type-scale scroll-pane min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[960px] flex-col gap-8 px-4 pt-6 pb-12 md:px-8 md:pt-12">
+      {/* The whole width of the sheet, with the same gutters as every other screen. */}
+      <div className={cn("flex w-full min-w-0 flex-col gap-8 pt-6 pb-12 md:pt-12", GUTTER)}>
         <header className="flex flex-col gap-3">
           <Crumbs className={T3} parts={[{ href: "/automations", label: "Automations" }]} current="New automation" />
           <div className="flex flex-col gap-1">
@@ -121,22 +128,25 @@ export function NewAutomation() {
             </h2>
             <p className={cn(T3, "text-muted")}>Every automation starts on a trigger and ends with Tex. Reading from an app first and writing to an app after are both optional.</p>
           </div>
-          <ul className="grid gap-4 sm:grid-cols-2">
-            {SHAPES.map((shape) => (
-              <li key={shape.id}>
-                <Link
-                  href={`/automations/new?shape=${shape.id}`}
-                  className="flex h-full flex-col gap-4 rounded-2xl bg-surface p-6 text-fg shadow-[0_0_0_1px_var(--line)] transition-shadow hover:shadow-[0_0_0_2px_var(--accent)]"
-                >
-                  <Mini shape={shape} />
-                  <span className="flex flex-col gap-1">
-                    <span className={cn(T2, "font-semibold")}>{shape.title}</span>
-                    <span className={cn(T3, "text-fg-2")}>{shape.blurb}</span>
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          {/* The four in one row once each has room for its picture (about 370px), two by two below that, then one under another. */}
+          <div className="@container">
+            <ul className={cn("grid gap-4", SHAPE_GRID)}>
+              {SHAPES.map((shape) => (
+                <li key={shape.id} className="min-w-0">
+                  <Link
+                    href={`/automations/new?shape=${shape.id}`}
+                    className="flex h-full flex-col gap-4 rounded-2xl bg-surface p-6 text-fg shadow-[0_0_0_1px_var(--line)] transition-shadow hover:shadow-[0_0_0_2px_var(--accent)]"
+                  >
+                    <Mini shape={shape} />
+                    <span className="flex min-w-0 flex-col gap-1">
+                      <span className={cn(T2, "font-semibold")}>{shape.title}</span>
+                      <span className={cn(T2, "text-fg-2")}>{shape.blurb}</span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
 
         <section id="templates" aria-labelledby={`${id}-templates`} className="flex scroll-mt-6 flex-col gap-4">

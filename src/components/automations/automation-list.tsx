@@ -32,6 +32,7 @@ import { cn, titleCase } from "@/lib/format";
 import { connectedReturnPath, INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
 import { PRICING_PATH } from "@/lib/pricing";
 import { isConnectable } from "../apps/apps-logic";
+import { GUTTER, READING } from "../page";
 import { useConnectDialog } from "../apps/connect-dialog";
 import { ChatIcon, PencilIcon, PlayIcon, PlusIcon, SearchIcon, TrashIcon } from "../icons";
 import { AgentFigure } from "../tex";
@@ -343,7 +344,8 @@ export function AutomationsList() {
 
   return (
     <div className="type-scale scroll-pane min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-8 px-4 pt-6 pb-12 md:px-8 md:pt-12">
+      {/* The whole width of the sheet, with the same gutters as every other screen. */}
+      <div className={cn("flex w-full min-w-0 flex-col gap-8 pt-6 pb-12 md:pt-12", GUTTER)}>
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 flex-col gap-1">
             <h1 className={T1}>Automations</h1>
@@ -440,7 +442,7 @@ export function AutomationsList() {
           </div>
 
           {!none && (
-            <p className={cn(T3, "max-w-[72ch] text-muted")}>
+            <p className={cn(T3, READING, "text-muted")}>
               {AUTOMATION_CREDITS} An automation pauses on its own if you run out of credits. Results land in your{" "}
               <Link href={AUTOMATIONS_CHAT_HREF} className="font-medium text-accent-dark hover:text-fg">
                 Automations chat
@@ -462,7 +464,8 @@ export function AutomationsList() {
           )}
         </section>
 
-        <section aria-labelledby="templates" className="flex min-w-0 flex-col gap-4">
+        {/* 48px from the note above (the page's 32 and 16 more), so the templates read as a part of their own. */}
+        <section aria-labelledby="templates" className="mt-4 flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 id="templates" className={cn(T2, "font-semibold")}>
               Start from a template
