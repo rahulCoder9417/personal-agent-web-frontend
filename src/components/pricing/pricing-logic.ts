@@ -30,13 +30,13 @@ export function planInterval(plan: Plan): string {
 }
 
 /**
- * "Launch price (regular $30 a month)", or null when the plan has no regular price above what it
- * charges now. The regular price is plain words, never a struck-out number: it has never been charged.
+ * The regular price as money ("$30"), or null when the plan has no regular price above what it
+ * charges now. From 17 Oct it is shown crossed out beside the launch price, with a "Launch price" tag.
  */
-export function launchPriceNote(plan: Plan): string | null {
+export function regularPriceText(plan: Plan): string | null {
   const regular = plan.regularPriceCents;
   if (regular == null || regular <= plan.priceCents) return null;
-  return `Launch price (regular ${formatMoney(regular)}${plan.interval ? ` a ${plan.interval}` : ""})`;
+  return formatMoney(regular);
 }
 
 /** The mark beside the plan's name. Free with no subscription needs none. */

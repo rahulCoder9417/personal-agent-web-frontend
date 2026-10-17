@@ -11,7 +11,8 @@ import { ApiError, errorMessage, type Plan, type Subscription, type TopUpPack } 
 import { useCancelSubscription, useCredits, useOpenBillingPortal } from "@/lib/api/hooks";
 import { cn, formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { leaveTo } from "@/lib/navigate";
-import { canCancel, cancelCopy, describeSubscription, launchPriceNote, nextMonthlyCredits, planFeatures, planInterval, STATUS } from "./pricing-logic";
+import { canCancel, cancelCopy, describeSubscription, nextMonthlyCredits, planFeatures, planInterval, regularPriceText, STATUS } from "./pricing-logic";
+import { LaunchPriceTag, StruckRegularPrice } from "./launch-price";
 
 function cancelError(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) return "There’s no active paid subscription to cancel.";
@@ -145,11 +146,12 @@ export function CurrentPlan({
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           {plan && (
             <div className="flex flex-col gap-1">
-              <div className="flex items-baseline gap-2">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                {regularPriceText(plan) && <StruckRegularPrice price={regularPriceText(plan)!} className="text-[16px]" />}
                 <span className="text-[30px] leading-none font-semibold tracking-[-0.04em]">{formatMoney(plan.priceCents)}</span>
                 <span className="text-[13px] text-muted">{planInterval(plan)}</span>
               </div>
-              {launchPriceNote(plan) && <p className="text-[12.5px] text-muted">{launchPriceNote(plan)}</p>}
+              {regularPriceText(plan) && <LaunchPriceTag />}
             </div>
           )}
           {subscription.status !== "none" && <BillingPortalButton subscription={subscription} />}

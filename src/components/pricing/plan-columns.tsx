@@ -11,7 +11,8 @@ import { crewBrowser } from "@/lib/crew";
 import { leaveTo } from "@/lib/navigate";
 import { cn, formatDate, formatMoney } from "@/lib/format";
 import { KeepPlan } from "./keep-plan";
-import { launchPriceNote, planFeatures, planInterval } from "./pricing-logic";
+import { planFeatures, planInterval, regularPriceText } from "./pricing-logic";
+import { LaunchPriceTag, StruckRegularPrice } from "./launch-price";
 
 function checkoutError(error: unknown): string {
   if (error instanceof ApiError && (error.planLimit || error.status === 403)) return "That plan isn’t available for your account.";
@@ -36,7 +37,7 @@ function PlanColumn({
   const checkout = useCreateCheckout();
   const pending = usePendingCheckout();
   const features = planFeatures(plan, topUp);
-  const launchNote = launchPriceNote(plan);
+  const regular = regularPriceText(plan);
   const action = planAction(plan, currentPlan, subscription);
   const current = action.type === "current" || action.type === "current-ending";
   const waiting = pending?.kind === "plan" && pending.planId === plan.id ? pending : null;
@@ -65,11 +66,12 @@ function PlanColumn({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <div className="flex items-baseline gap-2">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          {regular && <StruckRegularPrice price={regular} className="text-[18px]" />}
           <span className="text-[34px] leading-none font-semibold tracking-[-0.04em]">{formatMoney(plan.priceCents)}</span>
           <span className="text-[13px] text-muted">{planInterval(plan)}</span>
         </div>
-        {launchNote && <p className="text-[12.5px] text-muted">{launchNote}</p>}
+        {regular && <LaunchPriceTag />}
       </div>
 
       <ul className="flex flex-1 flex-col gap-2.5 text-[13.5px]">

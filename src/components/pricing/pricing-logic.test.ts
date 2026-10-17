@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Plan, Subscription } from "@/lib/api/client";
-import { canCancel, cancelCopy, describeSubscription, launchPriceNote, nextMonthlyCredits, planFeatures } from "./pricing-logic";
+import { canCancel, cancelCopy, describeSubscription, regularPriceText, nextMonthlyCredits, planFeatures } from "./pricing-logic";
 
 // The Pricing screen's sentences where the API leaves something out: no date for the period's end,
 // no feature list, no Free plan to quote. The usual cases are drawn in pricing-screen.test.ts.
@@ -10,14 +10,14 @@ const PRO: Plan = { id: "pro", name: "Pro", priceCents: 1900, regularPriceCents:
 const sub = (over: Partial<Subscription>): Subscription => ({ plan: "pro", status: "active", currentPeriodStart: null, currentPeriodEnd: null, ...over });
 
 describe("a launch price", () => {
-  it("names the regular price in plain words beside the launch price", () => {
-    expect(launchPriceNote(PRO)).toBe("Launch price (regular $30 a month)");
+  it("gives the regular price as money, to show crossed out beside the launch price", () => {
+    expect(regularPriceText(PRO)).toBe("$30");
   });
 
-  it("says nothing when there is no regular price, or it is not above today's price", () => {
-    expect(launchPriceNote({ ...PRO, regularPriceCents: null })).toBeNull();
-    expect(launchPriceNote({ ...PRO, regularPriceCents: 1900 })).toBeNull();
-    expect(launchPriceNote({ ...PRO, id: "free", priceCents: 0, regularPriceCents: null, interval: null })).toBeNull();
+  it("gives nothing when there is no regular price, or it is not above today's price", () => {
+    expect(regularPriceText({ ...PRO, regularPriceCents: null })).toBeNull();
+    expect(regularPriceText({ ...PRO, regularPriceCents: 1900 })).toBeNull();
+    expect(regularPriceText({ ...PRO, id: "free", priceCents: 0, regularPriceCents: null, interval: null })).toBeNull();
   });
 });
 
