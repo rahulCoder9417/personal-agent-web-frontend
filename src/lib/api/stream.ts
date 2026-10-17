@@ -16,7 +16,7 @@ import {
   turnsOver,
   turnsOverAfterReconnect,
 } from "../drafts";
-import { threadIsWorking } from "../chat-thread";
+import { threadActivity } from "../chat-thread";
 import type { AgentProgress, AgentStatus, Approval, AutomationDraft, AutomationRun, Conversation, CreditBalance, Message, MessageDraft, StreamEvent, StreamReady } from "./client";
 import { addMessage, cachedThread, invalidateAutomations, noteAgentStatusEvent, noteDraft, noteRun, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
 
@@ -109,8 +109,11 @@ export const SETTLE_CHECK_MS = 10_000;
 function checkTurnSettles(qc: QueryClient, message: Message) {
   if (message.direction !== "out" || message.approvalId) return;
   const { conversationId } = message;
+  // The thread's own rule: also a message still waiting for Tex (`waitingForTexUntil`), as after a
+  // quick reply whose message never got its `delivered`.
   const stillWorking = () =>
-    threadIsWorking(qc.getQueryData<AgentStatus>(qk.agentStatus)?.state === "busy", cachedThread(qc, conversationId) ?? []);
+    threadActivity({ status: qc.getQueryData<AgentStatus>(qk.agentStatus), messages: cachedThread(qc, conversationId) ?? [], approval: undefined, answeredHere: false }) ===
+    "working";
   setTimeout(() => {
     if (!stillWorking()) return;
     void qc.invalidateQueries({ queryKey: qk.agentStatus });
@@ -197,6 +200,56 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
   }
 }
 
+// When the live connection last said anything (an event or a ping), across reconnects.
+let lastHeardAt = Date.now();
+
+/** When the live connection last said anything: an event, a ping or its `ready`. */
+export function streamHeardAt(): number {
+  return lastHeardAt;
+}
+
+/**
+ * While Tex is at work in the open thread, a live connection with nothing at all for this long (the
+ * backend pings after 25 quiet seconds) isn't bringing the turn's news: the agent's state and the
+ * thread are asked for again, and again each time this much more has passed. On 17 October the
+ * founder's connections went 70 seconds without a ping, again and again, until they were replaced,
+ * so a turn's events could wait that long, or for a reload.
+ */
+export const QUIET_WHILE_WORKING_MS = 30_000;
+/** How often the quiet is looked at while Tex is at work. */
+export const QUIET_CHECK_EVERY_MS = 5_000;
+
+/** Whether to ask again now: the connection has been quiet that long, and nothing was asked for that long. */
+export function quietTooLong(now: number, heardAt: number, askedAt: number, quietMs = QUIET_WHILE_WORKING_MS): boolean {
+  return now - heardAt >= quietMs && now - askedAt >= quietMs;
+}
+
+/**
+ * Asks again for the agent's state and the thread while Tex is at work in it (`working`) and the
+ * live connection has gone quiet (`quietTooLong`). Returns how to stop. Kept apart from React so it
+ * can be tried with fake timers; `useCatchUpWhileQuiet` runs it for the open thread.
+ */
+export function watchQuietWhileWorking(qc: QueryClient, conversationId: string, heardAt: () => number = streamHeardAt): () => void {
+  let askedAt = Date.now();
+  const timer = setInterval(() => {
+    const now = Date.now();
+    if (!quietTooLong(now, heardAt(), askedAt)) return;
+    askedAt = now;
+    void qc.invalidateQueries({ queryKey: qk.agentStatus });
+    void qc.invalidateQueries({ queryKey: qk.thread(conversationId) });
+  }, QUIET_CHECK_EVERY_MS);
+  return () => clearInterval(timer);
+}
+
+/** `watchQuietWhileWorking` for the open thread, while it shows Tex at work. */
+export function useCatchUpWhileQuiet(working: boolean, conversationId: string | null) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!working || !conversationId) return;
+    return watchQuietWhileWorking(qc, conversationId);
+  }, [qc, working, conversationId]);
+}
+
 /**
  * The backend writes a `ping` after 25 seconds without an event. Nothing at all for this long, and
  * the connection is taken to be dead though the browser still holds it open (it can stay that way
@@ -255,6 +308,7 @@ export function connectLive(qc: QueryClient, browser: LiveBrowser, onEvent?: Str
     const heard = () => {
       if (source !== current) return false;
       heardAt = Date.now();
+      lastHeardAt = heardAt;
       return true;
     };
     current.addEventListener("ready", ((raw: MessageEvent<string>) => {

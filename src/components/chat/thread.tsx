@@ -4,9 +4,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Automation, Conversation, Message } from "@/lib/api/client";
 import { useAgentProgress, useAgentStatus, useThread } from "@/lib/api/hooks";
-import { updateDrafts, useDrafts } from "@/lib/api/stream";
+import { updateDrafts, useCatchUpWhileQuiet, useDrafts } from "@/lib/api/stream";
 import { nextRunLine } from "@/lib/automations";
-import { threadActivity, useAnsweredHere } from "@/lib/chat-thread";
+import { inboundStatusWord, threadActivity, useAnsweredHere, waitingForTexUntil } from "@/lib/chat-thread";
 import { isAutomationsChat, readOnlyNote } from "@/lib/conversations";
 import type { ProgressLine } from "@/lib/crew";
 import { answerInThread, type DraftStep, stepLine, stepsToShow, trailLine, turnAnswered, turnOnScreen } from "@/lib/drafts";
@@ -20,14 +20,6 @@ import { Button, ButtonLink, EmptyState, ErrorState, Spinner } from "../ui";
 import { AgentBubble } from "./agent-bubble";
 import { ApprovalQuestion, useApproval } from "./approval-card";
 import { DraftQuestion } from "./draft-card";
-
-const STATUS_WORDS: Partial<Record<Message["status"], string>> = {
-  queued: "sending",
-  processing: "Tex is on it",
-  delivered: "delivered",
-  read: "read",
-  failed: "not sent",
-};
 
 function dayLabel(iso: string): string {
   const day = formatDay(iso);
@@ -58,7 +50,7 @@ function Attachments({ message, onDark }: { message: Message; onDark?: boolean }
 
 /** A message's channel, time and status. `extra` goes at the end of the line (a reply's trail of steps). */
 function MetaLine({ message, align, extra }: { message: Message; align: "start" | "end"; extra?: ReactNode }) {
-  const status = message.direction === "in" ? STATUS_WORDS[message.status] : message.status === "failed" ? "not delivered" : undefined;
+  const status = message.direction === "in" ? inboundStatusWord(message) : message.status === "failed" ? "not delivered" : undefined;
   return (
     <p className={cn("flex items-center gap-1.5 text-[12px] text-muted tabular-nums", align === "end" && "justify-end")}>
       <BrandIcon name={message.channel} size={11} />
@@ -386,6 +378,21 @@ function EmptyWebChat({ title, body }: { title: string; body: string }) {
 }
 
 /**
+ * The time to judge something by that lasts until `until`: read when the thread opens, and again just
+ * after `until` has passed, so what depended on it is drawn again then. Between the two it may be
+ * old, which is harmless here: anything said since it was read lasts until later than it.
+ */
+function useTimeAt(until: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (until === null) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, until - Date.now()) + 50);
+    return () => clearTimeout(timer);
+  }, [until]);
+  return now;
+}
+
+/**
  * One conversation's messages, oldest at the top. It follows new messages while you're at the
  * bottom, and asks for earlier ones as you scroll up to them.
  *
@@ -424,9 +431,15 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
   const question = newest?.direction === "out" && newest.approvalId ? newest.approvalId : null;
   const asked = useApproval(question).data;
   const answeredHere = useAnsweredHere(question);
-  // Only a turn in this conversation shows here, not one in another chat.
-  const activity = threadActivity({ status, messages: newestFirst, approval: asked, answeredHere });
+  // Only a turn in this conversation shows here, not one in another chat. A message that waits for
+  // Tex shows Tex at work from the moment it is sent, for a while (`waitingForTexUntil`): the thread
+  // is drawn again when that ends.
+  const now = useTimeAt(waitingForTexUntil(status?.state, newestFirst));
+  const activity = threadActivity({ status, messages: newestFirst, approval: asked, answeredHere, now });
   const working = activity === "working";
+  // A live connection that has gone quiet while Tex works here: the thread and the agent's state are
+  // asked for again, so the answer shows even when the turn's events are slow to come.
+  useCatchUpWhileQuiet(working, conversation?.id ?? null);
 
   // What Tex is writing in this conversation right now, and the steps before it.
   const onScreen = turnOnScreen(drafts, conversation?.id ?? null);
