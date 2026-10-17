@@ -61,6 +61,7 @@ import type { ProgressLine } from "../crew";
 import { withNotificationChange, type NotificationSettingsUpdate } from "../notifications";
 import { withRun } from "../automation-steps";
 import { draftSaveBody } from "../draft-save";
+import { freshSession } from "../fresh-session";
 
 // One place for every query key, so the event stream and mutations invalidate the same things.
 export const qk = {
@@ -591,6 +592,8 @@ export function useUploadAttachment() {
       const form = new FormData();
       form.append("file", file);
       let response: Response;
+      // A good sign-in token first, as for every other call (`freshSession`).
+      await freshSession();
       try {
         response = await fetch("/api/v1/attachments", { method: "POST", body: form });
       } catch {
