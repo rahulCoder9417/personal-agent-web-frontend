@@ -23,7 +23,7 @@ import type {
 import { QueryClient } from "@tanstack/react-query";
 import { applyStreamEvent } from "@/lib/api/stream";
 import { threadIsWorking } from "@/lib/chat-thread";
-import { DRAFTS_KEY, type Drafts, NO_DRAFTS, trailLine, turnOnScreen } from "@/lib/drafts";
+import { DRAFTS_KEY, type Drafts, NO_DRAFTS, stepsToShow, trailEntries, trailLine, turnOnScreen } from "@/lib/drafts";
 import { hasMarkdown } from "@/lib/markdown";
 import { draftCuts, runDemoAutomation } from "./handlers-chat";
 import { handleDemoRequest, resetDemoStore } from "./index";
@@ -322,6 +322,35 @@ describe("chat", () => {
     expect(trailLine(folded)).toBe("Read 2 emails · 4 steps");
     expect(onScreen()).toBeNull();
     expect(flashes).toBe(0);
+  });
+
+  it("works through a long turn, the same step many times over, with Scout's line under Tex's", async () => {
+    const qc = new QueryClient();
+    subscribe(getStore(), (event) => applyStreamEvent(qc, event));
+    const sent = await call<Message>("POST", "messages", { text: "What are the open issues in acme/web?", clientMessageId: uuid(32) });
+    const onScreen = () => turnOnScreen(qc.getQueryData<Drafts>(DRAFTS_KEY) ?? NO_DRAFTS, sent.body.conversationId);
+    // Midway: the turn is on screen with its steps, still at work.
+    vi.advanceTimersByTime(6000);
+    expect(onScreen()?.steps.length).toBeGreaterThan(5);
+    vi.advanceTimersByTime(10_000);
+
+    const answer = (await call<Page<Message>>("GET", `messages?conversationId=${sent.body.conversationId}`)).body.items[0];
+    expect(answer.text.startsWith("acme/web has three open issues")).toBe(true);
+    const folded = (qc.getQueryData<Drafts>(DRAFTS_KEY) ?? NO_DRAFTS).folded[answer.id];
+    expect(folded.map((step) => step.text.slice(0, 19))).toEqual([
+      "Looked at your apps",
+      "Looked at your apps",
+      "The GitHub app has ",
+      ...Array.from({ length: 6 }, () => "Read a web page"),
+      "Searched the web",
+      ...Array.from({ length: 10 }, () => "Read a web page"),
+    ]);
+    expect(folded[2].progress.map((line) => `${line.name} · ${line.text}`)).toEqual(["Scout · List open issues in acme/web"]);
+    expect(trailLine(folded)).toBe("Read a web page · 20 steps");
+    // On screen: five lines, the repeats counted, the last three shown and three earlier steps folded.
+    expect(trailEntries(folded).map((entry) => entry.times)).toEqual([2, 1, 6, 1, 10]);
+    expect(stepsToShow(folded, false).earlier).toBe(3);
+    expect(onScreen()).toBeNull();
   });
 
   it("starts the draft over when a specialist sets to work, and writes the answer after it", async () => {

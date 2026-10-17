@@ -121,28 +121,41 @@ function BubbleBody({ message, stepsToggle, steps }: { message: Message; stepsTo
 /**
  * The steps of a turn, as a trail of muted lines: each one what Tex did ("Checked your inbox"), or
  * what it wrote and then started over from (one line, cut short), with the crew's lines under it. The
- * last `STEPS_SHOWN` are there; earlier ones fold into "+N earlier steps". While the turn is written
- * (`live`) screen readers skip them, as they skip the draft. `className` places it.
+ * same step done several times in a row is one line with a count ("Read a web page ×16"). The last
+ * `STEPS_SHOWN` lines are there; earlier ones fold into "+N earlier steps", which opens them, and
+ * "Hide earlier steps" folds them again. Only a click changes that: new steps arriving never do. While
+ * the turn is written (`live`) screen readers skip them, as they skip the draft. `className` places it.
  */
-function StepTrail({ steps, live, className }: { steps: readonly DraftStep[]; live?: boolean; className?: string }) {
+export function StepTrail({ steps, live, className }: { steps: readonly DraftStep[]; live?: boolean; className?: string }) {
   const [all, setAll] = useState(false);
+  const listId = useId();
   const { shown, earlier } = stepsToShow(steps, all);
   return (
     <div aria-hidden={live || undefined} className={cn("flex min-w-0 flex-col gap-1 border-l-2 border-line pl-3 text-[13px] text-muted", className)}>
       {earlier > 0 && (
-        <button
-          type="button"
-          tabIndex={live ? -1 : undefined}
-          onClick={() => setAll(true)}
-          className="self-start text-[12px] font-medium transition-colors hover:text-fg"
-        >
-          +{earlier} earlier {earlier === 1 ? "step" : "steps"}
-        </button>
+        // Open, a long trail can run past the top of the thread: its "Hide" stays in view.
+        <div className={cn("flex", all && "sticky top-0 z-[1] bg-surface py-0.5")}>
+          <button
+            type="button"
+            tabIndex={live ? -1 : undefined}
+            aria-expanded={all}
+            aria-controls={listId}
+            onClick={() => setAll((was) => !was)}
+            className="text-[12px] font-medium transition-colors hover:text-fg"
+          >
+            {all ? "Hide earlier steps" : `+${earlier} earlier ${earlier === 1 ? "step" : "steps"}`}
+          </button>
+        </div>
       )}
-      <ol className="flex min-w-0 flex-col gap-1">
-        {shown.map((step, index) => (
-          <li key={earlier + index} className="flex min-w-0 flex-col gap-0.5 transition-opacity duration-200 starting:opacity-0 motion-reduce:transition-none">
-            {step.text && <span className={cn("truncate", step.action && "text-fg-2")}>{stepLine(step.text)}</span>}
+      <ol id={listId} className="flex min-w-0 flex-col gap-1">
+        {shown.map(({ step, times, first }) => (
+          <li key={first} className="flex min-w-0 flex-col gap-0.5 transition-opacity duration-200 starting:opacity-0 motion-reduce:transition-none">
+            {step.text && (
+              <span className="flex min-w-0 items-baseline gap-1">
+                <span className={cn("truncate", step.action && "text-fg-2")}>{stepLine(step.text)}</span>
+                {times > 1 && <span className="shrink-0 text-[12px] tabular-nums">×{times}</span>}
+              </span>
+            )}
             {step.progress.map((line) => (
               <span key={line.who} className="flex min-w-0 items-center gap-1.5 text-[12px]">
                 <AgentFigure who={line.who} mood="working" glyph size={14} label="" className="shrink-0" />

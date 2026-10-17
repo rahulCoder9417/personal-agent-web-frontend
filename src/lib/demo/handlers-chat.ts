@@ -219,6 +219,26 @@ const LONG_LINE_MS = [800, 700] as const;
 /** How long each of the day turn's tools takes. */
 const TOOL_MS = 700;
 
+/**
+ * A long turn, the way a real one goes when no app action fits: Tex looks at the apps twice, says it
+ * will have Scout look on GitHub itself, and reads one page after another, each its own "Read a web
+ * page" step, with a search between them, before it answers. The thread folds the steps that repeat
+ * into one line each, and the trail is still long enough to fold its earlier lines.
+ */
+const PAGE = "Read a web page";
+const ISSUES_TURN = {
+  when: /\bopen issues\b/i,
+  apps: ["Looked at your apps", "Looked at your apps"],
+  line: "The GitHub app has no “list issues” action, so I’ll have Scout look them up directly on GitHub.",
+  scout: "Scout: List open issues in acme/web",
+  reads: [...Array.from({ length: 6 }, () => PAGE), "Searched the web", ...Array.from({ length: 10 }, () => PAGE)],
+  reply:
+    "acme/web has three open issues:\n\n1. **Login button misaligned on Safari** (#118)\n2. **Export to CSV drops the last row** (#121)\n3. **Dark mode flickers on load** (#124)\n\nIn the demo account nothing is really looked up, but this is where the real list would be.",
+};
+/** How long the long turn takes over each app it looks at, and over each page it reads. */
+const APP_LOOK_MS = 600;
+const PAGE_MS = 450;
+
 /** The backend's answer to a message when there is no AI to run the agent on (`turn.ts`), before the address. */
 export const NO_AI_REPLY = "Connect your own AI first: add an API key or connect your Claude plan at";
 
@@ -235,6 +255,7 @@ function plainReply(text: string): string {
 function plannedReply(request: Message, job: CrewJob | null): string | null {
   if (memoryRequestOf(request.text) || riskOf(request.text)) return null;
   if (job) return job.reply;
+  if (ISSUES_TURN.when.test(request.text)) return ISSUES_TURN.reply;
   return DAY_TURN.when.test(request.text) ? DAY_TURN.reply : plainReply(request.text);
 }
 
@@ -279,6 +300,27 @@ function workThroughDay(state: DemoState, request: Message): number {
   }
   const answerAt = at + 1400 + 100;
   writeDraft(state, request, DAY_TURN.reply, at, answerAt - 100);
+  return answerAt;
+}
+
+/** Tex works through the long turn (`ISSUES_TURN`): the apps, its line, Scout, the pages, then its answer. Returns when it answers. */
+function workThroughIssues(state: DemoState, request: Message): number {
+  const progress = (at: number, text: string, crew: SpecialistId | null = null) =>
+    schedule(state, at, () => emit(state, "agent.progress", { text, crew, at: nowIso() }));
+  let at = PICKUP_MS + DRAFT_STEP_MS;
+  for (const look of ISSUES_TURN.apps) {
+    progress(at, look);
+    at += APP_LOOK_MS;
+  }
+  const [writeMs, stayMs] = LONG_LINE_MS;
+  writeDraft(state, request, ISSUES_TURN.line, at, at + writeMs);
+  // Scout sets to work while the line is on screen; Tex starts over when it reads the first page.
+  progress(at + writeMs + 100, ISSUES_TURN.scout, "scout");
+  at += writeMs + stayMs;
+  schedule(state, at, () => showDraft(state, request, ""));
+  for (const read of ISSUES_TURN.reads) progress((at += PAGE_MS), read);
+  const answerAt = at + 1500;
+  writeDraft(state, request, ISSUES_TURN.reply, at + DRAFT_STEP_MS, answerAt - 100);
   return answerAt;
 }
 
@@ -394,6 +436,9 @@ export const sendMessage: Handler = async ({ state, request }) => {
     schedule(state, answerAt, () => answer(state, message, job));
   } else if (reply === DAY_TURN.reply) {
     const answerAt = workThroughDay(state, message);
+    schedule(state, answerAt, () => answer(state, message));
+  } else if (reply === ISSUES_TURN.reply) {
+    const answerAt = workThroughIssues(state, message);
     schedule(state, answerAt, () => answer(state, message));
   } else {
     if (reply) writeDraft(state, message, reply, PICKUP_MS + DRAFT_STEP_MS, ANSWER_MS);
