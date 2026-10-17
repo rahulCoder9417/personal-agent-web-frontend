@@ -60,7 +60,7 @@ function Attachments({ message, onDark }: { message: Message; onDark?: boolean }
 function MetaLine({ message, align, extra }: { message: Message; align: "start" | "end"; extra?: ReactNode }) {
   const status = message.direction === "in" ? STATUS_WORDS[message.status] : message.status === "failed" ? "not delivered" : undefined;
   return (
-    <p className={cn("flex items-center gap-1.5 px-1 text-[12px] text-muted tabular-nums", align === "end" && "justify-end")}>
+    <p className={cn("flex items-center gap-1.5 text-[12px] text-muted tabular-nums", align === "end" && "justify-end")}>
       <BrandIcon name={message.channel} size={11} />
       <span>
         {CHANNEL_LABEL[message.channel]} · {formatTime(message.createdAt)}
@@ -79,10 +79,15 @@ function TexAvatar({ working }: { working?: boolean }) {
   );
 }
 
+/**
+ * One message. The spacing is the same everywhere in the thread: a bubble and the card it carries
+ * are 8px apart, the line of channel and time is 6px under them and starts at their edge (Tex's on
+ * the left, the person's on the right), and messages are 20px apart.
+ */
 function BubbleBody({ message, stepsToggle, steps }: { message: Message; stepsToggle?: ReactNode; steps?: ReactNode }) {
   if (message.direction === "in") {
     return (
-      <div className="flex flex-col items-end gap-[5px]">
+      <div className="flex flex-col items-end gap-1.5">
         <div className="max-w-[78%] rounded-[18px] rounded-br-[6px] bg-fg px-4 py-2.5 text-[14.5px] leading-[1.45] break-words whitespace-pre-wrap text-white">
           <Attachments message={message} onDark />
           {message.text}
@@ -94,7 +99,7 @@ function BubbleBody({ message, stepsToggle, steps }: { message: Message; stepsTo
   return (
     <div className="flex items-start gap-2.5">
       <TexAvatar />
-      <div className="flex min-w-0 flex-1 flex-col items-start gap-[5px]">
+      <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
         {message.approvalId ? (
           <ApprovalQuestion text={message.text} approvalId={message.approvalId} />
         ) : message.automationDraftId ? (
@@ -206,7 +211,7 @@ function BubbleWithSteps({ message, steps }: { message: Message; steps: readonly
         stepsToggle={toggle}
         steps={
           <StepsRegion id={id} open={open}>
-            <StepTrail steps={steps} className="ml-1 pt-0.5 pb-1" />
+            <StepTrail steps={steps} className="pt-0.5 pb-1" />
           </StepsRegion>
         }
       />
@@ -267,7 +272,7 @@ function Working({ lines }: { lines: ProgressLine[] }) {
  */
 function WaitingForOk() {
   return (
-    <p data-waiting className="ml-[42px] flex items-center gap-1.5 px-1 text-[12px] text-muted">
+    <p data-waiting className="ml-[42px] flex items-center gap-1.5 text-[12px] text-muted">
       <span aria-hidden className="size-1.5 rounded-full bg-accent" />
       Waiting for your OK
     </p>
@@ -284,9 +289,9 @@ function Writing({ text }: { text: string }) {
   return (
     <div className="flex items-start gap-2.5">
       <TexAvatar working />
-      <div className="flex min-w-0 flex-1 flex-col items-start gap-[5px]">
+      <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
         <AgentBubble text={text} writing />
-        <p className="flex items-center gap-1.5 px-1 text-[12px] text-muted">
+        <p className="flex items-center gap-1.5 text-[12px] text-muted">
           <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-accent" />
           Tex is writing…
         </p>
@@ -494,7 +499,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
       }}
       className="scroll-pane min-h-0 flex-1 overflow-y-auto"
     >
-      <div ref={content} className="mx-auto flex min-h-full max-w-[944px] flex-col gap-3.5 px-4 pt-2 pb-5 md:px-8" aria-live="polite">
+      <div ref={content} className="mx-auto flex min-h-full max-w-[944px] flex-col gap-5 px-4 pt-2 pb-5 md:px-8" aria-live="polite">
         {waiting && (
           <div className="m-auto text-muted">
             <Spinner size={20} />
@@ -520,7 +525,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
         )}
 
         {messages.map(({ message, startsDay }) => (
-          <div key={message.id} className="flex flex-col gap-[13px]">
+          <div key={message.id} className="flex flex-col gap-5">
             {startsDay && <DayDivider iso={message.createdAt} />}
             <Bubble message={message} steps={stepsOf(message.id)} />
           </div>
