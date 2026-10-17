@@ -99,9 +99,21 @@ const CHIP: Record<ChipTone, string> = {
   blue: "bg-accent-soft text-accent-dark",
 };
 
-export function Chip({ tone = "neutral", mono, className, children }: { tone?: ChipTone; mono?: boolean; className?: string; children: ReactNode }) {
+/**
+ * A short label on a tinted ground: one line. With `wrap` its words may go onto a second line
+ * instead of running out of a narrow box (a card's "Connect Google Calendar").
+ */
+export function Chip({ tone = "neutral", mono, wrap, className, children }: { tone?: ChipTone; mono?: boolean; wrap?: boolean; className?: string; children: ReactNode }) {
   return (
-    <span className={cn("inline-flex h-6 max-w-full shrink-0 items-center gap-1 rounded-md px-2 text-[12px] leading-4 font-medium whitespace-nowrap", CHIP[tone], mono && "font-mono", className)}>
+    <span
+      className={cn(
+        "inline-flex max-w-full shrink-0 items-center gap-1 rounded-md px-2 text-[12px] leading-4 font-medium",
+        wrap ? "min-h-6 py-1" : "h-6 whitespace-nowrap",
+        CHIP[tone],
+        mono && "font-mono",
+        className,
+      )}
+    >
       {children}
     </span>
   );
