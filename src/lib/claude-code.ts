@@ -2,8 +2,9 @@
 // be chosen (`claudeChoices`): every model, its group, the levels it takes and a note. Null in the
 // settings is "Default": for Tex, Sonnet 5.5 at low effort, for quick answers (the Bridge, in the
 // vm-manager); an effort left on Default with a chosen model is Claude Code's own for that model.
-// Byte, Patch and Scout each have their own choice (`claudeCrew`), whatever Tex runs on; what
-// Default is for each, the backend says (`claudeChoices.crewDefaults`).
+// Byte, Patch and Scout each have their own choice (`claudeCrew`). What Default is for each, the
+// backend says for this user (`claudeChoices.crewDefaults`): the same as Tex when a model is picked
+// for Tex; with Tex on Default, Byte and Patch on Opus 5.5 at medium. Scout: always Tex's.
 
 import type { AgentSettings, AgentSettingsUpdate, ClaudeEffort } from "./api/client";
 import { titleCase } from "./format";
@@ -177,7 +178,7 @@ const modelLabel = (settings: CrewChoices, id: string) => settings.claudeChoices
 
 /**
  * The "Default" options of a member's two selects, saying what Default runs: its own model and
- * effort (Byte and Patch: Opus 5.5 at medium), or Tex's (Scout).
+ * effort (Byte and Patch with Tex on Default: Opus 5.5 at medium), or Tex's.
  */
 export function crewDefaultOptions(settings: CrewChoices, member: CrewMemberId): { model: SelectOption; effort: SelectOption } {
   const own = crewDefault(settings, member);

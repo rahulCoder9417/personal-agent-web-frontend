@@ -394,7 +394,8 @@ const FABLE_NOTE = "Pro: paid with usage credits. Max: up to half your weekly li
  * What Claude Code's model and effort can be set to, as the backend offers them (`claudeChoices`):
  * every Claude model Claude Code can use, the current ones first, each with the levels it takes.
  * Null in the settings is Default: Sonnet 5.5 at low effort for Tex; for the crew what
- * `crewDefaults` says (null there: the same as Tex).
+ * `crewDefaults` says (null there: the same as Tex). These `crewDefaults` are for Tex on Default;
+ * the demo backend works them out again from Tex's model, as the backend does.
  */
 export const CLAUDE_CHOICES: AgentSettings["claudeChoices"] = {
   models: [

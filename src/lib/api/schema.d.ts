@@ -1140,11 +1140,12 @@ export interface paths {
          *     `claudeModel` and `claudeEffort` are the Claude model and the thinking effort Tex (the lead)
          *     uses on Claude Code (null: Default, which is Sonnet 5.5 at low effort for Tex's chat, and a
          *     chosen effort applies on Sonnet 5.5). `claudeCrew` is the same choice for each of the crew
-         *     (Byte, Patch, Scout), on its own: Tex's choice does not change theirs. A member left on
-         *     Default runs as `claudeChoices.crewDefaults` says (Byte and Patch: Opus 5.5 at medium
-         *     effort; Scout: the same as Tex). They apply to turns that run on Claude Code, and can be set
-         *     whatever the engine is now; on Hermes the crew shares one model. `claudeChoices` lists what
-         *     may be chosen: every Claude model Claude Code can use, each with the effort levels it takes.
+         *     (Byte, Patch, Scout), on its own. A member left on Default runs as
+         *     `claudeChoices.crewDefaults` says for this user: the same as Tex when a model is picked for
+         *     Tex; with Tex on Default, Byte and Patch on Opus 5.5 at medium effort and Scout the same as
+         *     Tex. They apply to turns that run on Claude Code, and can be set whatever the engine is now;
+         *     on Hermes the crew shares one model. `claudeChoices` lists what may be chosen: every Claude
+         *     model Claude Code can use, each with the effort levels it takes.
          */
         get: operations["getAgentSettings"];
         put?: never;
@@ -4699,8 +4700,8 @@ export interface components {
             ownKeyProviders: components["schemas"]["ByokProvider"][];
             /**
              * @description The Claude model Tex (the lead) uses on Claude Code, one of `claudeChoices.models`.
-             *     Null: Default, Sonnet 5.5 (`claude-sonnet-5-5`). The crew has its own (`claudeCrew`).
-             *     Applies when Claude Code is the engine.
+             *     Null: Default, Sonnet 5.5 (`claude-sonnet-5-5`). A crew member left on Default follows a
+             *     model picked here (`claudeChoices.crewDefaults`). Applies when Claude Code is the engine.
              * @example claude-opus-5-5
              */
             claudeModel: string | null;
@@ -4720,7 +4721,7 @@ export interface components {
             /**
              * @description What may be chosen for `claudeModel`, `claudeEffort` and `claudeCrew`, in display
              *     order: the current models first, then the older ones Claude still offers, newest first.
-             *     `crewDefaults` says what Default is for each crew member.
+             *     `crewDefaults` says what Default is for each crew member, for this user right now.
              */
             claudeChoices: {
                 models: {
@@ -4763,9 +4764,12 @@ export interface components {
                  */
                 efforts: ("low" | "medium" | "high" | "xhigh" | "max")[];
                 /**
-                 * @description What a crew member left on Default runs on Claude Code. Null here means "the same as
-                 *     Tex": Scout runs on Tex's model at Tex's effort. Byte and Patch: Opus 5.5
-                 *     (`claude-opus-5-5`) at `medium`, whatever Tex runs on.
+                 * @description What a crew member left on Default runs on Claude Code for this user. It follows
+                 *     `claudeModel`, so it changes when Tex's model does. Null here means "the same as
+                 *     Tex": that member runs on Tex's model at Tex's effort. Scout is always the same as
+                 *     Tex. Byte and Patch are the same as Tex when a model is picked for Tex
+                 *     (`claudeModel` set), and Opus 5.5 (`claude-opus-5-5`) at `medium` when Tex is on
+                 *     Default.
                  */
                 crewDefaults: components["schemas"]["ClaudeCrew"];
             };

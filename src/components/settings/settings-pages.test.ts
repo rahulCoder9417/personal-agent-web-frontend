@@ -177,11 +177,27 @@ describe("Settings → Agent & AI: the crew", () => {
     expect(chosen(html, "Tex", "Model")).toBe("Opus 5.5");
     expect(chosen(html, "Patch", "Model")).toBe("Sonnet 5.5");
     expect(chosen(html, "Patch", "Thinking effort")).toBe("Low");
-    // Tex's choice doesn't change Byte's Default.
+    // A member's own pick is its own, whatever Tex runs on.
     expect(chosen(html, "Byte", "Model")).toBe("Haiku 4.5");
     const byteEffort = html.match(/<label for="([^"]+)"[^>]*><span class="sr-only">Byte’s <\/span>Thinking effort<\/label>/)?.[1];
     expect(html).toMatch(new RegExp(`<button id="${byteEffort}" type="button" role="combobox"[^>]*disabled=""`));
     expect(text(html)).toContain("Byte: Haiku 4.5 has no thinking effort, so this setting doesn’t apply to it.");
+  });
+
+  it("with a model picked for Tex, Byte's and Patch's Default is the same as Tex, as the backend says", async () => {
+    const sameAsTex = { model: null, effort: null };
+    const html = draw(
+      await seededClient((s) => ({
+        ...onClaudeCode(s),
+        claudeModel: "claude-opus-4-6",
+        claudeChoices: { ...s.claudeChoices, crewDefaults: { byte: sameAsTex, patch: sameAsTex, scout: sameAsTex } },
+      })),
+      createElement(AgentSettingsPage),
+    );
+    for (const who of ["Byte", "Patch", "Scout"]) {
+      expect(chosen(html, who, "Model"), who).toBe("Default (same as Tex)");
+      expect(chosen(html, who, "Thinking effort"), who).toBe("Default (same as Tex)");
+    }
   });
 
   it("on Hermes: Tex's choices stay, and a note says the crew shares one model there", async () => {

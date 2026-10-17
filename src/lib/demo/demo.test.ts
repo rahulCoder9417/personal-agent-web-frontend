@@ -1062,6 +1062,11 @@ describe("setup", () => {
     expect(effortOnly.body.claudeModel).toBeNull();
     const back = await call<AgentSettings>("PATCH", "agent/settings", { claudeCrew: { patch: { model: null, effort: null } } });
     expect(back.body.claudeCrew.patch).toEqual(onDefault);
+    // A model picked for Tex: Byte's and Patch's Default is the same as Tex; back to Default, Opus 5.5 again.
+    const texPicked = await call<AgentSettings>("PATCH", "agent/settings", { claudeModel: "claude-haiku-5-5" });
+    expect(texPicked.body.claudeChoices.crewDefaults).toEqual({ byte: onDefault, patch: onDefault, scout: onDefault });
+    const texBack = await call<AgentSettings>("PATCH", "agent/settings", { claudeModel: null });
+    expect(texBack.body.claudeChoices.crewDefaults).toEqual(start.claudeChoices.crewDefaults);
     for (const body of [
       { claudeCrew: { tex: { model: "claude-opus-5-5" } } },
       { claudeCrew: { byte: { model: "gpt-6.1-sol" } } },

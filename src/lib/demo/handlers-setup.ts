@@ -137,7 +137,24 @@ export function syncAgentSettings(state: DemoState): void {
   else if (connected) access = { effectiveRuntime: "claude_code", aiAccess: "claude_plan" };
   else access = { effectiveRuntime: null, aiAccess: "none" };
 
-  state.agentSettings = { ...settings, runtime, ownKeyProviders, platformAvailable, ...access };
+  state.agentSettings = {
+    ...settings,
+    runtime,
+    ownKeyProviders,
+    platformAvailable,
+    ...access,
+    claudeChoices: { ...settings.claudeChoices, crewDefaults: crewDefaultsFor(settings.claudeModel) },
+  };
+}
+
+/**
+ * What Default is for each of the crew, as the backend says it: the same as Tex (null) when a model
+ * is picked for Tex; with Tex on Default, Byte and Patch on Opus 5.5 at medium. Scout: always Tex's.
+ */
+function crewDefaultsFor(texModel: string | null): AgentSettings["claudeChoices"]["crewDefaults"] {
+  const sameAsTex = { model: null, effort: null };
+  const own = texModel ? sameAsTex : { model: "claude-opus-5-5", effort: "medium" as const };
+  return { byte: own, patch: own, scout: sameAsTex };
 }
 
 export const listByokKeys: Handler = ({ state }) => json({ items: state.byok });
