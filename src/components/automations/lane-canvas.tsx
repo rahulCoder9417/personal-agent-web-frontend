@@ -1,7 +1,7 @@
 "use client";
 
 // The automation's canvas, drawn with React Flow as a graph: a light dotted board to pan and zoom,
-// with its zoom buttons, and the boxes in one column on one centre line, top to bottom
+// with its zoom buttons (bottom right), and the boxes in one column on one centre line, top to bottom
 // (`laneDiagram`, placed on an 8px grid by `laneLayout`): the trigger, the reads, Tex and the crew,
 // the writes, the results. Each box is a soft tint of its kind's colour with a 1px edge of it
 // (trigger green, read blue, "only if" amber, Tex purple, write teal, the end grey), its mark on a
@@ -480,7 +480,7 @@ function Zoom() {
   const flow = useReactFlow();
   const { zoom } = useViewport();
   return (
-    <Controls showZoom={false} showFitView={false} showInteractive={false} orientation="horizontal" position="bottom-left" aria-label="Zoom">
+    <Controls showZoom={false} showFitView={false} showInteractive={false} orientation="horizontal" position="bottom-right" aria-label="Zoom">
       <ControlButton onClick={() => void flow.zoomOut()} aria-label="Zoom out" title="Zoom out">
         <MinusIcon size={14} strokeWidth={2.2} />
       </ControlButton>
@@ -715,6 +715,9 @@ export default function LaneCanvas(props: LaneCanvasProps) {
         preventScrolling={!compact}
         aria-label={label}
         proOptions={{ hideAttribution: false }}
+        // The column sits left of centre when a Stop is beside it: the zoom buttons go bottom right,
+        // where the boxes aren't, and React Flow's link top right.
+        attributionPosition="top-right"
       >
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.3} color="#d2cdc2" />
         {!compact && <Zoom />}
