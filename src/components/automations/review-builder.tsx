@@ -14,24 +14,26 @@ import { useRouter } from "next/navigation";
 import { useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { refusedTypedValue } from "@/lib/action-errors";
 import type { Automation } from "@/lib/api/client";
-import { useApps, useCrew, useDisablePrReview, useEnablePrReview, useMe, usePlans, usePrReviews, useUpdateAutomation } from "@/lib/api/hooks";
+import { useApps, useCrew, useDisablePrReview, useEnablePrReview, useGithubRepos, useMe, usePlans, usePrReviews, useUpdateAutomation } from "@/lib/api/hooks";
 import { laneDiagram } from "@/lib/automation-lanes";
 import { automationHref, reviewedRepo } from "@/lib/automation-flow";
 import { chatDraftHref } from "@/lib/chat-link";
 import { AUTOMATIONS_CHAT_HREF } from "@/lib/conversations";
 import { CREW_EXAMPLES } from "@/lib/crew";
 import { CREW_HELP_PATH } from "@/lib/crew-address";
+import { ApiError } from "@/lib/api/client";
 import { cn, formatAgo, formatDate } from "@/lib/format";
 import { connectedReturnPath, INTEGRATIONS_APPS_PATH } from "@/lib/integrations";
-import { describeDisableError, describeEnableError, describeReviewState, parseRepo, repoName, verdictPlace, type PlanContext, type ReviewError } from "@/lib/pr-review";
+import { describeDisableError, describeEnableError, describeReviewState, parseRepo, repoName, verdictPlace, type PlanContext, type RepoRef, type ReviewError } from "@/lib/pr-review";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { isConnectable } from "../apps/apps-logic";
 import { useConnectDialog } from "../apps/connect-dialog";
 import { ChatIcon, TrashIcon } from "../icons";
 import { toast, toastError } from "../toast";
-import { inputClass, Switch } from "../ui";
+import { Switch } from "../ui";
 import { Details, HealthChip, InspectorHeader, PanelSection } from "./inspector";
 import type { CanvasBox, CanvasHead } from "./lane-canvas";
+import { RepoPicker, type PickerStatus } from "./repo-picker";
 import { Btn, BtnLink, Chip, ChevronLink, Crumbs, Dot, MoreMenu, Notice, T2, T3 } from "./parts";
 
 const LaneCanvas = dynamic(() => import("./lane-canvas"), { ssr: false, loading: () => <div aria-hidden className="h-full min-h-[320px] animate-pulse bg-bg" /> });
@@ -148,16 +150,21 @@ function RepoForm() {
   const plan = usePlanContext();
   const github = useGitHub();
   const [text, setText] = useState("");
+  const [chosen, setChosen] = useState<RepoRef | null>(null);
   const [invalid, setInvalid] = useState<string | null>(null);
   // The repo the last request was for, so its answer names it even after the field has changed.
   const [asked, setAsked] = useState("");
   const id = useId();
   const blocked = github.state === "missing" || github.state === "expired";
+  const repos = useGithubRepos(github.state === "connected");
+  const reviews = usePrReviews().data;
+  const reviewed = useMemo(() => reviews ?? [], [reviews]);
+  const status: PickerStatus = repos.isError ? (repos.error instanceof ApiError && repos.error.status === 409 ? "connect" : "error") : repos.data ? "ready" : blocked ? "ready" : "loading";
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (enable.isPending || blocked) return;
-    const parsed = parseRepo(text);
+    const parsed = chosen ? { ok: true as const, repo: chosen } : text.trim() ? parseRepo(text) : { ok: false as const, error: "Pick a repo from the list, or type owner/repo." };
     if (!parsed.ok) {
       setInvalid(parsed.error);
       return;
@@ -186,22 +193,32 @@ function RepoForm() {
         <label htmlFor={`${id}-repo`} className={cn(T2, "font-medium")}>
           Repo
         </label>
-        <input
-          id={`${id}-repo`}
-          value={text}
-          onChange={(event) => {
-            setText(event.target.value);
+        <RepoPicker
+          id={id}
+          status={status}
+          repos={repos.data ?? []}
+          reviewed={reviewed}
+          query={text}
+          onQuery={(value) => {
+            setText(value);
+            setChosen(null);
             setInvalid(null);
             if (enable.isError) enable.reset();
           }}
-          placeholder="owner/repo"
-          autoComplete="off"
-          autoCapitalize="none"
-          spellCheck={false}
+          chosen={chosen}
+          onChoose={(repo) => {
+            setChosen(repo);
+            setInvalid(null);
+            if (enable.isError) enable.reset();
+          }}
           disabled={blocked}
-          aria-invalid={Boolean(invalid) || undefined}
-          className={cn(inputClass, "h-10 font-mono text-[12px]")}
+          invalid={Boolean(invalid)}
         />
+        {chosen && (
+          <p className={cn(T3, "text-fg-2")}>
+            Selected: <span className="font-mono">{repoName(chosen)}</span>
+          </p>
+        )}
         {invalid ? (
           <p role="alert" className={cn(T3, "text-warn")}>
             {invalid}

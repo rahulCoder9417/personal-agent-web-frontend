@@ -68,6 +68,7 @@ const ROUTES: Route[] = [
   route("POST", "automation-drafts/:draftId/save", drafts.saveDraft),
   route("POST", "automation-drafts/:draftId/discard", drafts.discardDraft),
 
+  route("GET", "github/repos", crew.listGithubRepos),
   route("GET", "pr-reviews", crew.listPrReviews),
   route("PUT", "pr-reviews/:owner/:repo", crew.enablePrReview),
   route("DELETE", "pr-reviews/:owner/:repo", crew.disablePrReview),

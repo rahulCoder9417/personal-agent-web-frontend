@@ -70,6 +70,27 @@ function toPrReview(state: DemoState, review: DemoPrReview): PrReviewRepo | null
   };
 }
 
+/** Repos the demo account can see: its own, and the two orgs'. Pushed times are relative to now. */
+const DEMO_REPOS: readonly { owner: string; name: string; private: boolean; hoursAgo: number }[] = [
+  { owner: "northwind", name: "website", private: false, hoursAgo: 3 },
+  { owner: "demo-user", name: "dotfiles", private: true, hoursAgo: 20 },
+  { owner: "northwind", name: "api", private: true, hoursAgo: 49 },
+  { owner: "northwind", name: "docs", private: false, hoursAgo: 24 * 6 },
+  { owner: "demo-user", name: "side-project", private: false, hoursAgo: 24 * 21 },
+];
+
+export const listGithubRepos: Handler = () =>
+  json({
+    items: DEMO_REPOS.map((repo) => ({
+      owner: repo.owner,
+      name: repo.name,
+      fullName: `${repo.owner}/${repo.name}`,
+      private: repo.private,
+      defaultBranch: "main",
+      pushedAt: new Date(Date.now() - repo.hoursAgo * 3_600_000).toISOString(),
+    })),
+  });
+
 export const listPrReviews: Handler = ({ state }) =>
   json({ items: state.prReviews.map((review) => toPrReview(state, review)).filter((review) => review !== null) });
 

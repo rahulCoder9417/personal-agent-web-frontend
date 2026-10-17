@@ -92,6 +92,7 @@ export const qk = {
   /** The last runs of an automation with steps, each with its trail (under `automations`, so they refresh with it). */
   automationRuns: (automationId: string) => ["automations", "runs", automationId] as const,
   prReviews: ["pr-reviews"] as const,
+  githubRepos: ["github-repos"] as const,
   agentStatus: ["agent", "status"] as const,
   agentSettings: ["agent", "settings"] as const,
   agentProgress: ["agent", "progress"] as const,
@@ -1123,6 +1124,22 @@ export function usePrReviews() {
     queryKey: qk.prReviews,
     queryFn: () => unwrap(api.GET("/v1/pr-reviews")),
     select: (data) => data.items,
+  });
+}
+
+/**
+ * The GitHub repos the account can see (`GET /v1/github/repos`): the 100 most recently pushed, its own
+ * and its orgs'. Only asked while `enabled` (the picker is open and GitHub is connected). 409 means
+ * GitHub isn't connected, 503 that it can't be asked now; neither is retried.
+ */
+export function useGithubRepos(enabled: boolean) {
+  return useQuery({
+    queryKey: qk.githubRepos,
+    queryFn: () => unwrap(api.GET("/v1/github/repos")),
+    select: (data) => data.items,
+    enabled,
+    staleTime: 60_000,
+    retry: false,
   });
 }
 

@@ -53,10 +53,12 @@ describe("in the code", () => {
   });
 
   it("has no crew jobs screen, form or list left: Byte and Patch are asked for in the chat", () => {
-    expect(offenders(/Give (Patch a review|Byte a job|the crew a job)|CrewJobsSection|useCrewJobs|useCreateCrewJob|useGithubRepos/)).toEqual([]);
-    // The API's crew jobs and repo list are no longer asked for (the proxy still lets them through:
-    // they are the backend's user-facing paths).
-    expect(offenders(/\/v1\/crew-jobs|\/v1\/github\/repos|["'`]crew-jobs["'`]/, [join("lib", "api", "proxy-target.ts")])).toEqual([]);
+    expect(offenders(/Give (Patch a review|Byte a job|the crew a job)|CrewJobsSection|useCrewJobs|useCreateCrewJob/)).toEqual([]);
+    // The API's crew jobs are no longer asked for (the proxy still lets them through: they are the
+    // backend's user-facing paths).
+    expect(offenders(/\/v1\/crew-jobs|["'`]crew-jobs["'`]/, [join("lib", "api", "proxy-target.ts")])).toEqual([]);
+    // The repo list is asked for only by the pull-request review picker.
+    expect(offenders(/useGithubRepos|\/v1\/github\/repos/, [join("lib", "api", "proxy-target.ts"), join("lib", "api", "hooks.ts"), join("components", "automations", "review-builder.tsx")])).toEqual([]);
   });
 });
 

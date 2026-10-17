@@ -1,7 +1,7 @@
 // Pull-request review, per GitHub repo (`/v1/pr-reviews`): reading what someone typed as a repo,
 // and putting a repo's state and the API's refusals into words. No React here, so it can be tested.
 
-import { ApiError, errorMessage, type ChannelType, type PrReviewRepo } from "./api/client";
+import { ApiError, errorMessage, type ChannelType, type GithubRepo, type PrReviewRepo } from "./api/client";
 import { CHANNEL_LABEL } from "./format";
 import { INTEGRATIONS_APPS_PATH } from "./integrations";
 import { PRICING_PATH } from "./pricing";
@@ -144,4 +144,32 @@ export function describeEnableError(error: unknown, repo: string, plan: PlanCont
 export function describeDisableError(error: unknown): string | null {
   if (error instanceof ApiError && error.status === 404) return null;
   return errorMessage(error);
+}
+
+// ---------------------------------------------------------------- the repo picker
+
+export type RepoChoice = { repo: GithubRepo; reviewed: boolean };
+
+/**
+ * The repos to show: the ones matching what was typed (in the owner or the name; slashes and
+ * spaces don't matter), the most recently pushed first (a repo never pushed goes last), each with
+ * whether review is already on for it.
+ */
+export function repoChoices(repos: readonly GithubRepo[], query: string, reviewed: readonly RepoRef[]): RepoChoice[] {
+  const needle = query.trim().toLowerCase().replace(/\s*\/\s*/g, "/");
+  const on = new Set(reviewed.map((ref) => repoName(ref).toLowerCase()));
+  const pushed = (repo: GithubRepo) => (repo.pushedAt ? new Date(repo.pushedAt).getTime() : 0);
+  return repos
+    .filter((repo) => !needle || repo.fullName.toLowerCase().includes(needle))
+    .sort((a, b) => pushed(b) - pushed(a))
+    .map((repo) => ({ repo, reviewed: on.has(repo.fullName.toLowerCase()) }));
+}
+
+/** The typed text as a repo to use even though it is not in the list: null when it is in the list already, or isn't a repo. */
+export function typedRepo(repos: readonly GithubRepo[], query: string): RepoRef | null {
+  if (!query.trim()) return null;
+  const parsed = parseRepo(query);
+  if (!parsed.ok) return null;
+  const name = repoName(parsed.repo).toLowerCase();
+  return repos.some((repo) => repo.fullName.toLowerCase() === name) ? null : parsed.repo;
 }
