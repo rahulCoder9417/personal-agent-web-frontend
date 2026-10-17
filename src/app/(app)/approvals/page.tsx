@@ -4,30 +4,37 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { ApprovalDetail } from "@/components/approvals/approval-detail";
 import { ApprovalList } from "@/components/approvals/approval-list";
+import { SkipRules } from "@/components/approvals/skip-rules";
 import { Page, PageHeader } from "@/components/page";
 import { EmptyState, ErrorState, FilterPills, SkeletonRows, type FilterOption } from "@/components/ui";
 import { APPROVAL_EMPTY as EMPTY, APPROVAL_TABS as TABS, type ApprovalTab as Tab } from "@/lib/approval-tabs";
-import { useApprovals } from "@/lib/api/hooks";
+import { useApprovals, useSkipRules } from "@/lib/api/hooks";
+
+/** A tab of approvals, or the user's skip rules ("Don't ask again"), last. */
+type View = Tab | "rules";
 
 /**
- * `?approval=apr_…` (an automation's "Waiting for your OK · Review") opens on that approval. The
- * query needs a Suspense boundary on a page that is prerendered.
+ * `?approval=apr_…` (an automation's "Waiting for your OK · Review") opens on that approval;
+ * `?view=rules` (the toast after "Don't ask again") on the Skip rules. The query needs a Suspense
+ * boundary on a page that is prerendered.
  */
 export default function ApprovalsPage() {
   return (
-    <Suspense fallback={<Approvals initial={null} />}>
+    <Suspense fallback={<Approvals initial={null} rules={false} />}>
       <FromAddress />
     </Suspense>
   );
 }
 
 function FromAddress() {
-  return <Approvals initial={useSearchParams().get("approval")} />;
+  const params = useSearchParams();
+  return <Approvals initial={params.get("approval")} rules={params.get("view") === "rules"} />;
 }
 
-function Approvals({ initial }: { initial: string | null }) {
-  const [tab, setTab] = useState<Tab>("pending");
+function Approvals({ initial, rules: showRules }: { initial: string | null; rules: boolean }) {
+  const [view, setView] = useState<View>(showRules ? "rules" : "pending");
   const [selected, setSelected] = useState<string | null>(initial);
+  const rules = useSkipRules();
 
   // One query per tab: the counts in the tabs stay right, and switching tabs is instant.
   const lists: Record<Tab, ReturnType<typeof useApprovals>> = {
@@ -36,28 +43,39 @@ function Approvals({ initial }: { initial: string | null }) {
     rejected: useApprovals("rejected"),
     expired: useApprovals("expired"),
     replaced: useApprovals("replaced"),
+    auto_approved: useApprovals("auto_approved"),
   };
+  const tab: Tab = view === "rules" ? "auto_approved" : view;
   const current = lists[tab];
   const approvals = current.data ?? [];
   // Fall back to the first row when the selected approval has left this list.
   const active = approvals.find((a) => a.id === selected) ?? approvals[0] ?? null;
 
-  const options: FilterOption<Tab>[] = TABS.map((t) => ({ ...t, count: lists[t.value].data?.length }));
-  const pick = (next: Tab) => {
-    setTab(next);
+  const options: FilterOption<View>[] = [
+    ...TABS.map((t) => ({ ...t, count: lists[t.value].data?.length })),
+    { value: "rules" as const, label: "Skip rules", count: rules.data?.length },
+  ];
+  const pick = (next: View) => {
+    setView(next);
     setSelected(null);
   };
 
   return (
     <Page>
       <PageHeader title="Approvals">
-        <FilterPills label="Approval status" options={options} value={tab} onChange={pick} />
+        <FilterPills label="Show" options={options} value={view} onChange={pick} />
         <p className="ml-auto hidden truncate text-[13px] text-muted xl:block">
           Tex waits for you before it sends to others, deletes things or spends money.
         </p>
       </PageHeader>
 
-      {current.isError ? (
+      {view === "rules" ? (
+        <div className="scroll-pane min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-6 md:px-8">
+          <section aria-label="Skip rules" className="max-w-[640px]">
+            <SkipRules />
+          </section>
+        </div>
+      ) : current.isError ? (
         <div className="p-7">
           <ErrorState error={current.error} onRetry={() => void current.refetch()} />
         </div>
@@ -97,9 +115,10 @@ function Approvals({ initial }: { initial: string | null }) {
                 approval={active}
                 onDecided={(decision) => {
                   // Follow the approval to the tab it just moved to.
-                  setTab(decision === "approve" ? "approved" : "rejected");
+                  setView(decision === "approve" ? "approved" : "rejected");
                   setSelected(active.id);
                 }}
+                onShowRules={() => pick("rules")}
               />
             ) : (
               <EmptyState mood={EMPTY[tab].mood} title={EMPTY[tab].title}>
