@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { accountHere, clerkUserIdFromCookies, COVER_HINT_ATTRIBUTE, coverHintScript, onboardedHere, ONBOARDED_PREFIX, rememberOnboarded } from "./onboarded-here";
+import {
+  accountHere,
+  clerkUserIdFromCookies,
+  COVER_HINT_ATTRIBUTE,
+  coverHintScript,
+  onboardedHere,
+  ONBOARDED_PREFIX,
+  openedChatHere,
+  OPENED_CHAT_PREFIX,
+  rememberOnboarded,
+} from "./onboarded-here";
 
 /** A session token as Clerk keeps it in `__session`: three base64url parts, the claims in the middle. */
 function sessionToken(claims: Record<string, unknown>): string {
@@ -168,5 +178,35 @@ describe("the script that runs before the first paint", () => {
     expect(run("demo", "", noted("demo"))).toBe(true);
     expect(run("dev-token", "", noted("dev-token"))).toBe(true);
     expect(run("demo", "", noted())).toBe(false);
+  });
+});
+
+describe("the chat that opened by itself, for the next visit", () => {
+  it("is kept per account, as an id only", () => {
+    const store = memoryStore();
+    openedChatHere.set("user_a", "cnv_1", store);
+    expect(store.items.get(`${OPENED_CHAT_PREFIX}user_a`)).toBe("cnv_1");
+    expect(openedChatHere.get("user_a", store)).toBe("cnv_1");
+    expect(openedChatHere.get("user_b", store)).toBeNull();
+    expect(openedChatHere.get(null, store)).toBeNull();
+    // A new chat became the active one.
+    openedChatHere.set("user_a", "cnv_2", store);
+    expect(openedChatHere.get("user_a", store)).toBe("cnv_2");
+  });
+
+  it("goes with the other notes on sign-out", () => {
+    const store = memoryStore();
+    openedChatHere.set("user_a", "cnv_1", store);
+    onboardedHere.set("user_a", true, store);
+    store.setItem("textcrew.panels.chats", "1");
+    onboardedHere.forgetAll(store);
+    expect([...store.items.keys()]).toEqual(["textcrew.panels.chats"]);
+  });
+
+  it("never throws when storage is blocked: the chat asks for the list first, as before", () => {
+    const store = memoryStore(true);
+    expect(() => openedChatHere.set("user_a", "cnv_1", store)).not.toThrow();
+    expect(openedChatHere.get("user_a", store)).toBeNull();
+    expect(openedChatHere.get("user_a")).toBeNull();
   });
 });

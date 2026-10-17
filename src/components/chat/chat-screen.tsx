@@ -1,21 +1,24 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ChannelType } from "@/lib/api/client";
-import { useAvailableChannels, useConversations, useNewChat, usePinnedAutomations } from "@/lib/api/hooks";
+import { prefetchThread, useAvailableChannels, useConversations, useNewChat, usePinnedAutomations } from "@/lib/api/hooks";
 import { useAutomationsUnread } from "@/lib/automations-seen";
 import { linkableChannels } from "@/lib/channels";
 import { allConversations, anyUnread, AUTOMATIONS_TITLE, canWriteIn, conversationToOpen, isAutomationsChat, newChatError, readOnlyNote, titleOf } from "@/lib/conversations";
 import { CHANNEL_LABEL, cn, listNames } from "@/lib/format";
 import { SHOWN_AT, useMediaQuery } from "@/lib/media-query";
 import { PANEL_MOTION, useMotionReady, useStaysDrawn } from "@/lib/motion";
+import { currentAccount, openedChatHere } from "@/lib/onboarded-here";
 import { focusAfterToggle, PANELS } from "@/lib/panels";
 import { useReadWhileShown } from "@/lib/read-while-shown";
 import { useStoredFlag } from "@/lib/stored-flag";
 import { BrandIcon } from "../brand-icon";
 import { AutomationsIcon, CloseIcon, NewChatIcon, PanelIcon } from "../icons";
 import { Page } from "../page";
+import { useAppConfig } from "../shell/providers";
 import { toast } from "../toast";
 import { ErrorState, IconButton } from "../ui";
 import { Composer, type ComposerHandle } from "./composer";
@@ -116,6 +119,15 @@ export function ChatScreen() {
   // Until the backend has said otherwise, web chat is taken to be on: it nearly always is.
   const webChatOn = available === undefined || available.includes("web");
 
+  // The chat that opened by itself on the last visit: its messages are asked for beside the list of
+  // chats instead of after it, which saves one wait for the database before it shows (`openedChatHere`).
+  const qc = useQueryClient();
+  const { mode } = useAppConfig();
+  useEffect(() => {
+    const remembered = openedChatHere.get(currentAccount(mode));
+    if (remembered) void prefetchThread(qc, remembered);
+  }, [qc, mode]);
+
   const list = useConversations();
   // Asked for (its pinned row, or the address `?chat=automations`): the Automations chat, once it is
   // known, until another conversation is picked.
@@ -135,6 +147,11 @@ export function ChatScreen() {
   const writable = webChatOn && canWriteIn(opened) && !standIn;
   const inAutomations = standIn !== null || isAutomationsChat(opened);
   const automationsUnread = useAutomationsUnread(automationsChat, inAutomations);
+  // Noted for the next visit: the chat that opens by itself (nothing picked), once the list has said which.
+  const openedByItself = pickedId === null && !wantAutomations && list.isSuccess ? (opened?.id ?? null) : null;
+  useEffect(() => {
+    if (openedByItself) openedChatHere.set(currentAccount(mode), openedByItself);
+  }, [mode, openedByItself]);
   // The one on screen is being read: opening it, and each reply that arrives while it is shown, marks it read.
   useReadWhileShown(opened?.id ?? null, opened?.unread === true);
   // Something from Tex not seen yet in another chat: the button that shows the list says so while it is put away.
