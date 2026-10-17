@@ -73,6 +73,41 @@ export function waitingForTexUntil(
 const LOCAL_PREFIX = "local:";
 
 /**
+ * Whether a message is Tex's answer: Tex wrote it, and it is not one of the two things posted in the
+ * middle of a turn, a question (an approval card) or an automation's draft (its card). The agent sends
+ * nothing else while it works: it has no tool to send a message, and the Bridge sends its answer once,
+ * at the end of the turn (a failed turn's apology, or a quick reply, takes its place).
+ */
+export function isAnswer(message: Pick<Message, "direction" | "approvalId" | "automationDraftId">): boolean {
+  return message.direction === "out" && !message.approvalId && !message.automationDraftId;
+}
+
+/**
+ * The person's message that an answer of Tex's, just arrived in its thread, answers, while that message
+ * still waits for its last state (`delivered` or `failed`, which the backend sends a moment after the
+ * answer). Among the person's messages that still wait (`queued` or `processing`, newer than any that
+ * has its last state already):
+ * - the one the agent took (`processing`): turns run one at a time, so the answer is that turn's, and
+ *   a message sent while it ran (`queued`) waits for a turn of its own;
+ * - with none taken and the agent not at work (`busy`, `waking`), the oldest saved one (`queued`): a
+ *   quick reply answers without the agent taking the message, and messages are answered in the order
+ *   they were sent. While the agent is at work, a waiting message waits behind its turn.
+ * Undefined when there is none. `thread`: the conversation's messages, newest first.
+ */
+export function answeredBy<T extends Pick<Message, "id" | "direction" | "status">>(thread: readonly T[], state: AgentStatus["state"] | undefined): T | undefined {
+  const waiting: T[] = [];
+  for (const message of thread) {
+    if (message.direction !== "in") continue;
+    if (message.status !== "queued" && message.status !== "processing") break;
+    waiting.push(message);
+  }
+  const taken = waiting.find((message) => message.status === "processing");
+  if (taken) return taken;
+  if (state === "busy" || state === "waking") return undefined;
+  return waiting.filter((message) => !message.id.startsWith(LOCAL_PREFIX)).at(-1);
+}
+
+/**
  * What a message of the person's says about itself under it: "sending" only while it is on its
  * way to the API, "sent" once saved and waiting for Tex (before, a saved message said "sending"
  * until Tex took it, 2.5 to 7 seconds later, as if it hadn't gone), "Tex is on it" once taken.

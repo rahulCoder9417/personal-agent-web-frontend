@@ -9,7 +9,8 @@ import { applyStreamEvent, SETTLE_CHECK_MS } from "./stream";
 // "hlo" was sent, Tex answered "Hey! How can I help you today?", and the thread went on saying
 // "Tex is on it" under the message and "Tex is working…" under the answer. The turn had ended
 // (the message was saved `delivered`), but its last two events, the message `delivered` and the
-// agent `awake`, never reached the page, and nothing else told it.
+// agent `awake`, never reached the page, and nothing else told it. Since then the API was asked
+// again 10 seconds after the answer; since 17 October the answer itself ends the turn on screen.
 
 const CONVERSATION = "cnv_web";
 const at = (second: number) => new Date(Date.UTC(2026, 9, 16, 5, 2, second)).toISOString();
@@ -73,24 +74,40 @@ afterEach(() => {
 });
 
 describe("the end of a turn whose last events never arrive", () => {
-  it("asks again once Tex has answered, and the thread stops showing Tex at work", async () => {
+  it("ends with the answer, and asks the API 10 seconds later for what the lost events said", async () => {
     const screen = chatScreen();
     await vi.advanceTimersByTimeAsync(0);
     screen.asked.thread = 0;
     screen.asked.status = 0;
     turnUpToTheAnswer(screen);
+    // The answer alone ends the turn on screen: the message it answers is shown delivered.
+    expect(screen.activity()).toBeNull();
+    expect(screen.statusOf("msg_hlo")).toBe("delivered");
     // The turn ends on the server; its last two events are lost on the way.
     screen.server.thread = [{ ...reply, status: "sent" }, hlo("delivered")];
     screen.server.status = { state: "awake", lastActiveAt: at(25) };
 
     await vi.advanceTimersByTimeAsync(SETTLE_CHECK_MS - 1_000);
-    expect(screen.activity()).toBe("working");
-    expect(screen.statusOf("msg_hlo")).toBe("processing");
+    expect(screen.asked).toEqual({ thread: 0, status: 0 });
+    expect(screen.activity()).toBeNull();
 
+    // The agent still shows busy here: the API is asked, and says it is awake.
     await vi.advanceTimersByTimeAsync(1_000);
     expect(screen.asked).toEqual({ thread: 1, status: 1 });
+    expect(screen.qc.getQueryData<AgentStatus>(qk.agentStatus)?.state).toBe("awake");
     expect(screen.activity()).toBeNull();
     expect(screen.statusOf("msg_hlo")).toBe("delivered");
+    screen.close();
+  });
+
+  it("ends with an apology for a failed turn, and the message then says it failed", async () => {
+    const screen = chatScreen();
+    await vi.advanceTimersByTimeAsync(0);
+    turnUpToTheAnswer(screen);
+    screen.send("message.created", message("msg_sorry", { direction: "out", text: "Sorry, something went wrong on our side.", createdAt: at(24) }));
+    expect(screen.activity()).toBeNull();
+    screen.send("message.status", hlo("failed"));
+    expect(screen.statusOf("msg_hlo")).toBe("failed");
     screen.close();
   });
 
@@ -109,14 +126,21 @@ describe("the end of a turn whose last events never arrive", () => {
     screen.close();
   });
 
-  it("keeps Tex at work when the API says the turn still runs (Tex said it is on it, and carries on)", async () => {
+  it("keeps Tex at work through an automation's draft posted in the middle of the turn: it is not the answer", async () => {
     const screen = chatScreen();
     await vi.advanceTimersByTimeAsync(0);
-    turnUpToTheAnswer(screen);
-    screen.server.thread = [{ ...reply, status: "sent" }, hlo("processing")];
-    screen.server.status = { state: "busy", lastActiveAt: at(19) };
+    screen.asked.thread = 0;
+    screen.asked.status = 0;
+    screen.send("message.created", hlo("queued"));
+    screen.send("agent.status", { state: "busy", lastActiveAt: at(19) });
+    screen.send("message.status", hlo("processing"));
+    const card = message("msg_draft", { direction: "out", text: "A draft: your inbox every morning.", automationDraftId: "drf_1", createdAt: at(21) });
+    screen.send("message.created", card);
+    expect(screen.activity()).toBe("working");
+    expect(screen.statusOf("msg_hlo")).toBe("processing");
 
-    await vi.advanceTimersByTimeAsync(SETTLE_CHECK_MS);
+    await vi.advanceTimersByTimeAsync(SETTLE_CHECK_MS * 2);
+    expect(screen.asked).toEqual({ thread: 0, status: 0 });
     expect(screen.activity()).toBe("working");
     screen.close();
   });

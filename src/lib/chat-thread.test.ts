@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "./api/client";
 import { localMessage } from "./api/hooks";
-import { ANSWER_TURN_MAX_MS, inboundStatusWord, QUEUED_WORKING_MS, threadActivity, threadIsWorking, waitingForTexUntil } from "./chat-thread";
+import { ANSWER_TURN_MAX_MS, answeredBy, inboundStatusWord, isAnswer, QUEUED_WORKING_MS, threadActivity, threadIsWorking, waitingForTexUntil } from "./chat-thread";
 
 type Row = Pick<Message, "direction" | "status">;
 const inbound = (status: Message["status"]): Row => ({ direction: "in", status });
@@ -159,5 +159,48 @@ describe("the words under a message of the person's", () => {
     expect(inboundStatusWord({ id: "msg_1", status: "read" })).toBe("read");
     expect(inboundStatusWord({ id: "msg_1", status: "failed" })).toBe("not sent");
     expect(inboundStatusWord({ id: "msg_1", status: "sent" })).toBeUndefined();
+  });
+});
+
+describe("Tex's answer and the message it answers", () => {
+  type Item = Pick<Message, "id" | "direction" | "status" | "approvalId" | "automationDraftId">;
+  const person = (id: string, status: Message["status"]): Item => ({ id, direction: "in", status, approvalId: null });
+  const texSaid = (id: string, rest: Partial<Item> = {}): Item => ({ id, direction: "out", status: "sent", approvalId: null, ...rest });
+  const ids = (item: Item | undefined) => item?.id;
+
+  it("an answer is anything Tex wrote but a question or an automation's draft, which come in the middle of a turn", () => {
+    expect(isAnswer(texSaid("answer"))).toBe(true);
+    expect(isAnswer(texSaid("card", { approvalId: "apr_1" }))).toBe(false);
+    expect(isAnswer(texSaid("draft", { automationDraftId: "drf_1" }))).toBe(false);
+    expect(isAnswer(person("msg", "processing"))).toBe(false);
+  });
+
+  it("answers the message the agent took, also past a question or a draft in the turn", () => {
+    expect(ids(answeredBy([texSaid("answer"), person("a", "processing"), texSaid("before"), person("old", "delivered")], "busy"))).toBe("a");
+    expect(ids(answeredBy([texSaid("answer"), texSaid("card", { approvalId: "apr_1" }), person("a", "processing")], "busy"))).toBe("a");
+    expect(ids(answeredBy([texSaid("answer"), texSaid("draft", { automationDraftId: "drf_1" }), person("a", "processing")], "awake"))).toBe("a");
+  });
+
+  it("not a message sent while the turn ran: it waits for a turn of its own", () => {
+    expect(ids(answeredBy([texSaid("answer"), person("b", "queued"), person("a", "processing")], "busy"))).toBe("a");
+    // That turn's answer, once the first one's is in: Tex's first answer stands between them.
+    expect(ids(answeredBy([texSaid("answer b"), texSaid("answer a"), person("b", "processing"), person("a", "delivered")], "busy"))).toBe("b");
+  });
+
+  it("a quick reply answers the oldest message still waiting, when the agent isn't at work", () => {
+    expect(ids(answeredBy([texSaid("hi"), person("a", "queued"), person("old", "delivered")], "awake"))).toBe("a");
+    expect(ids(answeredBy([texSaid("hi"), person("b", "queued"), person("a", "queued")], "stopped"))).toBe("a");
+    expect(ids(answeredBy([texSaid("hi"), person("a", "queued")], undefined))).toBe("a");
+    // While the agent is at work (another chat's turn, an automation's run), a waiting message waits behind it.
+    expect(answeredBy([texSaid("run"), person("a", "queued")], "busy")).toBeUndefined();
+    expect(answeredBy([texSaid("run"), person("a", "queued")], "waking")).toBeUndefined();
+  });
+
+  it("none when every message has its last state, and never one still being sent or one an earlier answer settled", () => {
+    expect(answeredBy([texSaid("follow-up"), texSaid("card", { approvalId: "apr_1" }), person("a", "delivered")], "busy")).toBeUndefined();
+    expect(answeredBy([texSaid("run")], "awake")).toBeUndefined();
+    expect(answeredBy([texSaid("hi"), person("local:4b0e8f0a", "queued")], "awake")).toBeUndefined();
+    // A message left waiting behind one that has its last state is not this answer's.
+    expect(answeredBy([texSaid("answer"), person("b", "delivered"), person("stale", "processing")], "busy")).toBeUndefined();
   });
 });

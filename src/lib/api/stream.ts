@@ -16,7 +16,7 @@ import {
   turnsOver,
   turnsOverAfterReconnect,
 } from "../drafts";
-import { threadActivity } from "../chat-thread";
+import { answeredBy, isAnswer, threadActivity } from "../chat-thread";
 import type { AgentProgress, AgentStatus, Approval, AutomationDraft, AutomationRun, Conversation, CreditBalance, Message, MessageDraft, StreamEvent, StreamReady } from "./client";
 import { addMessage, cachedThread, invalidateAutomations, noteAgentStatusEvent, noteDraft, noteRun, qk, removeConversation, upsertConversation, upsertMessage } from "./hooks";
 
@@ -95,27 +95,41 @@ export function useDrafts(): Drafts {
 /**
  * Tex's answer is sent a moment before its turn ends: the turn's last events (the person's message
  * `delivered`, the agent no longer `busy`) follow within a second or two. If they haven't arrived
- * this long after the answer, they were lost on the way, and the thread would show Tex at work on a
- * finished turn until the stream next reconnects.
+ * this long after the answer, they were held or lost on the way.
  */
 export const SETTLE_CHECK_MS = 10_000;
 
 /**
- * Tex wrote in a conversation (not a question: that pauses the turn). If its thread still shows Tex
- * at work on the person's message `SETTLE_CHECK_MS` later, the agent's state and the thread are
- * asked for again: the API says whether the turn ended. A turn that is still running (Tex said "on
- * it" and carries on) stays at work, as the API says so too.
+ * Tex's answer arrived: the turn it ends is over on this screen at once. The person's message it
+ * answers (`answeredBy`) is shown `delivered`, which the backend says a moment later anyway: the
+ * thread stops showing Tex at work, and the message stops saying "Tex is on it". Before, both waited
+ * for the turn's last two events, and when those were held or lost, "Tex is working…" stayed under
+ * the answer until the check below, 10 seconds later (the founder's list of pull requests, 17 October).
+ * A `failed` that comes after it still says so (`laterMessage` takes it).
+ */
+function answerEndsTurn(qc: QueryClient, answer: Message) {
+  if (!isAnswer(answer)) return;
+  const answered = answeredBy(cachedThread(qc, answer.conversationId) ?? [], qc.getQueryData<AgentStatus>(qk.agentStatus)?.state);
+  if (answered) upsertMessage(qc, { ...answered, status: "delivered" });
+}
+
+/**
+ * Tex answered in a conversation (not a question: that pauses the turn). If the turn's last events
+ * haven't come `SETTLE_CHECK_MS` later, the agent's state and the thread are asked for again, so what
+ * they said (the agent awake, the message `delivered` or `failed`) is known all the same: when the
+ * thread still shows Tex at work (a message still waiting for Tex, `waitingForTexUntil`), or the agent
+ * still shows busy.
  */
 function checkTurnSettles(qc: QueryClient, message: Message) {
-  if (message.direction !== "out" || message.approvalId) return;
+  if (!isAnswer(message)) return;
   const { conversationId } = message;
-  // The thread's own rule: also a message still waiting for Tex (`waitingForTexUntil`), as after a
-  // quick reply whose message never got its `delivered`.
-  const stillWorking = () =>
-    threadActivity({ status: qc.getQueryData<AgentStatus>(qk.agentStatus), messages: cachedThread(qc, conversationId) ?? [], approval: undefined, answeredHere: false }) ===
-    "working";
+  const unsettled = () => {
+    const status = qc.getQueryData<AgentStatus>(qk.agentStatus);
+    if (status?.state === "busy") return true;
+    return threadActivity({ status, messages: cachedThread(qc, conversationId) ?? [], approval: undefined, answeredHere: false }) === "working";
+  };
   setTimeout(() => {
-    if (!stillWorking()) return;
+    if (!unsettled()) return;
     void qc.invalidateQueries({ queryKey: qk.agentStatus });
     void qc.invalidateQueries({ queryKey: qk.thread(conversationId) });
   }, SETTLE_CHECK_MS);
@@ -142,6 +156,8 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
     case "message.created":
       // The message carries its conversation: it joins that thread, and the conversation moves up.
       addMessage(qc, event.data as Message);
+      // Tex's answer ends its turn on screen at once.
+      answerEndsTurn(qc, event.data as Message);
       // Tex's answer takes the place of what was shown of it while it was written, and the steps fold into it.
       updateDrafts(qc, (drafts) => messageArrived(drafts, event.data as Message));
       checkTurnSettles(qc, event.data as Message);

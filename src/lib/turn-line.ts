@@ -8,11 +8,13 @@
 // - From Send (the person's message waiting for Tex, `waitingForTexUntil` in `chat-thread.ts`) until
 //   anything of the turn is on screen, the "Tex is working…" bubble (`start`).
 // - From then on one quiet line under the newest thing, until the turn is over: "Tex is writing…"
-//   while a draft is shown, "Tex is working…" between drafts, under a step and under a message Tex
-//   sent in the middle of the turn, and "Waiting for your OK" once Tex asked. Its words change; it is
-//   never taken away and put back while the turn runs.
+//   while a draft is shown, "Tex is working…" between drafts, under a step and under an automation's
+//   draft Tex posted in the middle of the turn, and "Waiting for your OK" once Tex asked. Its words
+//   change; it is never taken away and put back while the turn runs.
 // - It goes when the turn is over: the person's message `delivered` or `failed`, or the agent no
 //   longer busy (`threadActivity` in `chat-thread.ts`), and it is never shown for a turn in another chat.
+//   Tex's answer ends the turn at once: the message it answers is shown `delivered` as it arrives
+//   (`answerEndsTurn` in `api/stream.ts`), without waiting for the turn's last events.
 
 import type { AgentStatus, Approval, Message } from "./api/client";
 import { threadActivity, type ThreadActivity } from "./chat-thread";
