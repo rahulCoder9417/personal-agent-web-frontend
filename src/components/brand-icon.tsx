@@ -84,11 +84,14 @@ export function BrandIcon({
   name,
   size = 18,
   iconUrl,
+  mono = false,
   className,
 }: {
   name: string;
   size?: number;
   iconUrl?: string | null;
+  /** In the text's colour instead of the brand's (a white mark on a coloured tile). */
+  mono?: boolean;
   className?: string;
 }) {
   const key = resolve(name);
@@ -96,21 +99,21 @@ export function BrandIcon({
 
   if (icon) {
     return (
-      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden fill={`#${icon.hex}`} className={cn("shrink-0", className)}>
+      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden fill={mono ? "currentColor" : `#${icon.hex}`} className={cn("shrink-0", className)}>
         <path d={icon.path} />
       </svg>
     );
   }
   if (key === "slack") {
     return (
-      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden fill="none" stroke="#4A154B" strokeWidth={2.4} strokeLinecap="round" className={cn("shrink-0", className)}>
+      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden fill="none" stroke={mono ? "currentColor" : "#4A154B"} strokeWidth={2.4} strokeLinecap="round" className={cn("shrink-0", className)}>
         <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
       </svg>
     );
   }
   if (key === "web") {
     return (
-      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden fill="none" stroke="#151515" strokeWidth={1.8} strokeLinecap="round" className={cn("shrink-0", className)}>
+      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden fill="none" stroke={mono ? "currentColor" : "#151515"} strokeWidth={1.8} strokeLinecap="round" className={cn("shrink-0", className)}>
         <circle cx="12" cy="12" r="9" />
         <path d="M3 12h18M12 3c2.8 3 2.8 15 0 18M12 3c-2.8 3-2.8 15 0 18" />
       </svg>
