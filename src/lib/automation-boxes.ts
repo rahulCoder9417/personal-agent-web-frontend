@@ -79,3 +79,28 @@ export function conditionPill(onlyIf: Pick<AutomationStepCondition, "kind" | "wo
       return null;
   }
 }
+
+/**
+ * The condition box the canvas draws on the line into a step with an "only if": its name ("Only if:
+ * found something") and its line (what happens otherwise, or Tex's question). Null for none, and
+ * for step 1.
+ */
+export function conditionBox(onlyIf: Pick<AutomationStepCondition, "kind" | "words" | "question"> | null | undefined, index: number): { title: string; line: string } | null {
+  if (!onlyIf || index === 0) return null;
+  const otherwise = "Otherwise the run stops here";
+  switch (onlyIf.kind) {
+    case "found":
+      return { title: "Only if: found something", line: otherwise };
+    case "mentions": {
+      const words = onlyIf.words ?? [];
+      if (words.length === 0) return { title: "Only if: it mentions… (no words yet)", line: otherwise };
+      return { title: `Only if: it mentions ${listNames(words.slice(0, 2).map(quote), "or")}${words.length > 2 ? ` +${words.length - 2}` : ""}`, line: otherwise };
+    }
+    case "tex": {
+      const question = onlyIf.question?.trim();
+      return { title: "Only if: Tex says yes", line: question ? quote(question) : otherwise };
+    }
+    default:
+      return null;
+  }
+}

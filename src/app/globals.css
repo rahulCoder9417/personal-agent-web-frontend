@@ -36,6 +36,25 @@
   /* The crew's own colours (Tex wears the accent, Scout has --scout above). */
   --byte: #7b4dff;
   --patch: #f5a623;
+  /* The automation canvas's kinds of box (src/components/automations/lane-canvas.tsx): the colour of
+     each box's tile, edge and ports; the box itself is a 6% tint of it, on which the muted text still
+     reads (4.6:1 or more). `-ink` is the same colour dark enough for words on white (5:1 or more). A
+     white glyph on each tile is 3:1 or more. */
+  --node-trigger: #22a45d;
+  --node-trigger-ink: #14713d;
+  --node-read: #3b82f6;
+  --node-read-ink: #1d4fd7;
+  --node-cond: #d97706;
+  --node-cond-ink: #b54708;
+  --node-tex: #7b4dff;
+  --node-tex-ink: #5b34d6;
+  --node-write: #11a39b;
+  --node-write-ink: #0b6e69;
+  --node-end: #8b8a93;
+  --node-end-ink: #55524c;
+  /* The lines between the boxes, and the "No" line to a condition's Stop. */
+  --edge: #b3aea3;
+  --edge-no: #e5484d;
   /* How far toasts sit from the bottom of the window. */
   --toast-bottom: 20px;
   color-scheme: only light;
@@ -461,6 +480,65 @@ html[data-onboarded] .welcome-cover { display: none; }
 
 .automation-canvas .react-flow__attribution a {
   color: var(--muted);
+}
+
+/* The canvas's boxes (src/components/automations/lane-canvas.tsx) and the settings' header
+   (inspector.tsx): each kind of box in its own colour (`data-kind`), as a soft tint with a 1px edge
+   of that colour, flat at rest. Under the pointer its tint deepens a little; the open box has a
+   soft 2px accent ring; a box with something to fix has an amber edge. The edge is drawn inside the
+   box (an inset shadow), so the ports sit exactly on its outline. */
+[data-kind] {
+  --k: var(--node-end);
+  --k-ink: var(--node-end-ink);
+}
+[data-kind="trigger"] { --k: var(--node-trigger); --k-ink: var(--node-trigger-ink); }
+[data-kind="read"] { --k: var(--node-read); --k-ink: var(--node-read-ink); }
+[data-kind="cond"] { --k: var(--node-cond); --k-ink: var(--node-cond-ink); }
+[data-kind="tex"] { --k: var(--node-tex); --k-ink: var(--node-tex-ink); }
+[data-kind="write"] { --k: var(--node-write); --k-ink: var(--node-write-ink); }
+
+.graph-node {
+  background: color-mix(in srgb, var(--k) 6%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k) 50%, var(--surface));
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+.graph-node:hover {
+  background: color-mix(in srgb, var(--k) 10%, var(--surface));
+}
+.graph-node[data-problem="true"] {
+  box-shadow: inset 0 0 0 1.5px var(--warn-dot);
+}
+.graph-node[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k) 50%, var(--surface)), 0 0 0 2px color-mix(in srgb, var(--accent) 55%, var(--surface));
+}
+.graph-node[data-problem="true"][aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1.5px var(--warn-dot), 0 0 0 2px color-mix(in srgb, var(--accent) 55%, var(--surface));
+}
+.graph-node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* A box's tile: its mark in white on the kind's colour. */
+.graph-tile {
+  background: var(--k);
+  color: #fff;
+}
+
+/* A port: a small round dot on a box's outline, where a line meets it (React Flow's handle, which
+   React Flow centres on the outline). */
+.automation-canvas .react-flow__handle.graph-port {
+  width: 10px;
+  height: 10px;
+  min-width: 0;
+  min-height: 0;
+  border: 2px solid var(--k);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-node { transition: none; }
 }
 
 /* The automation screens keep to three text sizes: 24px for the page's title, 14px for titles and

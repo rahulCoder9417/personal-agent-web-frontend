@@ -31,7 +31,7 @@ import { useConnectDialog } from "../apps/connect-dialog";
 import { ChatIcon, TrashIcon } from "../icons";
 import { toast, toastError } from "../toast";
 import { Switch } from "../ui";
-import { Details, HealthChip, InspectorHeader, PanelSection } from "./inspector";
+import { Details, HealthChip, InspectorBody, InspectorHeader, PanelSection } from "./inspector";
 import type { CanvasBox, CanvasHead } from "./lane-canvas";
 import { RepoPicker, type PickerStatus } from "./repo-picker";
 import { Btn, BtnLink, Chip, ChevronLink, Crumbs, Dot, MoreMenu, Notice, T2, T3 } from "./parts";
@@ -42,10 +42,10 @@ const LaneCanvas = dynamic(() => import("./lane-canvas"), { ssr: false, loading:
 const DIAGRAM = laneDiagram([{ id: "changes" }, { id: "patch" }, { id: "comment" }], ["read", "tex", "write"]);
 
 const HEADS: CanvasHead[] = [
-  { before: "trigger", text: "START WHEN" },
-  { before: "step:changes", text: "READ" },
-  { before: "step:patch", text: "TEX AND THE CREW" },
-  { before: "step:comment", text: "WRITE OR SEND" },
+  { before: "trigger", text: "Start when" },
+  { before: "step:changes", text: "Read" },
+  { before: "step:patch", text: "Tex and the crew" },
+  { before: "step:comment", text: "Write" },
 ];
 
 /** What each fixed box does, for its settings. */
@@ -349,12 +349,13 @@ export function ReviewBuilder({ automation }: { automation: Automation | null })
       logo: "github",
       label: "GitHub",
       title: "A pull request opens or gets new commits",
+      line: "GitHub · starts each review",
       chips: repo ? [{ text: repo, mono: true }] : [{ text: "Pick a repo", tone: "warn" }],
       dim: automation ? !automation.enabled : false,
     });
-    map.set("step:changes", { key: "step:changes", logo: "github", label: "Step 1 · GitHub", title: "Get the changes", line: "The pull request’s diff and files" });
-    map.set("step:patch", { key: "step:patch", logo: "patch", label: "Step 2 · Crew", title: "Patch reviews the changes", line: "Writes a review with a verdict", chips: [{ text: "Never merges" }] });
-    map.set("step:comment", { key: "step:comment", logo: "github", label: "Step 3 · GitHub", title: "Comment on the pull request", line: "Posts Patch’s review", chips: [{ text: "1 credit per comment" }] });
+    map.set("step:changes", { key: "step:changes", logo: "github", label: "Step 1 · GitHub", title: "Get the changes", line: "Step 1 · Reads from GitHub", chips: [{ text: "The diff and files" }] });
+    map.set("step:patch", { key: "step:patch", logo: "patch", label: "Step 2 · Crew", title: "Patch reviews the changes", line: "Step 2 · Writes a review with a verdict", chips: [{ text: "Never merges" }] });
+    map.set("step:comment", { key: "step:comment", logo: "github", label: "Step 3 · GitHub", title: "Comment on the pull request", line: "Step 3 · Writes in GitHub", chips: [{ text: "Posts Patch’s review" }, { text: "1 credit per comment" }] });
     return map;
   }, [repo, automation]);
 
@@ -364,42 +365,56 @@ export function ReviewBuilder({ automation }: { automation: Automation | null })
   if (selected === "trigger") {
     panel = (
       <>
-        <InspectorHeader logo="github" label="Start when · GitHub" title="A pull request opens or gets new commits" status={<HealthChip health={github.state === "connected" ? "ok" : github.state === "expired" ? "reconnect" : github.state === "missing" ? "connect" : undefined} />} />
-        <GitHubNotice />
-        {automation ? <RepoSettings automation={automation} /> : <RepoForm />}
-        <p className={cn(T3, "text-muted")}>Turning it on is your OK for Patch to comment on pull requests in this repo. Merging and anything else risky still ask first.</p>
-        {patch && !patch.available && (
-          <p role="status" className={cn(T3, "rounded-xl bg-surface-2 px-4 py-3 text-fg-2")}>
-            Patch isn’t on the crew here yet, so reviews may not run until it is.{" "}
-            <Link href={CREW_HELP_PATH} className="font-medium text-accent-dark hover:text-fg">
-              About the crew
-            </Link>
-          </p>
-        )}
-        <PanelSection>
-          <OnePullRequest />
-        </PanelSection>
+        <InspectorHeader
+          kind="trigger"
+          logo="github"
+          label="Start when · GitHub"
+          title="A pull request opens or gets new commits"
+          status={<HealthChip health={github.state === "connected" ? "ok" : github.state === "expired" ? "reconnect" : github.state === "missing" ? "connect" : undefined} />}
+        />
+        <InspectorBody>
+          <GitHubNotice />
+          <PanelSection title="Review">
+            {automation ? <RepoSettings automation={automation} /> : <RepoForm />}
+            <p className={cn(T3, "text-muted")}>Turning it on is your OK for Patch to comment on pull requests in this repo. Merging and anything else risky still ask first.</p>
+            {patch && !patch.available && (
+              <p role="status" className={cn(T3, "rounded-xl bg-surface-2 px-4 py-3 text-fg-2")}>
+                Patch isn’t on the crew here yet, so reviews may not run until it is.{" "}
+                <Link href={CREW_HELP_PATH} className="font-medium text-accent-dark hover:text-fg">
+                  About the crew
+                </Link>
+              </p>
+            )}
+          </PanelSection>
+          <PanelSection title="One pull request">
+            <OnePullRequest />
+          </PanelSection>
+        </InspectorBody>
       </>
     );
   } else if (selected === "results") {
     panel = (
       <>
-        <InspectorHeader logo="chat" label="Results" title="Automations chat" />
-        <Details
-          details={[
-            { label: "Where", value: "Each verdict lands in your Automations chat. With Telegram linked, a copy goes there too." },
-            { label: "What", value: "A short verdict, with a link to Patch’s review on the pull request." },
-          ]}
-          note="To follow up on a review, write in the Automations chat: Tex has the runs in mind there."
-        />
+        <InspectorHeader kind="end" logo="chat" label="Results" title="Automations chat" />
+        <InspectorBody>
+          <Details
+            details={[
+              { label: "Where", value: "Each verdict lands in your Automations chat. With Telegram linked, a copy goes there too." },
+              { label: "What", value: "A short verdict, with a link to Patch’s review on the pull request." },
+            ]}
+            note="To follow up on a review, write in the Automations chat: Tex has the runs in mind there."
+          />
+        </InspectorBody>
       </>
     );
   } else {
     const about = ABOUT[selected];
     panel = (
       <>
-        <InspectorHeader logo={selected === "step:patch" ? "patch" : "github"} label={about.label} title={about.title} />
-        <Details details={about.details} note={about.note} />
+        <InspectorHeader kind={selected === "step:patch" ? "tex" : selected === "step:comment" ? "write" : "read"} logo={selected === "step:patch" ? "patch" : "github"} label={about.label} title={about.title} />
+        <InspectorBody>
+          <Details details={about.details} note={about.note} />
+        </InspectorBody>
       </>
     );
   }
@@ -493,7 +508,7 @@ export function ReviewBuilder({ automation }: { automation: Automation | null })
               label="Pull-request review, step by step"
             />
           </section>
-          <aside aria-label="Settings for the open box" className="flex flex-col gap-6 border-t border-line bg-surface p-6 @min-[1040px]/builder:overflow-y-auto @min-[1040px]/builder:border-t-0 @min-[1040px]/builder:border-l">
+          <aside aria-label="Settings for the open box" className="flex min-w-0 flex-col border-t border-line bg-surface @min-[1040px]/builder:overflow-y-auto @min-[1040px]/builder:border-t-0 @min-[1040px]/builder:border-l">
             {panel}
           </aside>
         </div>

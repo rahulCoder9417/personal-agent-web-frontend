@@ -1,15 +1,20 @@
 "use client";
 
-// The settings beside the canvas, for the box that is open: its mark, its name and whether its app
-// is connected at the top; its form (the existing ones: the trigger's, a step's, Tex's instruction,
-// the results'); and at the foot "Remove step" and what it costs.
+// The settings beside the canvas, for the box that is open, in three parts. At the top, staying put
+// while the rest scrolls (`InspectorHeader`): the box's mark on its kind's coloured tile, what kind
+// of box it is ("TEX STEP", "READS FROM GITHUB"), its name, and whether its app is connected. Then
+// its form in sections (`InspectorBody`: the existing forms of the trigger, a step, Tex's
+// instruction, the results), 24px apart. At the foot, also staying put (`InspectorFooter`):
+// "Remove step" and what it costs.
 
 import type { ReactNode } from "react";
 import type { AppHealth } from "@/lib/automation-apps";
 import type { FlowDetail } from "@/lib/automation-flow";
 import { cn } from "@/lib/format";
 import { TrashIcon } from "../icons";
-import { AppLogo, Btn, Chip, Dot, T2, T3 } from "./parts";
+import { FormSection, LABEL, NOTE } from "./editor-forms";
+import { NodeTile, type NodeKind } from "./kind-icon";
+import { Btn, Chip, Dot, T2, T3 } from "./parts";
 
 /** Whether the box's app works, as a chip beside its name. Nothing for Tex, a schedule or the chat. */
 export function HealthChip({ health }: { health: AppHealth | undefined }) {
@@ -24,26 +29,32 @@ export function HealthChip({ health }: { health: AppHealth | undefined }) {
   return <Chip tone="warn">{health === "reconnect" ? "Reconnect" : health === "plan" ? "Not on your plan" : "Not connected"}</Chip>;
 }
 
-export function InspectorHeader({ logo, iconUrl, label, title, status }: { logo: string; iconUrl?: string | null; label: string; title: string; status?: ReactNode }) {
+/** The top of the settings: the box's tile, its kind in its colour, its name, and how its app stands. */
+export function InspectorHeader({ kind, logo, iconUrl, label, title, status }: { kind: NodeKind; logo: string; iconUrl?: string | null; label: string; title: string; status?: ReactNode }) {
   return (
-    <div className="flex items-start gap-3">
-      <AppLogo slug={logo} size={40} iconUrl={iconUrl} />
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className={cn(T3, "text-muted")}>{label}</span>
-        <h2 className={cn(T2, "font-semibold break-words")}>{title}</h2>
+    <header data-kind={kind} className="sticky top-0 z-10 flex min-h-[72px] items-center gap-3 border-b border-line bg-surface px-4 py-4 md:px-6">
+      <NodeTile kind={kind} logo={logo} iconUrl={iconUrl} size={40} />
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className={cn(T3, "truncate font-semibold tracking-[0.04em] text-[var(--k-ink)] uppercase")}>{label}</span>
+        <h2 className={cn(T2, "line-clamp-2 font-semibold break-words")}>{title}</h2>
+        {status && <span className="flex pt-1">{status}</span>}
       </span>
-      {status}
-    </div>
+    </header>
   );
 }
 
-/** "Remove step" (grey, with a bin, red only under the pointer) and what the box costs. */
+/** The settings' sections, 24px apart, 24px in from the sides (16px on a phone). */
+export function InspectorBody({ children }: { children: ReactNode }) {
+  return <div className="flex min-w-0 flex-1 flex-col gap-6 px-4 py-6 md:px-6">{children}</div>;
+}
+
+/** "Remove step" (grey, with a bin, red only under the pointer) and what the box costs, at the foot. */
 export function InspectorFooter({ onRemove, removeLabel = "Remove step", note }: { onRemove?: () => void; removeLabel?: string; note?: string | null }) {
   if (!onRemove && !note) return null;
   return (
-    <div className="flex items-center justify-between gap-3 border-t border-line pt-4">
+    <footer className="sticky bottom-0 z-10 flex min-h-[68px] items-center justify-between gap-3 border-t border-line bg-surface px-4 py-4 md:px-6">
       {onRemove ? (
-        <Btn size="sm" variant="remove" onClick={onRemove}>
+        <Btn variant="remove" onClick={onRemove} className="shadow-[inset_0_0_0_1px_var(--line-strong)]">
           <TrashIcon size={14} />
           {removeLabel}
         </Btn>
@@ -51,38 +62,33 @@ export function InspectorFooter({ onRemove, removeLabel = "Remove step", note }:
         <span />
       )}
       {note && <span className={cn(T3, "text-right text-muted")}>{note}</span>}
-    </div>
+    </footer>
   );
 }
 
-/** A section of a panel: a heading in the body size, and its fields. */
+/** A section of a panel: a small uppercase heading, and its fields. */
 export function PanelSection({ title, hint, children }: { title?: string; hint?: ReactNode; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-3">
-      {(title || hint) && (
-        <div className="flex flex-col gap-1">
-          {title && <h3 className={cn(T2, "font-medium")}>{title}</h3>}
-          {hint && <p className={cn(T3, "text-muted")}>{hint}</p>}
-        </div>
-      )}
+    <FormSection title={title}>
+      {hint && <p className={cn(T3, "-mt-2 text-muted")}>{hint}</p>}
       {children}
-    </section>
+    </FormSection>
   );
 }
 
 /** What a box says when it can't be changed here: each detail, as a label and its value. */
 export function Details({ details, note }: { details: readonly FlowDetail[]; note?: string }) {
   return (
-    <div className="flex flex-col gap-4">
-      <dl className="flex flex-col gap-3">
+    <FormSection title="Details">
+      <dl className="flex flex-col gap-4">
         {details.map((detail) => (
-          <div key={detail.label} className="flex flex-col gap-1">
-            <dt className={cn(T3, "text-muted")}>{detail.label}</dt>
-            <dd className={cn(T2, "break-words whitespace-pre-line text-fg")}>{detail.value}</dd>
+          <div key={detail.label} className="flex flex-col gap-1.5">
+            <dt className={LABEL}>{detail.label}</dt>
+            <dd className={cn(T2, "break-words whitespace-pre-line text-fg-2")}>{detail.value}</dd>
           </div>
         ))}
       </dl>
-      {note && <p className={cn(T3, "rounded-xl bg-bg px-4 py-3 text-fg-2")}>{note}</p>}
-    </div>
+      {note && <p className={NOTE}>{note}</p>}
+    </FormSection>
   );
 }
