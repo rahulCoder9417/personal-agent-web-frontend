@@ -121,6 +121,21 @@ function checkTurnSettles(qc: QueryClient, message: Message) {
   }, SETTLE_CHECK_MS);
 }
 
+/**
+ * The person's message was taken by the agent (`processing`): the agent is busy from then on. The
+ * backend says so itself a moment later (`agent.status`, sent just after it; the vm-manager is busy
+ * already), but between the two events the thread had a message taken and an agent not yet busy, so
+ * it showed nothing: Tex blinked out just as it took the message. Only for a message still
+ * `processing` here: a late word about one that has moved on changes nothing.
+ */
+function agentTookMessage(qc: QueryClient, message: Message) {
+  if (message.direction !== "in" || message.status !== "processing") return;
+  if (cachedThread(qc, message.conversationId)?.find((item) => item.id === message.id)?.status !== "processing") return;
+  if (qc.getQueryData<AgentStatus>(qk.agentStatus)?.state === "busy") return;
+  noteAgentStatusEvent(qc);
+  qc.setQueryData<AgentStatus>(qk.agentStatus, { state: "busy", lastActiveAt: new Date().toISOString() });
+}
+
 /** Folds one event from the live stream into the query cache, so every screen shows it. */
 export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
   switch (event.type) {
@@ -134,6 +149,7 @@ export function applyStreamEvent(qc: QueryClient, event: StreamEvent) {
     case "message.status":
       upsertMessage(qc, event.data as Message);
       updateDrafts(qc, (drafts) => messageSettled(drafts, event.data as Message));
+      agentTookMessage(qc, event.data as Message);
       break;
     case "message.draft":
       // Live only: the whole answer so far, while Tex writes it in a web chat turn.

@@ -6,12 +6,13 @@ import type { Automation, Conversation, Message } from "@/lib/api/client";
 import { useAgentProgress, useAgentStatus, useThread } from "@/lib/api/hooks";
 import { updateDrafts, useCatchUpWhileQuiet, useDrafts } from "@/lib/api/stream";
 import { nextRunLine } from "@/lib/automations";
-import { inboundStatusWord, threadActivity, useAnsweredHere, waitingForTexUntil } from "@/lib/chat-thread";
+import { inboundStatusWord, useAnsweredHere, waitingForTexUntil } from "@/lib/chat-thread";
 import { isAutomationsChat, readOnlyNote } from "@/lib/conversations";
 import type { ProgressLine } from "@/lib/crew";
 import { answerInThread, type DraftStep, stepLine, stepsToShow, trailLine, turnAnswered, turnOnScreen } from "@/lib/drafts";
 import { CHANNEL_LABEL, cn, formatDate, formatDay, formatTime } from "@/lib/format";
 import { useInView } from "@/lib/in-view";
+import { footAtWork, threadFoot, turnQuestion } from "@/lib/turn-line";
 import { BrandIcon } from "../brand-icon";
 import { ChevronRightIcon, FileIcon } from "../icons";
 import { GettingStartedCard, useGettingStarted } from "../onboarding/getting-started";
@@ -20,6 +21,7 @@ import { Button, ButtonLink, EmptyState, ErrorState, Spinner } from "../ui";
 import { AgentBubble } from "./agent-bubble";
 import { ApprovalQuestion, useApproval } from "./approval-card";
 import { DraftQuestion } from "./draft-card";
+import { TurnLine } from "./turn-line";
 
 function dayLabel(iso: string): string {
   const day = formatDay(iso);
@@ -272,50 +274,34 @@ function Working({ lines }: { lines: ProgressLine[] }) {
 }
 
 /**
- * Tex asked a question and the turn has paused for the person: a quiet line under the card in place
- * of the "working" bubble, so nothing spins while nothing happens.
- */
-function WaitingForOk() {
-  return (
-    <p data-waiting className="ml-[42px] flex items-center gap-1.5 text-[12px] text-muted">
-      <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-      Waiting for your OK
-    </p>
-  );
-}
-
-/**
  * Tex's answer as it is written (`message.draft`), in place of the "working" bubble: drawn the way
  * the answer will be, Markdown included (half-written Markdown reads well enough until the answer
- * takes its place, in the same place and at the same width). Screen readers hear once that Tex is
- * writing, not every few words; the answer is read out when it arrives.
+ * takes its place, in the same place and at the same width). "Tex is writing…" is the turn's line
+ * under it (`TurnLine`). Screen readers hear once that Tex is writing, not every few words; the
+ * answer is read out when it arrives.
  */
 function Writing({ text }: { text: string }) {
   return (
     <div className="flex items-start gap-2.5">
       <TexAvatar working />
-      <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
+      <div className="flex min-w-0 flex-1 flex-col items-start">
         <AgentBubble text={text} writing />
-        <p className="flex items-center gap-1.5 text-[12px] text-muted">
-          <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-accent" />
-          Tex is writing…
-        </p>
       </div>
     </div>
   );
 }
 
 /**
- * The turn being written in this conversation: its steps, then the text being written or, between
- * two runs of text, the "working" bubble. With steps on screen, a progress line shows under the
- * step it follows, so the bubble just says that Tex is at work. After a turn that ended without its
+ * The turn being written in this conversation: its steps, then the text being written or, before
+ * anything of the turn is on screen (`start`), the "working" bubble. Between two runs of text the
+ * turn's line under them says Tex is at work (`TurnLine`). After a turn that ended without its
  * answer, only the steps are left, until the next message.
  */
-function TurnInProgress({ steps, writing, working, lines }: { steps: readonly DraftStep[]; writing: string | null; working: boolean; lines: ProgressLine[] }) {
+function TurnInProgress({ steps, writing, start, lines }: { steps: readonly DraftStep[]; writing: string | null; start: boolean; lines: ProgressLine[] }) {
   return (
     <div className="flex flex-col">
       {steps.length > 0 && <StepTrail steps={steps} live className="ml-[42px] pb-2" />}
-      {writing !== null ? <Writing text={writing} /> : working && <Working lines={steps.length > 0 ? [] : lines} />}
+      {writing !== null ? <Writing text={writing} /> : start && <Working lines={lines} />}
     </div>
   );
 }
@@ -418,7 +404,6 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
   const qc = useQueryClient();
   const query = useThread(conversation?.id ?? null);
   const status = useAgentStatus().data;
-  const busy = status?.state === "busy";
   const progress = useAgentProgress().data;
   const drafts = useDrafts();
   const scroller = useRef<HTMLDivElement>(null);
@@ -438,21 +423,14 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
   }, [newestFirst]);
   const newestId = messages[messages.length - 1]?.message.id;
   const count = messages.length;
-  // Tex's newest message is a question (an approval card): its approval says whether Tex waits for
-  // the person's OK, or works on the answer.
-  const newest = newestFirst[0];
-  const question = newest?.direction === "out" && newest.approvalId ? newest.approvalId : null;
+  // Tex asked a question in its latest turn (an approval card, maybe with a line after it): its
+  // approval says whether Tex waits for the person's OK, or works on the answer.
+  const question = turnQuestion(newestFirst);
   const asked = useApproval(question).data;
   const answeredHere = useAnsweredHere(question);
-  // Only a turn in this conversation shows here, not one in another chat. A message that waits for
-  // Tex shows Tex at work from the moment it is sent, for a while (`waitingForTexUntil`): the thread
-  // is drawn again when that ends.
+  // A message that waits for Tex shows Tex at work from the moment it is sent, for a while
+  // (`waitingForTexUntil`): the thread is drawn again when that ends.
   const now = useTimeAt(waitingForTexUntil(status?.state, newestFirst));
-  const activity = threadActivity({ status, messages: newestFirst, approval: asked, answeredHere, now });
-  const working = activity === "working";
-  // A live connection that has gone quiet while Tex works here: the thread and the agent's state are
-  // asked for again, so the answer shows even when the turn's events are slow to come.
-  useCatchUpWhileQuiet(working, conversation?.id ?? null);
 
   // What Tex is writing in this conversation right now, and the steps before it.
   const onScreen = turnOnScreen(drafts, conversation?.id ?? null);
@@ -467,9 +445,12 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
   const stepsOf = (messageId: string) => drafts.folded[messageId] ?? (messageId === answeredBy ? onScreen?.steps : undefined);
   const writing = turn?.writing ?? null;
   const stepCount = turn?.steps.length ?? 0;
-  // A turn with no incoming message of its own here (an automation's run) is at work while it runs.
-  const showWorking = writing === null && ((working && count > 0) || (turn?.live === true && busy && stepCount > 0));
-  const waitingForOk = activity === "waiting" && writing === null && !showWorking;
+  // The foot of the turn: Tex at work from Send, then one line from its first step or draft until it
+  // is over (only a turn in this conversation shows here, not one in another chat).
+  const foot = threadFoot({ status, messages: newestFirst, approval: asked, answeredHere, turn, now });
+  // A live connection that has gone quiet while Tex works here: the thread and the agent's state are
+  // asked for again, so the answer shows even when the turn's events are slow to come.
+  useCatchUpWhileQuiet(footAtWork(foot), conversationId);
 
   const waiting = loading || (conversation !== null && query.isPending);
   const failed = conversation !== null && query.isError && !query.data;
@@ -488,7 +469,7 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
     } else if (stick.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [count, newestId, showWorking, waitingForOk, writing, stepCount, empty]);
+  }, [count, newestId, foot, writing, stepCount, empty]);
 
   // Content can grow after it first renders (an approval card loading, a font swapping in).
   // While following, stay pinned to the newest message through that too.
@@ -557,10 +538,11 @@ export function Thread({ conversation, loading, hasHistory }: { conversation: Co
           </div>
         ))}
 
-        {(stepCount > 0 || writing !== null || showWorking) && (
-          <TurnInProgress steps={turn?.steps ?? []} writing={writing} working={showWorking} lines={progress} />
+        {(stepCount > 0 || writing !== null || foot === "start") && (
+          <TurnInProgress steps={turn?.steps ?? []} writing={writing} start={foot === "start"} lines={progress} />
         )}
-        {waitingForOk && <WaitingForOk />}
+        {/* In the same place for the whole turn, so it is never taken away and put back while the turn runs. */}
+        {foot !== null && foot !== "start" && <TurnLine foot={foot} lines={foot === "working" && stepCount === 0 ? progress : []} />}
       </div>
     </div>
   );
