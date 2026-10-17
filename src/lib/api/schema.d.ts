@@ -157,6 +157,16 @@ export interface paths {
          *     The Automations chat (`kind: automations`) can be written in too: the agent continues the
          *     context of the automations' runs there. It never becomes the active one, so the next
          *     message sent without `conversationId` still goes into the active conversation.
+         *
+         *     `purpose: automation_draft` is the New automation page's "Ask Tex to set it up". The
+         *     message goes into the Automations chat (started if the user has none yet; `conversationId`
+         *     must be left out, 400 otherwise), so it can be found there later, and the active
+         *     conversation does not change. The agent is told, in the turn's text, that the request came
+         *     from that page and that it may do only one of two things: draft it with
+         *     `propose_automation` (its message then carries `automationDraftId`), or, when it can't be
+         *     an automation, say why in one or two sentences and suggest a request that would work,
+         *     with no question. It does not do the task itself in that turn. It is a normal turn: the
+         *     same credits and limits as any message. The page follows it by the message's `turnId`.
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -2991,6 +3001,16 @@ export interface components {
              *     to the saved one with this, also when the saved one arrives first on the live stream.
              */
             clientMessageId?: string;
+            /**
+             * @description The agent's turn the message belongs to, the same id as `turnId` in `message.draft`.
+             *     On a message of the user's: the turn that answers it. On the agent's (and on what the
+             *     platform says during a turn, such as "out of credits" or the apology for a failed
+             *     turn): the turn it was written in. So the answer to a message is the agent's message
+             *     with the same `turnId`, also in a conversation where other things are said meanwhile
+             *     (an automation's run in the Automations chat). Null on a message written outside a
+             *     turn, such as a notice.
+             */
+            turnId?: string | null;
             /** Format: date-time */
             createdAt: string;
         };
@@ -5236,6 +5256,13 @@ export interface operations {
                      *     is never the active one.
                      */
                     conversationId?: string;
+                    /**
+                     * @description `automation_draft`: asked from the New automation page. The message goes into
+                     *     the Automations chat, and the agent only drafts an automation from it, or says
+                     *     why it can't be one (see above). Left out: an ordinary message.
+                     * @enum {string}
+                     */
+                    purpose?: "automation_draft";
                 };
             };
         };

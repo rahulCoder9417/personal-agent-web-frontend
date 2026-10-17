@@ -491,7 +491,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         id: "automations-make",
         title: "Make one",
         blocks: [
-          p("Two ways. **Ask Tex** in chat, in plain words: Tex shows it back as a **draft** first, in the web chat a card with its steps drawn small and **Save**, on Telegram an outline with a link and a **Save** button. Or **build it by hand**: **New automation** on {automations} lets you pick how it works (read, decide, then act; read and tell me; write without reading; or just Tex) or a template, and opens the canvas. Nothing runs until you save it."),
+          p("Two ways. **Ask Tex** in chat, in plain words: Tex shows it back as a **draft** first, in the web chat a card with its steps drawn small and **Save**, on Telegram an outline with a link and a **Save** button. Or use **New automation** on {automations}: say it in words there and Tex checks it on the spot, then opens its draft on the canvas (or tells you why it can't be an automation, and what would work); or **build it by hand**, picking how it works (read, decide, then act; read and tell me; write without reading; or just Tex) or a template. Nothing runs until you save it."),
           ask("Every weekday at 10am, list the pull requests waiting for my review."),
           list(
             "Every automation has one shape, top to bottom: what starts it, reading from an app (optional), Tex and the crew, writing or sending (optional), and the results in {automationsChat}.",

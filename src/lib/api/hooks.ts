@@ -605,6 +605,25 @@ export function useSendMessage() {
   return useMutation(sendMessageOptions(qc));
 }
 
+/**
+ * "Ask Tex to set it up" on the New automation page: the request goes to Tex with
+ * `purpose: automation_draft`, so the backend puts it in the Automations chat (started if there is
+ * none) and Tex only drafts it, or says why it can't be one. The saved message joins that chat's
+ * thread, which the page then follows for Tex's verdict (`src/lib/draft-ask.ts`).
+ */
+export function useAskForDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { text: string; clientMessageId: string }): Promise<Message> =>
+      unwrap(api.POST("/v1/messages", { body: { text: input.text.trim(), clientMessageId: input.clientMessageId, purpose: "automation_draft" } })),
+    onSuccess: (message) => {
+      addMessage(qc, message);
+      // The Automations chat may have been started just now: the pinned row finds it.
+      if (automationsChatOf(qc)?.id !== message.conversationId) void qc.invalidateQueries({ queryKey: qk.automationsChat });
+    },
+  });
+}
+
 export function useUploadAttachment() {
   return useMutation({
     mutationFn: async (file: File): Promise<Attachment> => {

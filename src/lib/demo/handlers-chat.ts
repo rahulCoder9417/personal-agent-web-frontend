@@ -98,13 +98,17 @@ function setMessageStatus(state: DemoState, id: string, status: Message["status"
   emit(state, "message.status", message);
 }
 
-/** Tex says something in a conversation. Nothing is said in one that was deleted in the meantime. */
+/**
+ * Tex says something in a conversation. Nothing is said in one that was deleted in the meantime.
+ * `turnId`: the turn it is said in, as the backend marks it (the request's own `turnId`).
+ */
 export function postFromTex(
   state: DemoState,
   conversationId: string,
   text: string,
   approvalId: string | null = null,
   automationDraftId: string | null = null,
+  turnId: string | null = null,
 ): void {
   const conversation = findConversation(state, conversationId);
   if (!conversation) return;
@@ -118,6 +122,7 @@ export function postFromTex(
     approvalId,
     // A draft Tex proposed: the web app draws its card under the line (as the backend sends it).
     ...(automationDraftId ? { automationDraftId } : {}),
+    ...(turnId ? { turnId } : {}),
     createdAt: nowIso(),
   };
   state.messages.unshift(message);
@@ -153,7 +158,7 @@ function askForApproval(state: DemoState, request: Message, risk: Risk): void {
   emit(state, "approval.created", approval);
   logActivity(state, { actor: "agent", action: "approval_requested", summary: `Asked to ${lowerFirst(approval.summary)}` });
   // As the backend does it: Tex's question is one message carrying the approval, made from its summary.
-  postFromTex(state, request.conversationId, `I'd like to ${lowerFirst(approval.summary)}. Approve or Deny below.`, approval.id);
+  postFromTex(state, request.conversationId, `I'd like to ${lowerFirst(approval.summary)}. Approve or Deny below.`, approval.id, null, request.turnId ?? null);
 }
 
 type CrewJob = { crew: SpecialistId; name: string; steps: string[]; reply: string };
@@ -324,6 +329,26 @@ function workThroughIssues(state: DemoState, request: Message): number {
   return answerAt;
 }
 
+/**
+ * Tex's answer when an automation can't be made of a request from the New automation page: why, in
+ * a sentence, and a request that would work (as the backend tells Tex to answer).
+ */
+export const CANT_DRAFT_REPLY =
+  "That reads like something to do once, not something to run later, so it can’t be an automation.\nTry: “Every weekday at 9, sum up my unread email.”";
+
+/**
+ * A request from the New automation page (`purpose: automation_draft`): Tex only drafts it, or says
+ * why it can't be one and suggests a request that would work. It never does the task itself.
+ */
+function answerDraftAsk(state: DemoState, request: Message): void {
+  const proposed = proposeDraft(state, request);
+  if (proposed) postFromTex(state, request.conversationId, proposed.line, null, proposed.draft.id, request.turnId ?? null);
+  else postFromTex(state, request.conversationId, CANT_DRAFT_REPLY, null, null, request.turnId ?? null);
+  chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
+  setMessageStatus(state, request.id, "delivered");
+  setAgentState(state, "awake");
+}
+
 function answer(state: DemoState, request: Message, job: CrewJob | null = null): void {
   setMessageStatus(state, request.id, "read");
   // "Remember that…" is a fact to keep, not a job: it comes first, so its words can't be taken for one.
@@ -333,15 +358,15 @@ function answer(state: DemoState, request: Message, job: CrewJob | null = null):
   const proposed = fact ? null : proposeDraft(state, request);
   const risk = fact || proposed ? null : riskOf(request.text);
   if (proposed) {
-    postFromTex(state, request.conversationId, proposed.line, null, proposed.draft.id);
+    postFromTex(state, request.conversationId, proposed.line, null, proposed.draft.id, request.turnId ?? null);
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
   } else if (fact) {
-    postFromTex(state, request.conversationId, rememberFact(state, fact));
+    postFromTex(state, request.conversationId, rememberFact(state, fact), null, null, request.turnId ?? null);
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
   } else if (risk) {
     askForApproval(state, request, risk);
   } else if (job) {
-    postFromTex(state, request.conversationId, job.reply);
+    postFromTex(state, request.conversationId, job.reply, null, null, request.turnId ?? null);
     if (job.crew === "scout") {
       // Scout's search is a paid tool: charged when it runs, on top of the time the agent ran.
       const charged = chargePaidTool(state, "Web search");
@@ -349,7 +374,7 @@ function answer(state: DemoState, request: Message, job: CrewJob | null = null):
     }
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
   } else {
-    postFromTex(state, request.conversationId, plannedReply(request, null) ?? plainReply(request.text));
+    postFromTex(state, request.conversationId, plannedReply(request, null) ?? plainReply(request.text), null, null, request.turnId ?? null);
     // The time Tex ran is charged, and the AI too when it ran on Textcrew AI. Nothing was changed in an app.
     chargeUsage(state, { awake: 1, ai: state.agentSettings.aiAccess === "platform" ? TEXTCREW_AI_CREDITS : 0 });
     logActivity(state, { actor: "agent", action: "run_app_action", summary: upperFirst(truncate(request.text, 70)), creditsCharged: 0 });
@@ -377,6 +402,8 @@ export const sendMessage: Handler = async ({ state, request }) => {
   const clientMessageId = requiredString(body, "clientMessageId");
   if (!UUID.test(clientMessageId)) throw badRequest("clientMessageId must be a UUID");
   const conversationId = stringField(body, "conversationId", { min: 1 });
+  const purpose = body.purpose === undefined ? null : oneOf(body.purpose, ["automation_draft"] as const, "purpose");
+  if (purpose && conversationId !== undefined) throw badRequest("Leave conversationId out: a request for an automation draft goes into the Automations chat");
   const attachments = readAttachments(state, body);
 
   // Sending the same id again returns the first message instead of making a second one.
@@ -385,10 +412,12 @@ export const sendMessage: Handler = async ({ state, request }) => {
 
   if (!state.availableChannels.includes("web")) throw channelDisabled("web", "Web chat is switched off right now");
   if (balanceOf(state) <= 0) throw outOfCredits();
-  const conversation = conversationToWriteIn(state, conversationId);
+  // A request from the New automation page goes into the Automations chat (started if need be).
+  const conversation = purpose ? automationsChat(state) : conversationToWriteIn(state, conversationId);
 
+  const id = nextId(state, "msg");
   const message: Message = {
-    id: nextId(state, "msg"),
+    id,
     conversationId: conversation.id,
     channel: "web",
     direction: "in",
@@ -398,6 +427,8 @@ export const sendMessage: Handler = async ({ state, request }) => {
     approvalId: null,
     // As the backend does: the web app matches its "sending" bubble to the saved message with it.
     clientMessageId,
+    // The turn that answers it: Tex's answer carries the same id (`message.draft` uses it too).
+    turnId: `turn_${id}`,
     createdAt: nowIso(),
   };
   state.messages.unshift(message);
@@ -411,7 +442,7 @@ export const sendMessage: Handler = async ({ state, request }) => {
   if (state.agentSettings.aiAccess === "none") {
     schedule(state, ANSWER_MS, () => {
       setMessageStatus(state, message.id, "read");
-      postFromTex(state, message.conversationId, `${NO_AI_REPLY} ${new URL(request.url).origin}/settings/ai`);
+      postFromTex(state, message.conversationId, `${NO_AI_REPLY} ${new URL(request.url).origin}/settings/ai`, null, null, message.turnId ?? null);
     });
     return json(message, 202);
   }
@@ -420,6 +451,10 @@ export const sendMessage: Handler = async ({ state, request }) => {
     setAgentState(state, "busy");
     setMessageStatus(state, message.id, "processing");
   });
+  if (purpose) {
+    schedule(state, ANSWER_MS, () => answerDraftAsk(state, message));
+    return json(message, 202);
+  }
   // A job for a specialist takes longer, and says what it is doing on the way.
   const later = !memoryRequestOf(text) && proposalOf(text) !== null;
   const job = later || memoryRequestOf(text) || riskOf(text) ? null : crewJobOf(state, text);
