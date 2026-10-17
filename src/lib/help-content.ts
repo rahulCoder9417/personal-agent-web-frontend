@@ -395,7 +395,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
             "You come back to Textcrew, which says Gmail is connected.",
           ),
           ask("Summarize my unread email from today."),
-          note("Tex reads and searches your mail for free. Sending an email asks for your OK first."),
+          note("Reading and searching your mail costs nothing extra, only the AI credits of the reply. Sending an email asks for your OK first and costs 1 credit."),
         ],
       },
       {
