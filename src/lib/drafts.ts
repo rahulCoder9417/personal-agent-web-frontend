@@ -22,7 +22,7 @@ import { addProgress, type ProgressLine } from "./crew";
 export const SHOW_AT_CHARS = 80;
 /** A shorter run is shown once Tex has been writing it this long without starting over. */
 export const SHOW_AFTER_MS = 1200;
-/** How many steps are on screen; older ones fold into "+N earlier steps". */
+/** How many lines of steps are on screen; older ones fold into "+N earlier steps". */
 export const STEPS_SHOWN = 3;
 /** How many finished turns are remembered, so a late draft of one of them is never shown again. */
 const CLOSED_KEPT = 20;
@@ -396,10 +396,38 @@ export function stepLine(text: string): string {
     .trim();
 }
 
-/** Which steps are on screen: the last `STEPS_SHOWN`, unless all were asked for, and how many earlier ones are folded. */
-export function stepsToShow(steps: readonly DraftStep[], all: boolean): { shown: readonly DraftStep[]; earlier: number } {
-  if (all || steps.length <= STEPS_SHOWN) return { shown: steps, earlier: 0 };
-  return { shown: steps.slice(-STEPS_SHOWN), earlier: steps.length - STEPS_SHOWN };
+/**
+ * One line of a trail: a step, or the same step done several times in a row, with how many times
+ * ("Read a web page ×16"). `step` is the last of them (its crew lines go under the line); `first` is
+ * where the first of them is in the turn's steps, which names the line while more join it.
+ */
+export type TrailEntry = { step: DraftStep; times: number; first: number };
+
+/** Whether `next` repeats `step`: the same words, said the same way, with no crew line under `step` between them. */
+const repeats = (step: DraftStep, next: DraftStep) =>
+  step.progress.length === 0 && Boolean(step.action) === Boolean(next.action) && stepLine(step.text) !== "" && stepLine(step.text) === stepLine(next.text);
+
+/** A turn's steps as the trail's lines: steps one after another that say the same thing are one line, with a count. */
+export function trailEntries(steps: readonly DraftStep[]): TrailEntry[] {
+  const entries: TrailEntry[] = [];
+  steps.forEach((step, index) => {
+    const last = entries[entries.length - 1];
+    if (last && repeats(last.step, step)) entries[entries.length - 1] = { step, times: last.times + 1, first: last.first };
+    else entries.push({ step, times: 1, first: index });
+  });
+  return entries;
+}
+
+/**
+ * Which lines are on screen: the last `STEPS_SHOWN`, or all of them once asked for (`all`). `earlier`
+ * is how many steps come before those last lines, whether they are shown or folded: the trail's
+ * "+N earlier steps" while folded, and what "Hide earlier steps" folds again once shown.
+ */
+export function stepsToShow(steps: readonly DraftStep[], all: boolean): { shown: readonly TrailEntry[]; earlier: number } {
+  const entries = trailEntries(steps);
+  if (entries.length <= STEPS_SHOWN) return { shown: entries, earlier: 0 };
+  const last = entries.slice(-STEPS_SHOWN);
+  return { shown: all ? entries : last, earlier: last[0].first };
 }
 
 /** A step as one short line: what Tex did or wrote, or, for the crew at work alone, its latest line ("Scout: reading 4 pages"). */

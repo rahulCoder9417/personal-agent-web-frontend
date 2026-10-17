@@ -14,6 +14,7 @@ import {
   stepLabel,
   stepLine,
   stepsToShow,
+  trailEntries,
   trailLine,
   turnAnswered,
   turnOnScreen,
@@ -295,11 +296,50 @@ describe("drafts: steps on screen", () => {
     expect(stepLine("Let me check `gcal`  and ~~that~~ this.")).toBe("Let me check gcal and that this.");
   });
 
-  it("shows the last three steps and counts the earlier ones", () => {
+  it("shows the last three steps and counts the earlier ones, also once they are shown", () => {
     const steps = ["a", "b", "c", "d", "e"].map((text) => ({ text, progress: [] }));
-    expect(stepsToShow(steps, false)).toEqual({ shown: steps.slice(2), earlier: 2 });
-    expect(stepsToShow(steps, true)).toEqual({ shown: steps, earlier: 0 });
-    expect(stepsToShow(steps.slice(0, 3), false)).toEqual({ shown: steps.slice(0, 3), earlier: 0 });
+    const entries = steps.map((step, first) => ({ step, times: 1, first }));
+    expect(stepsToShow(steps, false)).toEqual({ shown: entries.slice(2), earlier: 2 });
+    // Shown in full, the count stays: it is what "Hide earlier steps" folds again.
+    expect(stepsToShow(steps, true)).toEqual({ shown: entries, earlier: 2 });
+    expect(stepsToShow(steps.slice(0, 3), false)).toEqual({ shown: entries.slice(0, 3), earlier: 0 });
+    expect(stepsToShow(steps.slice(0, 3), true)).toEqual({ shown: entries.slice(0, 3), earlier: 0 });
+  });
+
+  it("folds the same step done several times in a row into one line with a count", () => {
+    const act = (text: string, progress: ProgressLine[] = []) => ({ text, progress, action: true as const });
+    const handed = { text: "I’ll have Scout look on GitHub.", progress: [line("List open PRs", "scout")] };
+    const steps = [act("Looked at your apps"), act("Looked at your apps"), handed, ...Array.from({ length: 16 }, () => act("Read a web page"))];
+    const entries = trailEntries(steps);
+    expect(entries.map(({ step, times, first }) => [step.text, times, first])).toEqual([
+      ["Looked at your apps", 2, 0],
+      ["I’ll have Scout look on GitHub.", 1, 2],
+      ["Read a web page", 16, 3],
+    ]);
+    // The screenshot's trail of 19 lines is three: nothing to fold behind "+N earlier steps".
+    expect(stepsToShow(steps, false)).toEqual({ shown: entries, earlier: 0 });
+    // One more step: the earlier ones are counted as steps, not lines.
+    const more = [...steps, act("Checked your inbox")];
+    expect(stepsToShow(more, false)).toMatchObject({ earlier: 2 });
+    expect(stepsToShow(more, false).shown.map((entry) => entry.times)).toEqual([1, 16, 1]);
+  });
+
+  it("folds only steps that say the same thing the same way, with no crew line between them", () => {
+    const act = (text: string, progress: ProgressLine[] = []) => ({ text, progress, action: true as const });
+    // A crew line under the first one sits between the two: both stay.
+    const withCrew = trailEntries([act("Read a web page", [line("reading", "scout")]), act("Read a web page")]);
+    expect(withCrew.map((entry) => entry.times)).toEqual([1, 1]);
+    // The later one's crew lines go under the folded line.
+    const crewAfter = trailEntries([act("Read a web page"), act("Read a web page", [line("reading", "scout")])]);
+    expect(crewAfter).toHaveLength(1);
+    expect(crewAfter[0]).toMatchObject({ times: 2, step: { progress: [{ text: "reading" }] } });
+    // What Tex wrote and what it did are different steps, even in the same words; steps apart stay apart.
+    expect(trailEntries([act("Done"), { text: "Done", progress: [] }])).toHaveLength(2);
+    expect(trailEntries([act("A"), act("B"), act("A")])).toHaveLength(3);
+    // The crew at work alone (no words of Tex's) is never folded.
+    expect(trailEntries([{ text: "", progress: [line("a", "scout")] }, { text: "", progress: [] }])).toHaveLength(2);
+    // The same words once Markdown's marks are gone.
+    expect(trailEntries([act("Read **a** web page"), act("Read a web page")])).toHaveLength(1);
   });
 
   it("changes nothing it doesn't have to", () => {
