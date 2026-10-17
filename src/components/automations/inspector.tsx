@@ -32,7 +32,7 @@ export function HealthChip({ health }: { health: AppHealth | undefined }) {
 /** The top of the settings: the box's tile, its kind in its colour, its name, and how its app stands. */
 export function InspectorHeader({ kind, logo, iconUrl, label, title, status }: { kind: NodeKind; logo: string; iconUrl?: string | null; label: string; title: string; status?: ReactNode }) {
   return (
-    <header data-kind={kind} className="sticky top-0 z-10 flex min-h-[72px] items-center gap-3 border-b border-line bg-surface px-4 py-4 md:px-6">
+    <header data-kind={kind} className="sticky top-0 z-10 flex min-h-[72px] shrink-0 items-center gap-3 border-b border-fg/10 bg-surface px-4 pt-4 pb-4 md:px-6">
       <NodeTile kind={kind} logo={logo} iconUrl={iconUrl} size={40} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className={cn(T3, "truncate font-semibold tracking-[0.04em] text-[var(--k-ink)] uppercase")}>{label}</span>

@@ -484,7 +484,7 @@ export function ReviewBuilder({ automation }: { automation: Automation | null })
         </div>
         {menu.length > 0 && <MoreMenu label="More for this review" items={menu} />}
       </header>
-      <div className="@container/builder flex min-h-0 flex-1 flex-col overflow-y-auto @min-[1040px]/builder:overflow-hidden">
+      <div className="@container/builder flex min-h-0 flex-1 flex-col overflow-y-auto @min-[1040px]/builder:overflow-clip">
         <div className="grid min-h-0 flex-1 grid-cols-1 @min-[1040px]/builder:grid-cols-[minmax(0,1fr)_400px] @min-[1040px]/builder:grid-rows-[minmax(0,1fr)]">
           <section aria-label="Canvas" className={cn("relative min-w-0 bg-bg", compact ? "" : "h-[720px] @min-[1040px]/builder:h-auto")}>
             <LaneCanvas

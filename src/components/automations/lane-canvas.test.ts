@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 // The canvas (React Flow), drawn as a graph: the boxes it draws from what the builder gives it, each
 // in its kind's colour with its ports, a step's "only if" as a condition box with "Yes", "No" and a
-// Stop, React Flow's own link kept, and the library loaded only as the canvas's own chunk. (Clicking
+// Stop, React Flow's own label hidden, and the library loaded only as the canvas's own chunk. (Clicking
 // the boxes, the "+" and the × is in lane-canvas-clicks.test.ts.)
 
 import LaneCanvas, { type LaneCanvasProps } from "@/components/automations/lane-canvas";
@@ -83,8 +83,8 @@ describe("the canvas", () => {
     // A line between each two boxes, drawn from the first paint, each with its arrowhead.
     expect(html.match(/class="react-flow__edge-path"/g)?.length).toBe(4);
     expect(html.match(/class="graph-arrow"/g)?.length).toBe(4);
-    // React Flow's own link stays.
-    expect(html).toContain("React Flow");
+    // React Flow's own label is hidden by its own option.
+    expect(html).not.toContain("React Flow");
   });
 
   it("colours each box by its kind, gives it a tile, and puts its ports on its edges", () => {
