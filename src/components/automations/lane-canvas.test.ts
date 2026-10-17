@@ -97,4 +97,15 @@ describe("its chunk", () => {
     expect(importers(/^import (?!type )[^;]*from "\.\/lane-canvas"/m)).toEqual([]);
     expect(importers(/import\("\.\/lane-canvas"\)/).sort()).toEqual(["components/automations/builder.tsx", "components/automations/review-builder.tsx"]);
   });
+
+  it("lets every box take a click: React Flow switches pointer events off on nodes that are not selectable", () => {
+    const html = renderToStaticMarkup(createElement(LaneCanvas, props()));
+    const root = (open: string) => html.slice(html.lastIndexOf("<", html.indexOf(open)));
+    for (const name of ["Schedule: Every day", "Step 1 · Gmail: Fetch emails", "Step 2 · Tex: Sum them up", "Results go to Automations chat"]) {
+      const tag = root(`aria-label="${name}`);
+      expect(tag.slice(0, tag.indexOf(">"))).toContain("pointer-events-auto");
+    }
+    const empty = html.slice(html.lastIndexOf("border-dashed", html.indexOf("Writing skipped")) - 200, html.indexOf("Writing skipped"));
+    expect(empty).toContain("pointer-events-auto");
+  });
 });
