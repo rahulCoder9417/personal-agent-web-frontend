@@ -432,6 +432,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/skip-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user's skip rules, newest first
+         * @description A skip rule is the user's standing "don't ask again" for one risky app action. While it
+         *     holds, that action runs without a card and is kept in Approvals as `auto_approved`. Only
+         *     the user makes or removes rules, here, with their session: the agent has no tool for them.
+         *     At most 50.
+         */
+        get: operations["listSkipRules"];
+        put?: never;
+        /**
+         * Don't ask again for this action
+         * @description Makes a rule from one of the user's approvals (the card's "Don't ask again for this…"):
+         *     the same app and action, with the scope picked from the approval's `skip.scopes`.
+         *     `listed`: `recipients` when given, else the approval's own recipients. The card then
+         *     approves that approval with `POST /v1/approvals/{approvalId}/decision`; this call does not.
+         *     A rule for the same action and scope that exists already is returned (a `listed` one gets
+         *     the new recipients added). 400 `not_skippable`: the action always asks (deleting, paying,
+         *     merging, Tex's own commands and pushes, crew jobs), or the scope isn't offered for it.
+         *     409 `too_many_rules`: 50 already.
+         */
+        post: operations["createSkipRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skip-rules/{ruleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a skip rule
+         * @description The action asks again from now on. Approvals it let through stay in the log.
+         */
+        delete: operations["deleteSkipRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps": {
         parameters: {
             query?: never;
@@ -3018,9 +3072,76 @@ export interface components {
          * @description `replaced`: the agent asked again for the same action with corrected details, and this
          *     request was set aside for the newer one. It was not run and can no longer be answered.
          *     The user did not reject it.
+         *     `auto_approved`: nobody was asked. The user's skip rule (`skipRule`) covered it, so it ran
+         *     at once; `run` says how it went. It can't be answered.
          * @enum {string}
          */
-        ApprovalStatus: "pending" | "approved" | "rejected" | "expired" | "replaced";
+        ApprovalStatus: "pending" | "approved" | "rejected" | "expired" | "replaced" | "auto_approved";
+        /**
+         * @description What a skip rule covers, for its one action:
+         *     - `listed`: only when the request names at least one recipient and every one is on the
+         *       rule's list (email addresses, a channel, or a GitHub repository as owner/repo).
+         *     - `anyone`: whoever or wherever it goes.
+         *     - `action`: an action that takes no recipients; it runs without asking when the request
+         *       names none (one that does name some still asks).
+         * @enum {string}
+         */
+        SkipScope: "listed" | "anyone" | "action";
+        /**
+         * @description On a pending app action that a skip rule could cover: what the card's quiet "Don't ask
+         *     again for this…" offers. Null on one that always asks (deleting, paying, merging, Tex's own
+         *     commands and pushes, crew jobs) and on any approval that isn't pending.
+         */
+        SkipOffer: {
+            /**
+             * @description The action in words.
+             * @example Send email
+             */
+            actionName: string;
+            /**
+             * @description Who or where this request goes, lower-cased. Empty when it names none.
+             * @example [
+             *       "priya@acme.com"
+             *     ]
+             */
+            recipients: string[];
+            /**
+             * @description `repository`: the recipients are GitHub repositories ("Only in …"); `people`: addresses or channels ("Only to …").
+             * @enum {string}
+             */
+            target: "people" | "repository";
+            /** @description The choices to offer, the default first. */
+            scopes: components["schemas"]["SkipScope"][];
+        };
+        SkipRule: {
+            id: string;
+            /** @example gmail */
+            app: string;
+            /** @example GMAIL_SEND_EMAIL */
+            action: string;
+            /** @example Send email */
+            actionName: string;
+            scope: components["schemas"]["SkipScope"];
+            /** @description `listed`: the list. Empty for the other scopes. */
+            recipients: string[];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description How an app action the platform ran went (one the user approved, or one a skip rule let through). */
+        ApprovalRun: {
+            /**
+             * @description `running`: started, no answer yet (after 5 minutes it never will: check in the app).
+             * @enum {string}
+             */
+            state: "running" | "done" | "failed";
+            /** Format: date-time */
+            at: string;
+            /** @description The app's short answer as text, cut to 600 characters. Null unless done. */
+            result: string | null;
+            /** @description Why nothing was done, when it failed. */
+            error: string | null;
+            creditsCharged: number;
+        };
         Approval: {
             id: string;
             /**
@@ -3052,8 +3173,21 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             expiresAt: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When it was answered; for `auto_approved`, when it ran.
+             */
             decidedAt?: string | null;
+            /** @description Pending app actions only. What "Don't ask again for this…" may offer; null when it may not be offered. */
+            skip?: null | components["schemas"]["SkipOffer"];
+            /** @description `auto_approved` only: the rule that let it run, as it was then (it may have been removed since). */
+            skipRule?: null | {
+                id: string;
+                scope: components["schemas"]["SkipScope"];
+                recipients: string[];
+            };
+            /** @description An app action the platform ran (after the yes, or by a skip rule) and how it went. Null otherwise. */
+            run?: null | components["schemas"]["ApprovalRun"];
         };
         App: {
             /** @example gmail */
@@ -4844,6 +4978,8 @@ export interface components {
              * @example send_message
              * @example approval_requested
              * @example approval_decided
+             * @example skip_rule_created
+             * @example skip_rule_removed
              * @example coupon_redeemed
              * @example channel_linked
              * @example channel_unlinked
@@ -5583,6 +5719,92 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    listSkipRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["SkipRule"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createSkipRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    approvalId: string;
+                    scope: components["schemas"]["SkipScope"];
+                    /** @description For `listed` only. Left out, the approval's own recipients. */
+                    recipients?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Saved */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkipRule"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The user has 50 rules already */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteSkipRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     listApps: {

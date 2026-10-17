@@ -824,6 +824,66 @@ describe("approvals", () => {
   });
 });
 
+describe("skip rules", () => {
+  type Rule = { id: string; app: string; action: string; actionName: string; scope: string; recipients: string[] };
+
+  it("serves the example rule and the auto-approved entry it let through, and offers a skip only where one may be made", async () => {
+    const rules = (await call<{ items: Rule[] }>("GET", "skip-rules")).body.items;
+    expect(rules).toEqual([expect.objectContaining({ id: "skp_me", action: "GMAIL_SEND_EMAIL", scope: "listed", recipients: ["aarav@northwind.studio"] })]);
+    const [auto] = (await call<Page<Approval>>("GET", "approvals?status=auto_approved")).body.items;
+    expect(auto).toMatchObject({ status: "auto_approved", skipRule: { id: "skp_me", scope: "listed" }, run: { state: "done", creditsCharged: 1 } });
+    const pending = (await call<Page<Approval>>("GET", "approvals")).body.items;
+    expect(Object.fromEntries(pending.map((a) => [a.id, a.skip?.scopes ?? null]))).toEqual({
+      ap_email: ["listed", "anyone"],
+      ap_slack: ["listed", "anyone"],
+      ap_drafts: null,
+    });
+    // Replaced is a tab too.
+    expect((await call<Page<Approval>>("GET", "approvals?status=replaced")).status).toBe(200);
+  });
+
+  it("makes a rule from a card, refuses one for deleting, and removes one", async () => {
+    const made = await call<Rule>("POST", "skip-rules", { approvalId: "ap_slack", scope: "anyone" });
+    expect(made.status).toBe(201);
+    expect(made.body).toMatchObject({ app: "slack", action: "SLACK_SEND_MESSAGE", scope: "anyone", recipients: [] });
+    // The same again: the same rule.
+    expect((await call<Rule>("POST", "skip-rules", { approvalId: "ap_slack", scope: "anyone" })).body.id).toBe(made.body.id);
+
+    const refused = await call<ErrorBody>("POST", "skip-rules", { approvalId: "ap_drafts", scope: "anyone" });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.code).toBe("not_skippable");
+    expect((await call<ErrorBody>("POST", "skip-rules", { approvalId: "nope", scope: "anyone" })).status).toBe(404);
+    expect(getStore().activity[0]).toMatchObject({ actor: "user", action: "skip_rule_created", summary: "Don't ask again: Slack: send message to anyone" });
+
+    expect((await call("DELETE", `skip-rules/${made.body.id}`)).status).toBe(204);
+    expect((await call("DELETE", `skip-rules/${made.body.id}`)).status).toBe(404);
+    expect((await call<{ items: Rule[] }>("GET", "skip-rules")).body.items.map((r) => r.id)).toEqual(["skp_me"]);
+  });
+
+  it("with a rule for anyone, the next email Tex is asked for runs at once, with no card, and is kept as auto-approved", async () => {
+    // A card for an email that names nobody may be skipped only for anyone.
+    await call<Message>("POST", "messages", { text: "Email Maya the kickoff notes", clientMessageId: uuid(40) });
+    vi.advanceTimersByTime(2000);
+    const [asked] = (await call<Page<Approval>>("GET", "approvals")).body.items;
+    expect(asked.skip?.scopes).toEqual(["anyone"]);
+    expect((await call<Rule>("POST", "skip-rules", { approvalId: asked.id, scope: "anyone" })).status).toBe(201);
+    await call<Approval>("POST", `approvals/${asked.id}/decision`, { decision: "approve" });
+    vi.advanceTimersByTime(1000);
+    const before = (await call<Me>("GET", "me")).body.credits.balance;
+
+    await call<Message>("POST", "messages", { text: "Email Leo the invoice", clientMessageId: uuid(41) });
+    vi.advanceTimersByTime(2000);
+    // No card: nothing new is waiting.
+    expect((await call<Page<Approval>>("GET", "approvals")).body.items.map((a) => a.summary)).not.toContain("Email Leo the invoice");
+    const [auto] = (await call<Page<Approval>>("GET", "approvals?status=auto_approved")).body.items;
+    expect(auto).toMatchObject({ status: "auto_approved", summary: "Email Leo the invoice", action: "GMAIL_SEND_EMAIL", run: { state: "done", creditsCharged: 1 } });
+    const [reply] = (await call<Page<Message>>("GET", "messages?channel=web")).body.items;
+    expect(reply.approvalId).toBeNull();
+    expect(reply.text).toContain("your skip rule covers this");
+    expect((await call<Me>("GET", "me")).body.credits.balance).toBe(before - 1);
+  });
+});
+
 describe("credits", () => {
   it("redeems the demo coupon once, and gives every other code the same answer", async () => {
     const redeemed = await call<{ creditsAdded: number; balance: number }>("POST", "coupons/redeem", { code: "textcrew-demo" });

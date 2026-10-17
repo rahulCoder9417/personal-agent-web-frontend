@@ -11,6 +11,12 @@ describe("resolveUpstream", () => {
     );
   });
 
+  it("lets the skip rules (Approvals → Skip rules) through: the list, a new one and removing one", () => {
+    expect(resolveUpstream(BASE, ["skip-rules"])?.toString()).toBe("http://localhost:8080/v1/skip-rules");
+    expect(resolveUpstream(BASE, ["skip-rules", "skp_1"])?.toString()).toBe("http://localhost:8080/v1/skip-rules/skp_1");
+    expect(resolveUpstream(BASE, ["skip-rules", ".."])).toBeNull();
+  });
+
   it("lets the crew list and pull-request review through", () => {
     expect(resolveUpstream(BASE, ["crew"])?.toString()).toBe("http://localhost:8080/v1/crew");
     expect(resolveUpstream(BASE, ["pr-reviews"])?.toString()).toBe("http://localhost:8080/v1/pr-reviews");

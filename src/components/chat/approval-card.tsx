@@ -1,17 +1,19 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, unwrap, type Approval, type ApprovalStatus } from "@/lib/api/client";
-import { findCachedApproval, useDecideApproval } from "@/lib/api/hooks";
-import { webApprovalLine } from "@/lib/approvals";
+import { api, unwrap, type Approval, type ApprovalStatus, type SkipScope } from "@/lib/api/client";
+import { findCachedApproval, useCreateSkipRule, useDecideApproval } from "@/lib/api/hooks";
+import { ruleSavedToast, webApprovalLine } from "@/lib/approvals";
 import { noteAnswered } from "@/lib/chat-thread";
 import { cn, formatTimeLeft } from "@/lib/format";
 import { ApprovalDetailsFold, ApprovalTitle, DecidedLine, approvalView } from "../approvals/approval-parts";
+import { SkipPicker } from "../approvals/skip-picker";
 import { AppIcon } from "../brand-icon";
+import { toast, toastError } from "../toast";
 import { Button, InlineError } from "../ui";
 import { AgentBubble } from "./agent-bubble";
 
-const STATUSES: ApprovalStatus[] = ["pending", "approved", "rejected", "expired", "replaced"];
+const STATUSES: ApprovalStatus[] = ["pending", "approved", "rejected", "expired", "replaced", "auto_approved"];
 
 /**
  * One approval, kept fresh by the live stream (`approval.created`, `approval.resolved`). There is no
@@ -35,11 +37,15 @@ export function useApproval(approvalId: string | null) {
   });
 }
 
-/** The Approve / Deny card that sits in the thread, under Tex's question, where Tex stopped to ask. */
-export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string; fallbackText?: string }) {
+/**
+ * The Approve / Deny card that sits in the thread, under Tex's question, where Tex stopped to ask.
+ * `skipOpen`: the "Don't ask again" choice unfolded to begin with (tests and screenshots).
+ */
+export function ApprovalCard({ approvalId, fallbackText, skipOpen = false }: { approvalId: string; fallbackText?: string; skipOpen?: boolean }) {
   const qc = useQueryClient();
   const { data: approval, isLoading } = useApproval(approvalId);
   const decide = useDecideApproval();
+  const createRule = useCreateSkipRule();
 
   if (isLoading) return <div aria-hidden className="h-[150px] w-full max-w-[480px] animate-pulse rounded-2xl bg-accent-soft" />;
   // The approval can't be found (very old, or already cleaned up): show the message as any other of Tex's.
@@ -47,7 +53,7 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
 
   const { forcePush, why, hasDetails } = approvalView(approval);
   const pending = approval.status === "pending";
-  const submit = (decision: "approve" | "reject") =>
+  const submit = (decision: "approve" | "reject", then?: () => void) =>
     decide.mutate(
       { approvalId, decision },
       {
@@ -55,9 +61,21 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
           qc.setQueryData(["approval", approvalId], next);
           // Tex picks the answer up at once: the thread shows it at work while it wakes for it.
           noteAnswered(approvalId);
+          then?.();
         },
         // Someone (or the chat app) decided first: show what happened.
         onError: () => qc.invalidateQueries({ queryKey: ["approval", approvalId] }),
+      },
+    );
+
+  // "Don't ask again": the rule first, then the yes. A rule that can't be saved leaves the card as it was.
+  const skipAndApprove = (scope: SkipScope) =>
+    createRule.mutate(
+      { approvalId, scope },
+      {
+        onSuccess: (rule) =>
+          submit("approve", () => toast({ ...ruleSavedToast(rule), action: { label: "Skip rules", href: "/approvals?view=rules" } })),
+        onError: (error) => toastError("Couldn’t save the rule", error),
       },
     );
 
@@ -80,14 +98,17 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
       {hasDetails && <ApprovalDetailsFold approval={approval} className="-mt-1" />}
 
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="primary" onClick={() => submit("approve")} pending={decide.isPending && decide.variables?.decision === "approve"}>
+        <Button variant="primary" onClick={() => submit("approve")} disabled={createRule.isPending} pending={decide.isPending && decide.variables?.decision === "approve"}>
           Approve
         </Button>
-        <Button onClick={() => submit("reject")} disabled={decide.isPending}>
+        <Button onClick={() => submit("reject")} disabled={decide.isPending || createRule.isPending}>
           Deny
         </Button>
       </div>
       <p className="-mt-2 text-center text-[12px] text-muted tabular-nums">{formatTimeLeft(approval.expiresAt)}</p>
+      {approval.skip && (
+        <SkipPicker offer={approval.skip} open={skipOpen} busy={createRule.isPending || decide.isPending} onConfirm={skipAndApprove} className="-mt-2" />
+      )}
       <InlineError error={decide.error} />
     </div>
   );
@@ -98,12 +119,12 @@ export function ApprovalCard({ approvalId, fallbackText }: { approvalId: string;
  * The long wording stays on the message for Telegram and WhatsApp; the card already says what and why, so
  * the web does not repeat it (see `webApprovalLine`). An older ask ("Approval needed: …") shows the card alone.
  */
-export function ApprovalQuestion({ text, approvalId }: { text: string; approvalId: string }) {
+export function ApprovalQuestion({ text, approvalId, skipOpen }: { text: string; approvalId: string; skipOpen?: boolean }) {
   const question = webApprovalLine(text);
   return (
     <div className="flex w-full min-w-0 flex-col items-start gap-2">
       {question && <AgentBubble text={question} />}
-      <ApprovalCard approvalId={approvalId} fallbackText={question ? undefined : text} />
+      <ApprovalCard approvalId={approvalId} fallbackText={question ? undefined : text} skipOpen={skipOpen} />
     </div>
   );
 }

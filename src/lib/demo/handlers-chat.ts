@@ -1,7 +1,8 @@
 // Chat, attachments and approvals for the demo account, including Tex's delayed answers.
 
-import type { Approval, ApprovalStatus, Attachment, ChannelType, Conversation, Message } from "@/lib/api/client";
-import { CHANNEL_LABEL } from "@/lib/format";
+import type { Approval, ApprovalStatus, Attachment, ChannelType, Conversation, Message, SkipOffer, SkipRule, SkipScope } from "@/lib/api/client";
+import { ruleScopeLine } from "@/lib/approvals";
+import { CHANNEL_LABEL, titleCase } from "@/lib/format";
 import { lowerFirst, nowIso, truncate, upperFirst, type Handler } from "./context";
 import {
   badRequest,
@@ -9,6 +10,7 @@ import {
   conflict,
   HttpError,
   json,
+  noContent,
   notFound,
   oneOf,
   outOfCredits,
@@ -36,7 +38,11 @@ import { balanceOf, chargeAppAction, chargePaidTool, chargeUsage, emit, logActiv
 import { streamResponse } from "./stream";
 
 const CHANNELS: readonly ChannelType[] = ["whatsapp", "telegram", "imessage", "web"];
-const APPROVAL_STATUSES: readonly ApprovalStatus[] = ["pending", "approved", "rejected", "expired"];
+const APPROVAL_STATUSES: readonly ApprovalStatus[] = ["pending", "approved", "rejected", "expired", "replaced", "auto_approved"];
+const SKIP_SCOPES: readonly SkipScope[] = ["listed", "anyone", "action"];
+/** As the backend: at most this many rules, and this many recipients on one. */
+const MAX_SKIP_RULES = 50;
+const MAX_SKIP_RECIPIENTS = 50;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_ATTACHMENTS = 5;
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -140,7 +146,52 @@ function riskOf(text: string): Risk | null {
   return null;
 }
 
+/** "GMAIL_SEND_EMAIL" → "Send email", as the backend words an action (its app's prefix left out). */
+const actionWords = (action: string) => upperFirst(action.split("_").slice(1).join(" ").toLowerCase());
+
+/**
+ * What the card's "Don't ask again for this…" offers, as the backend works it out (OpenAPI SkipOffer):
+ * nothing for deleting or paying; a demo request names nobody, so "anyone" is the one choice.
+ */
+function skipOfferOf(risk: Risk): SkipOffer | null {
+  if (/(^|_)(DELETE|REMOVE|TRASH|ARCHIVE|PAY|PAYMENT|TRANSFER|CHARGE|REFUND|MERGE)(_|$)/.test(risk.action)) return null;
+  return { actionName: actionWords(risk.action), recipients: [], target: "people", scopes: ["anyone"] };
+}
+
+/** The user's rule that lets this demo request run without a card: one that names nobody matches "anyone" (or "this action"). */
+function ruleFor(state: DemoState, risk: Risk): SkipRule | null {
+  if (!skipOfferOf(risk)) return null;
+  return state.skipRules.find((rule) => rule.action === risk.action && (rule.scope === "anyone" || rule.scope === "action")) ?? null;
+}
+
+/** As the backend does it: a request the user's skip rule covers runs at once, with no card, and is kept as auto-approved. */
+function runBySkipRule(state: DemoState, request: Message, risk: Risk, rule: SkipRule): void {
+  const at = nowIso();
+  const charged = chargeAppAction(state, risk.action);
+  const approval: Approval = {
+    id: nextId(state, "ap"),
+    kind: "app_action",
+    status: "auto_approved",
+    summary: upperFirst(truncate(request.text, 70)),
+    app: risk.app,
+    action: risk.action,
+    details: { arguments: { body: request.text } },
+    createdAt: at,
+    expiresAt: at,
+    decidedAt: at,
+    skip: null,
+    skipRule: { id: rule.id, scope: rule.scope, recipients: rule.recipients },
+    run: { state: "done", at, result: '{"ok":true}', error: null, creditsCharged: charged },
+  };
+  state.approvals.unshift(approval);
+  emit(state, "approval.resolved", approval);
+  logActivity(state, { actor: "agent", action: "run_app_action", summary: `Ran ${risk.action} without asking (your skip rule)`, creditsCharged: charged });
+  postFromTex(state, request.conversationId, "Done. I didn’t ask first: your skip rule covers this. It’s under Approvals → Auto-approved.", null, null, request.turnId ?? null);
+}
+
 function askForApproval(state: DemoState, request: Message, risk: Risk): void {
+  const rule = ruleFor(state, risk);
+  if (rule) return runBySkipRule(state, request, risk, rule);
   const createdAt = nowIso();
   const approval: Approval = {
     id: nextId(state, "ap"),
@@ -153,6 +204,7 @@ function askForApproval(state: DemoState, request: Message, risk: Risk): void {
     createdAt,
     expiresAt: new Date(Date.parse(createdAt) + DAY_MS).toISOString(),
     decidedAt: null,
+    skip: skipOfferOf(risk),
   };
   state.approvals.unshift(approval);
   emit(state, "approval.created", approval);
@@ -576,6 +628,8 @@ export const decideApproval: Handler = async ({ state, request, params }) => {
 
   approval.status = decision === "approve" ? "approved" : "rejected";
   approval.decidedAt = nowIso();
+  // Answered: no "Don't ask again" any more (the backend offers it only while it waits).
+  approval.skip = null;
   emit(state, "approval.resolved", approval);
   logActivity(state, {
     actor: "user",
@@ -584,4 +638,67 @@ export const decideApproval: Handler = async ({ state, request, params }) => {
   });
   schedule(state, FOLLOW_UP_MS, () => followUp(state, approval));
   return json(approval);
+};
+
+// ---------------------------------------------------------------- skip rules ("Don't ask again")
+
+const notSkippable = (message: string) => new HttpError(400, "not_skippable", message);
+
+const ruleLine = (rule: SkipRule) => {
+  const scope = ruleScopeLine(rule);
+  return `${titleCase(rule.app)}: ${rule.actionName.toLowerCase()} ${scope.charAt(0).toLowerCase()}${scope.slice(1)}`;
+};
+
+export const listSkipRules: Handler = ({ state }) => json({ items: state.skipRules });
+
+/** As the backend: a rule from one of the user's approvals, with a choice its card offered; the same one again is returned. */
+export const createSkipRule: Handler = async ({ state, request }) => {
+  const body = await readJson(request);
+  const approvalId = requiredString(body, "approvalId");
+  const scope = oneOf(body.scope, SKIP_SCOPES, "scope");
+  const approval = state.approvals.find((item) => item.id === approvalId);
+  if (!approval) throw notFound("Approval not found");
+  // The card saves the rule before its yes, so the offer is the waiting card's own.
+  const offer = approval.skip ?? skipOfferOfApproval(approval);
+  if (!offer || !approval.app || !approval.action)
+    throw notSkippable("This action always asks first: deleting, paying, merging and Tex’s own commands and pushes can’t be skipped.");
+  if (!offer.scopes.includes(scope)) throw notSkippable(`For this action the choice is: ${offer.scopes.join(" or ")}.`);
+  const given = Array.isArray(body.recipients) ? body.recipients.filter((item): item is string => typeof item === "string") : offer.recipients;
+  const recipients = scope === "listed" ? [...new Set(given.map((item) => item.trim().toLowerCase()).filter(Boolean))] : [];
+  if (scope === "listed" && recipients.length === 0) throw badRequest("Name at least one recipient");
+
+  const existing = state.skipRules.find((rule) => rule.action === approval.action && rule.scope === scope);
+  if (existing) {
+    const merged = [...new Set([...existing.recipients, ...recipients])];
+    if (merged.length > MAX_SKIP_RECIPIENTS) throw badRequest(`A rule holds at most ${MAX_SKIP_RECIPIENTS} recipients`);
+    existing.recipients = merged;
+    return json(existing, 201);
+  }
+  if (state.skipRules.length >= MAX_SKIP_RULES)
+    throw new HttpError(409, "too_many_rules", `You have ${MAX_SKIP_RULES} skip rules already. Remove one first.`);
+  const rule: SkipRule = {
+    id: nextId(state, "skp"),
+    app: approval.app,
+    action: approval.action,
+    actionName: offer.actionName,
+    scope,
+    recipients,
+    createdAt: nowIso(),
+  };
+  state.skipRules.unshift(rule);
+  logActivity(state, { actor: "user", action: "skip_rule_created", summary: `Don't ask again: ${ruleLine(rule)}` });
+  return json(rule, 201);
+};
+
+/** The offer for an approval no longer waiting, worked out again from its action. Never for Tex's own kinds. */
+function skipOfferOfApproval(approval: Approval): SkipOffer | null {
+  return approval.kind === "app_action" && approval.app && approval.action ? skipOfferOf({ app: approval.app, action: approval.action, reason: "" }) : null;
+}
+
+export const deleteSkipRule: Handler = ({ state, params }) => {
+  const index = state.skipRules.findIndex((rule) => rule.id === params.ruleId);
+  if (index < 0) throw notFound("Skip rule not found");
+  const [rule] = state.skipRules.splice(index, 1);
+  logActivity(state, { actor: "user", action: "skip_rule_removed", summary: `Asks again from now on: ${ruleLine(rule)}` });
+  return noContent();
 };

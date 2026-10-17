@@ -36,6 +36,9 @@ const ROUTES: Route[] = [
 
   route("GET", "approvals", chat.listApprovals),
   route("POST", "approvals/:approvalId/decision", chat.decideApproval),
+  route("GET", "skip-rules", chat.listSkipRules),
+  route("POST", "skip-rules", chat.createSkipRule),
+  route("DELETE", "skip-rules/:ruleId", chat.deleteSkipRule),
 
   route("GET", "apps", setup.listApps),
   route("POST", "apps/:appSlug/connect", setup.connectApp),

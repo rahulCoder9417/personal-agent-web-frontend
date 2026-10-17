@@ -261,6 +261,27 @@ export function Spinner({ size = 16, className }: { size?: number; className?: s
 export type FilterOption<T extends string> = { value: T; label: string; icon?: ReactNode; count?: number };
 
 /** A row of pill toggles where exactly one is selected. */
+/**
+ * The chosen pill, kept in view in the strip (a phone shows only the first few), also when the
+ * pills widen as their counts arrive. Only the strip scrolls, sideways; never the page. A stable
+ * function, so React calls it when a pill becomes the chosen one, and its clean-up when it stops.
+ */
+function showChosen(element: HTMLButtonElement | null): (() => void) | undefined {
+  const strip = element?.parentElement;
+  if (!element || !strip) return;
+  const show = () => {
+    const box = strip.getBoundingClientRect();
+    const pill = element.getBoundingClientRect();
+    if (pill.left < box.left) strip.scrollLeft -= box.left - pill.left + 3;
+    else if (pill.right > box.right) strip.scrollLeft += pill.right - box.right + 3;
+  };
+  show();
+  if (typeof ResizeObserver === "undefined") return;
+  const watch = new ResizeObserver(show);
+  for (const pill of strip.children) watch.observe(pill);
+  return () => watch.disconnect();
+}
+
 export function FilterPills<T extends string>({
   label,
   options,
@@ -279,6 +300,7 @@ export function FilterPills<T extends string>({
         return (
           <button
             key={option.value}
+            ref={on ? showChosen : undefined}
             type="button"
             aria-pressed={on}
             onClick={() => onChange(option.value)}

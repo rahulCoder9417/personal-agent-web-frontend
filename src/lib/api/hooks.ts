@@ -23,6 +23,8 @@ import {
   type AiPreference,
   type Approval,
   type ApprovalStatus,
+  type SkipRule,
+  type SkipScope,
   type Attachment,
   type Automation,
   type AutoTopUpUpdate,
@@ -74,6 +76,8 @@ export const qk = {
   /** One conversation's messages. */
   thread: (conversationId: string) => ["messages", conversationId] as const,
   approvals: (status: ApprovalStatus = "pending") => ["approvals", status] as const,
+  /** The user's skip rules (Approvals → Skip rules). */
+  skipRules: ["skip-rules"] as const,
   apps: ["apps"] as const,
   mcpServers: ["mcp-servers"] as const,
   byok: ["byok"] as const,
@@ -671,6 +675,31 @@ export function useDecideApproval() {
         }),
       ),
     onSettled: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
+  });
+}
+
+/** The user's skip rules, newest first. */
+export function useSkipRules() {
+  return useQuery({ queryKey: qk.skipRules, queryFn: () => unwrap(api.GET("/v1/skip-rules")), select: (data) => data.items });
+}
+
+/** "Don't ask again for this…": a rule made from one approval. The card approves that approval after it. */
+export function useCreateSkipRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { approvalId: string; scope: SkipScope; recipients?: string[] }) => unwrap(api.POST("/v1/skip-rules", { body: input })),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.skipRules }),
+  });
+}
+
+/** Removes a rule: that action asks again from now on. */
+export function useDeleteSkipRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ruleId: string) => unwrap(api.DELETE("/v1/skip-rules/{ruleId}", { params: { path: { ruleId } } })),
+    onSuccess: (_data, ruleId) => qc.setQueryData<{ items: SkipRule[] }>(qk.skipRules, (old) => (old ? { ...old, items: old.items.filter((rule) => rule.id !== ruleId) } : old)),
+    // Also after a failure: a 404 means it was already gone, and the list should say so.
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.skipRules }),
   });
 }
 

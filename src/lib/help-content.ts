@@ -449,6 +449,20 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         ],
       },
       {
+        id: "approvals-skip",
+        title: "Don’t ask again",
+        blocks: [
+          p("On a card for sending or changing something in an app, **Don’t ask again for this…** makes a skip rule. Pick **Only to** the people on that card (the default) or **Anyone**. That approves this one and saves the rule."),
+          list(
+            "After that, the same action to the people on the list runs at once, with no card, and Tex tells you what it did. Anyone else still asks, also in cc or bcc.",
+            "Each one that ran is kept in {approvals} under **Auto-approved**: what ran, when, by which rule, and the result.",
+            "Your rules are under **Skip rules** on the same page. **Remove** one, and that action asks again.",
+            "Only you make a rule, here in the web app. Tex can’t make or change one.",
+          ),
+          note("Deleting, paying, merging a pull request and Tex’s own commands and pushes always ask. So does an automation set to ask before anything that changes something."),
+        ],
+      },
+      {
         id: "approvals-telegram",
         title: "Approve in Telegram",
         blocks: [

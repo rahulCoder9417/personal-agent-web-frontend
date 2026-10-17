@@ -10,6 +10,7 @@ export const ALLOWED_RESOURCES: ReadonlySet<string> = new Set([
   "attachments",
   "stream",
   "approvals",
+  "skip-rules",
   "apps",
   "connections",
   "mcp-servers",

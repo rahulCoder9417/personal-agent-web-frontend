@@ -165,7 +165,7 @@ export function RadioCards<T extends string>({
               </span>
             )}
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-[13.5px] leading-snug font-semibold">{option.label}</span>
+              <span className="text-[13.5px] leading-snug font-semibold [overflow-wrap:anywhere]">{option.label}</span>
               {option.description && <span className="text-[12.5px] leading-snug text-fg-2">{option.description}</span>}
             </span>
             <span

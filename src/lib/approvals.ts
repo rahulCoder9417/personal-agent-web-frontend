@@ -1,7 +1,8 @@
-// Why Tex is asking, worked out from the action name (e.g. GMAIL_SEND_EMAIL), and what an
-// answered approval says.
+// Why Tex is asking, worked out from the action name (e.g. GMAIL_SEND_EMAIL), what an answered
+// approval says, and the words of "Don't ask again" (skip rules).
 
-import type { Approval, ApprovalStatus } from "./api/client";
+import type { Approval, ApprovalRun, ApprovalStatus, SkipOffer, SkipRule, SkipScope } from "./api/client";
+import { formatCredits } from "./format";
 
 export type ApprovalReason = {
   label: string;
@@ -148,6 +149,7 @@ export const APPROVAL_RESULT: Record<SettledStatus, { text: string; tone: "succe
   rejected: { text: "You denied this", tone: "danger", icon: "close" },
   expired: { text: "This expired before it was answered", tone: "muted", icon: "close" },
   replaced: { text: "Replaced by a newer request", tone: "muted", icon: null },
+  auto_approved: { text: "Ran without asking, by your skip rule", tone: "success", icon: "check" },
 };
 
 /** What came of an answered approval, on the Approvals screen. */
@@ -156,5 +158,88 @@ export function approvalOutcome(status: SettledStatus): string {
   if (status === "approved") return "Tex was told to go ahead.";
   if (status === "rejected") return "Tex didn’t do this.";
   if (status === "replaced") return "Tex asked again with corrected details, so this request was set aside. Nothing was done with it.";
+  if (status === "auto_approved") return "Nobody was asked: your skip rule covered it, so it ran at once.";
   return "Nothing was done. Ask Tex again if you still want it.";
 }
+
+/** How the platform's run of an app action went, in one line: "Done · 1 credit". */
+export function runLine(run: ApprovalRun): { text: string; tone: "success" | "danger" | "muted" } {
+  if (run.state === "done") return { text: run.creditsCharged ? `Done · ${formatCredits(run.creditsCharged)}` : "Done", tone: "success" };
+  if (run.state === "failed") return { text: `Didn’t go through, so nothing was done${run.error ? `: ${run.error}` : "."}`, tone: "danger" };
+  return { text: "Started, but no answer came back. Check in the app whether it went through.", tone: "muted" };
+}
+
+// ---------------------------------------------------------------- skip rules ("Don't ask again")
+
+/**
+ * The quiet link on a card. The server decides when it may show (`approval.skip`): only on a waiting
+ * action in an app that a rule may cover, never for deleting, paying, merging or Tex's own commands and pushes.
+ */
+export const SKIP_LINK = "Don’t ask again for this…";
+export const SKIP_CONFIRM = "Approve and don’t ask again";
+/** Always asks, whatever the user picks: said under the choice so nobody expects otherwise. */
+export const SKIP_NEVER = "Deleting, paying and merging always ask.";
+
+/** "a@b.com", "a@b.com and c@d.com", "a@b.com, c@d.com and 2 more" */
+export function recipientList(recipients: readonly string[], shown = 2): string {
+  if (recipients.length <= shown) return recipients.join(" and ");
+  const rest = recipients.length - shown;
+  return `${recipients.slice(0, shown).join(", ")} and ${rest} more`;
+}
+
+/** A GitHub action's rule is about repositories ("Only in acme/web"), any other's about people. */
+const inRepository = (action: string) => action.toUpperCase().startsWith("GITHUB_");
+
+/** One choice in the card's "Don't ask again" picker, the default first. */
+export type SkipChoice = { scope: SkipScope; label: string; hint: string; warning: string | null };
+
+export function skipChoices(offer: SkipOffer): SkipChoice[] {
+  const repo = offer.target === "repository";
+  const what = offer.actionName.toLowerCase();
+  return offer.scopes.map((scope) => {
+    if (scope === "listed")
+      return {
+        scope,
+        label: `${repo ? "Only in" : "Only to"} ${recipientList(offer.recipients)}`,
+        hint: repo ? "Any other repository still asks." : "Anyone else still asks, also in cc or bcc.",
+        warning: null,
+      };
+    if (scope === "anyone")
+      return {
+        scope,
+        label: repo ? "Any repository" : "Anyone",
+        hint: repo ? "Wherever it is." : "Whoever it goes to.",
+        warning: repo
+          ? `Tex could ${what} in any of your repositories without asking you.`
+          : offer.recipients.length
+            ? `Tex could ${what} to anyone without asking you.`
+            : `Tex could ${what} without asking you, where everyone can see it.`,
+      };
+    return { scope, label: "Every time", hint: "While it names nobody. One that names people still asks.", warning: null };
+  });
+}
+
+/** What a rule covers, in words: "Only to a@b.com", "To anyone", "Only in acme/web". */
+export function ruleScopeLine(rule: Pick<SkipRule, "action" | "scope" | "recipients">): string {
+  const repo = inRepository(rule.action);
+  if (rule.scope === "listed") return `${repo ? "Only in" : "Only to"} ${rule.recipients.join(", ")}`;
+  if (rule.scope === "anyone") return repo ? "In any repository" : "To anyone";
+  return "Every time it names nobody";
+}
+
+/** The toast after the card saved a rule: where to find it again. */
+export function ruleSavedToast(rule: Pick<SkipRule, "action" | "actionName" | "scope" | "recipients">): { title: string; body: string } {
+  const scope = ruleScopeLine(rule);
+  return {
+    title: "Approved. Tex won’t ask again for this",
+    body: `${rule.actionName} ${scope.charAt(0).toLowerCase()}${scope.slice(1)}. It’s under Skip rules on the Approvals page, where you can remove it.`,
+  };
+}
+
+/** The Skip rules list's words. */
+export const SKIP_RULES_INTRO =
+  "Tex doesn’t ask before these. Each time one runs, it’s kept under Auto-approved with its result. Deleting, paying, merging and Tex’s own commands always ask.";
+export const SKIP_RULES_EMPTY = {
+  title: "No skip rules",
+  body: "When Tex asks about something you always say yes to, tap “Don’t ask again for this…” on its card. You choose who it covers: only the people on that card, or anyone. Deleting, paying and merging always ask.",
+};

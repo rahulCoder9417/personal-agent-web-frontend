@@ -24,6 +24,7 @@ import type {
   Message,
   Plan,
   PlanId,
+  SkipRule,
   Subscription,
   TopUpPack,
 } from "@/lib/api/client";
@@ -71,6 +72,8 @@ export type DemoData = {
   approvals: Approval[];
   /** What Tex says after an approval is decided. */
   approvalReplies: Record<string, { approved: string; rejected: string }>;
+  /** The user's "Don't ask again" rules, newest first. */
+  skipRules: SkipRule[];
   apps: App[];
   mcpServers: McpServer[];
   byok: ByokKey[];
@@ -650,14 +653,28 @@ function seedApprovals(now: Date): Approval[] {
       details: { arguments: { to: "maya@acme.com", from: "aarav@northwind.studio", subject: "Moving today’s 3pm",
         body: "Hi Maya, could we move today’s 3pm to tomorrow, same time? Thanks!",
       } },
+      // As the backend offers it: "Don't ask again", only to Maya (the default) or to anyone.
+      skip: { actionName: "Send email", recipients: ["maya@acme.com"], target: "people", scopes: ["listed", "anyone"] },
     },
     {
       id: "ap_slack", kind: "app_action", ...pending(earlierToday(now, 88)), summary: "Post today’s update in #team", app: "slack", action: "SLACK_SEND_MESSAGE",
       details: { arguments: { channel: "#team", workspace: "Northwind", body: "Shipped the new onboarding flow, fixed 4 bugs, demo Thursday." } },
+      skip: { actionName: "Send message", recipients: ["team"], target: "people", scopes: ["listed", "anyone"] },
     },
     {
+      // Deleting always asks: no "Don't ask again" on its card.
       id: "ap_drafts", kind: "app_action", ...pending(earlierToday(now, 230)), summary: "Delete 12 old drafts", app: "gmail", action: "GMAIL_DELETE_DRAFT",
       details: { arguments: { mailbox: "aarav@northwind.studio", count: 12, body: "Drafts older than 90 days in Gmail." } },
+      skip: null,
+    },
+    {
+      // The user's rule "Send email only to aarav@northwind.studio" let this run without a card earlier today.
+      id: "ap_auto_digest", kind: "app_action", status: "auto_approved", summary: "Email me my inbox digest", app: "gmail", action: "GMAIL_SEND_EMAIL",
+      details: { arguments: { recipient_email: "aarav@northwind.studio", subject: "Your inbox digest", body: "3 need a reply: Maya (3pm), Leo (invoice), the Figma renewal." } },
+      createdAt: earlierToday(now, 390), expiresAt: earlierToday(now, 390), decidedAt: earlierToday(now, 390),
+      skip: null,
+      skipRule: { id: "skp_me", scope: "listed", recipients: ["aarav@northwind.studio"] },
+      run: { state: "done", at: earlierToday(now, 390), result: '{"id":"19a3c1f0e2b7","threadId":"19a3c1f0e2b7","labelIds":["SENT"]}', error: null, creditsCharged: 1 },
     },
     {
       id: "ap_update", kind: "app_action", status: "approved", summary: "Post yesterday’s update in #team", app: "slack", action: "SLACK_SEND_MESSAGE",
@@ -911,6 +928,7 @@ export function createNewAccount(now: Date, plan: PlanId = process.env.TEXTCREW_
     attachments: {},
     approvals: [],
     approvalReplies: {},
+    skipRules: [],
     apps: seedApps().map((app) => ({ ...app, connections: [] })),
     mcpServers: [],
     byok: [noKey("anthropic", "claude-sonnet-5-5"), noKey("openai", "gpt-6.1-sol"), noKey("openrouter", "anthropic/claude-sonnet-5.5")],
@@ -976,6 +994,13 @@ export function createSeed(now: Date, plan: PlanId = demoPlan(), account: DemoAc
       ap_slack: { approved: "Posted in #team.", rejected: "Okay, I won’t post it." },
       ap_drafts: { approved: "Done. The 12 old drafts are gone.", rejected: "Okay, I’ll leave the drafts alone." },
     },
+    // Made from an approval card ("Don't ask again"), a week after signing up.
+    skipRules: [
+      {
+        id: "skp_me", app: "gmail", action: "GMAIL_SEND_EMAIL", actionName: "Send email", scope: "listed",
+        recipients: ["aarav@northwind.studio"], createdAt: atDay(now, SIGNUP_DAYS_AGO - 7, 8, 1),
+      },
+    ],
     apps: seedApps(),
     mcpServers: seedMcpServers(plan, now),
     byok: [
