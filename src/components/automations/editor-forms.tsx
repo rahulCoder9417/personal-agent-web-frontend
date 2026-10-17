@@ -3,11 +3,14 @@
 // The settings of each box while an automation is built or changed by hand: what the side panel
 // beside the canvas shows for the box that is open, and what a phone shows for all five, one under
 // another. Each form changes the editor's parts (`EditorParts`, src/lib/automation-editor.ts); the
-// server checks them as they change and its problems come back here, under the box's heading.
+// server checks them as they change and its problems come back here, at the top of the box's
+// settings.
 //
-// Every control is the app's own (src/components): the segmented control for the kind of trigger
-// and of schedule, the date and time pickers, the searchable lists for the time zone, the app and
-// its event, the chips for the apps, the radio cards and the switches. No native select, date, time,
+// Every form is in sections (`FormSection`: a small uppercase heading, 24px between sections), and
+// every field has one rhythm (`Field`): its label at 13px, 6px above the control, and a hint at 12px
+// under it. Every control is the app's own (src/components): the segmented control for the kind of
+// schedule, the date and time pickers, the searchable lists for the time zone, the app and its
+// event, the chips for the apps, the radio cards and the switches. No native select, date, time,
 // number, checkbox or radio is drawn here.
 
 import Link from "next/link";
@@ -62,7 +65,21 @@ type FormProps = {
 };
 
 const LINK = "font-medium text-accent hover:text-accent-dark";
-export const textareaClass = cn(inputClass, "h-auto min-h-[120px] resize-y py-2 leading-relaxed");
+
+/**
+ * A field's label: 13px, medium. (The automation screens otherwise keep to 24, 14 and 12px; the
+ * settings' labels are 13px, so they sit between the 14px values and the 12px hints. Written as a
+ * length, so the screens' type scale in globals.css leaves it as it is.)
+ */
+export const LABEL = "text-[length:13px] leading-[18px] font-medium text-fg";
+/** A hint under a field: 12px, muted. */
+export const HINT = "text-[12px] leading-4 text-muted";
+/** A note in a section: a quiet box of 12px words. */
+export const NOTE = "rounded-xl bg-surface-2 px-4 py-3 text-[12px] leading-relaxed text-fg-2";
+
+/** A long text: 16px in from the sides, 12px from the top and the foot, lines 24px apart. */
+export const textareaClass =
+  "block w-full min-h-[136px] resize-y rounded-[10px] border border-line-strong bg-surface px-4 py-3 text-[14px] leading-6 outline-none transition-shadow placeholder:text-muted/80 focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] disabled:bg-surface-2 disabled:text-muted";
 
 /** The box's problems, for the person and for a screen reader. */
 export function Problems({ problems, className }: { problems: readonly string[]; className?: string }) {
@@ -79,34 +96,69 @@ export function Problems({ problems, className }: { problems: readonly string[];
   );
 }
 
-export function Label({ htmlFor, id, children, hint }: { htmlFor?: string; id?: string; children: ReactNode; hint?: ReactNode }) {
+/** A label on its own (a group's name, when the control is not a field of one value). */
+export function Label({ htmlFor, id, children }: { htmlFor?: string; id?: string; children: ReactNode }) {
+  return htmlFor ? (
+    <label htmlFor={htmlFor} id={id} className={LABEL}>
+      {children}
+    </label>
+  ) : (
+    <span id={id} className={LABEL}>
+      {children}
+    </span>
+  );
+}
+
+/**
+ * One field: its label, 6px above its control, and its hint under it. With `labelId` the label is a
+ * name the control points at (`aria-labelledby`), for a group of buttons.
+ */
+export function Field({
+  label,
+  htmlFor,
+  labelId,
+  hint,
+  children,
+  className,
+}: {
+  label?: ReactNode;
+  htmlFor?: string;
+  labelId?: string;
+  hint?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="flex flex-col gap-1">
-      {htmlFor ? (
-        <label htmlFor={htmlFor} id={id} className="text-[14px] leading-5 font-medium text-fg">
-          {children}
-        </label>
-      ) : (
-        <span id={id} className="text-[14px] leading-5 font-medium text-fg">
-          {children}
-        </span>
+    <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
+      {label && (
+        <Label htmlFor={htmlFor} id={labelId}>
+          {label}
+        </Label>
       )}
-      {hint && <span className="text-[12px] leading-4 text-muted">{hint}</span>}
+      {children}
+      {hint && <div className={HINT}>{hint}</div>}
     </div>
   );
 }
 
-/** A label with its control under it. */
-function FieldBlock({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex min-w-0 flex-col gap-2", className)}>{children}</div>;
+/** A section of a box's settings: a small uppercase heading with a rule after it, and its fields 16px apart. */
+export function FormSection({ title, children, className }: { title?: string; children: ReactNode; className?: string }) {
+  return (
+    <section className={cn("flex min-w-0 flex-col gap-4", className)}>
+      {title && (
+        <h3 className="flex items-center gap-3 text-[12px] leading-4 font-semibold tracking-[0.06em] text-muted uppercase after:h-px after:min-w-4 after:flex-1 after:bg-line">{title}</h3>
+      )}
+      {children}
+    </section>
+  );
 }
 
 /** A group of fields that belong together, under a quiet heading (the event's settings). */
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <fieldset className="flex min-w-0 flex-col gap-3 rounded-xl border border-line bg-surface-2/50 p-3">
+    <fieldset className="flex min-w-0 flex-col gap-4 rounded-xl border border-line bg-surface-2/50 p-4">
       <legend className="sr-only">{title}</legend>
-      <span aria-hidden className="text-[12px] font-semibold tracking-[0.02em] text-muted uppercase">
+      <span aria-hidden className={LABEL}>
         {title}
       </span>
       {children}
@@ -117,7 +169,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 /** "Every weekday at 8:30 AM, by the clock below": what the choices make, read back. */
 function ReadBack({ children }: { children: ReactNode }) {
   return (
-    <p className="flex items-start gap-2 rounded-xl bg-accent-soft/70 px-3 py-2 text-[12px] text-fg-2">
+    <p className="flex items-start gap-2 rounded-xl bg-accent-soft/70 px-4 py-3 text-[12px] leading-4 text-fg-2">
       <ClockIcon size={14} className="mt-px shrink-0 text-accent-dark" />
       <span className="min-w-0">{children}</span>
     </p>
@@ -127,10 +179,7 @@ function ReadBack({ children }: { children: ReactNode }) {
 function TimeZoneField({ editor, onChange, id }: { editor: EditorParts; onChange: FormProps["onChange"]; id: string }) {
   const zones = useMemo(() => timezoneOptions(editor.timezone), [editor.timezone]);
   return (
-    <FieldBlock>
-      <Label htmlFor={id} hint="It runs by the clock of this place. Yours to start with.">
-        Time zone
-      </Label>
+    <Field label="Time zone" htmlFor={id} hint="It runs by the clock of this place. Yours to start with.">
       <Combobox
         id={id}
         label="Time zone"
@@ -141,7 +190,7 @@ function TimeZoneField({ editor, onChange, id }: { editor: EditorParts; onChange
         placeholder="Search for a city or region"
         emptyText={(query) => `No time zone matches “${query}”. Try a city, such as London or Kolkata.`}
       />
-    </FieldBlock>
+    </Field>
   );
 }
 
@@ -224,69 +273,63 @@ function ScheduleFields({ editor, onChange, id }: { editor: EditorParts; onChang
   const set = (next: Partial<Schedule>) => onChange({ ...editor, schedule: { ...schedule, ...next } });
   const words = describeCronInWords(scheduleToCron(schedule));
   return (
-    <div className="flex flex-col gap-4">
-      <FieldBlock>
-        <Label id={`${id}-how`}>How it repeats</Label>
-        <SegmentedControl<ScheduleKind>
-          aria-labelledby={`${id}-how`}
-          options={SCHEDULE_KINDS}
-          value={schedule.kind}
-          fill
-          wrap
-          size="sm"
-          onChange={(kind) => set(kind === "cron" && !schedule.cron.trim() ? { kind, cron: scheduleToCron(schedule) } : { kind })}
-        />
-      </FieldBlock>
-      {schedule.kind === "days" && (
-        <>
-          <FieldBlock>
-            <Label id={`${id}-days`} hint="Pick the days it runs on.">
-              Days
-            </Label>
-            <DaysField days={schedule.days} labelId={`${id}-days`} onChange={(days) => set({ days })} />
-          </FieldBlock>
-          <FieldBlock>
-            <Label htmlFor={`${id}-time`}>At</Label>
-            <div className="w-44">
-              <TimePicker id={`${id}-time`} value={schedule.time} onChange={(time) => set({ time })} />
-            </div>
-          </FieldBlock>
-        </>
-      )}
-      {schedule.kind === "hours" && (
-        <FieldBlock>
-          <Label id={`${id}-hours-label`} hint="On the hour, from midnight. Between 1 and 23.">
-            How often
-          </Label>
-          <NumberStepper
-            id={`${id}-hours`}
-            label="Every how many hours"
-            value={schedule.hours}
-            min={1}
-            max={23}
-            format={(n) => (n === 1 ? "Every hour" : `Every ${n} hours`)}
-            onChange={(hours) => set({ hours })}
+    <>
+      <FormSection title="Schedule">
+        <Field label="How it repeats" labelId={`${id}-how`}>
+          <SegmentedControl<ScheduleKind>
+            aria-labelledby={`${id}-how`}
+            options={SCHEDULE_KINDS}
+            value={schedule.kind}
+            fill
+            wrap
+            size="sm"
+            onChange={(kind) => set(kind === "cron" && !schedule.cron.trim() ? { kind, cron: scheduleToCron(schedule) } : { kind })}
           />
-        </FieldBlock>
-      )}
-      {schedule.kind === "cron" && (
-        <FieldBlock>
-          <Label htmlFor={`${id}-cron`} hint="Five fields: minute, hour, day of the month, month, weekday. For example 0 9 * * 1 is every Monday at 9.">
-            Cron line
-          </Label>
-          <input
-            id={`${id}-cron`}
-            className={cn(inputClass, "font-mono")}
-            value={schedule.cron}
-            spellCheck={false}
-            placeholder="0 9 * * 1"
-            onChange={(event) => set({ cron: event.target.value })}
-          />
-        </FieldBlock>
-      )}
-      {words && <ReadBack>{words}, by the clock below.</ReadBack>}
-      <TimeZoneField editor={editor} onChange={onChange} id={`${id}-tz`} />
-    </div>
+        </Field>
+        {schedule.kind === "days" && (
+          <>
+            <Field label="Days" labelId={`${id}-days`} hint="Pick the days it runs on.">
+              <DaysField days={schedule.days} labelId={`${id}-days`} onChange={(days) => set({ days })} />
+            </Field>
+            <Field label="At" htmlFor={`${id}-time`}>
+              <div className="w-44">
+                <TimePicker id={`${id}-time`} value={schedule.time} onChange={(time) => set({ time })} />
+              </div>
+            </Field>
+          </>
+        )}
+        {schedule.kind === "hours" && (
+          <Field label="How often" labelId={`${id}-hours-label`} hint="On the hour, from midnight. Between 1 and 23.">
+            <NumberStepper
+              id={`${id}-hours`}
+              label="Every how many hours"
+              value={schedule.hours}
+              min={1}
+              max={23}
+              format={(n) => (n === 1 ? "Every hour" : `Every ${n} hours`)}
+              onChange={(hours) => set({ hours })}
+            />
+          </Field>
+        )}
+        {schedule.kind === "cron" && (
+          <Field label="Cron line" htmlFor={`${id}-cron`} hint="Five fields: minute, hour, day of the month, month, weekday. For example 0 9 * * 1 is every Monday at 9.">
+            <input
+              id={`${id}-cron`}
+              className={cn(inputClass, "font-mono")}
+              value={schedule.cron}
+              spellCheck={false}
+              placeholder="0 9 * * 1"
+              onChange={(event) => set({ cron: event.target.value })}
+            />
+          </Field>
+        )}
+        {words && <ReadBack>{words}, by the clock below.</ReadBack>}
+      </FormSection>
+      <FormSection title="Time zone">
+        <TimeZoneField editor={editor} onChange={onChange} id={`${id}-tz`} />
+        <p className={HINT}>An automation runs at most every 15 minutes.</p>
+      </FormSection>
+    </>
   );
 }
 
@@ -304,20 +347,14 @@ export function SettingField({ setting, value, onChange, id }: { setting: AppEve
       ...setting.enum.map((option) => ({ value: settingText(option), label: settingText(option) })),
     ];
     return (
-      <FieldBlock>
-        <Label htmlFor={id} hint={hint}>
-          {label}
-        </Label>
+      <Field label={label} htmlFor={id} hint={hint || undefined}>
         <Select id={id} label={setting.title} value={settingText(value)} options={options} onChange={(next) => onChange(settingValue(setting.type, next))} />
-      </FieldBlock>
+      </Field>
     );
   }
   if (setting.type === "boolean") return <SwitchRow on={value === true} onToggle={() => onChange(value !== true)} title={setting.title} description={hint || undefined} />;
   return (
-    <FieldBlock>
-      <Label htmlFor={id} hint={setting.type === "array" ? `${hint} Several: separate them with commas.` : hint}>
-        {label}
-      </Label>
+    <Field label={label} htmlFor={id} hint={(setting.type === "array" ? `${hint} Several: separate them with commas.` : hint) || undefined}>
       <input
         id={id}
         className={inputClass}
@@ -326,7 +363,7 @@ export function SettingField({ setting, value, onChange, id }: { setting: AppEve
         placeholder={setting.default !== undefined ? settingText(setting.default) : undefined}
         onChange={(event) => onChange(settingValue(setting.type, event.target.value))}
       />
-    </FieldBlock>
+    </Field>
   );
 }
 
@@ -378,11 +415,24 @@ function EventFields({ editor, onChange, context, id }: { editor: EditorParts; o
   ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <FieldBlock>
-        <Label htmlFor={`${id}-app`} hint={choices.usable.length ? "One of your connected apps." : undefined}>
-          App
-        </Label>
+    <FormSection title="App event">
+      <Field
+        label="App"
+        htmlFor={`${id}-app`}
+        hint={
+          choices.usable.length ? (
+            "One of your connected apps."
+          ) : (
+            <>
+              No app is connected yet.{" "}
+              <Link href={INTEGRATIONS_APPS_PATH} className={LINK}>
+                Connect one
+              </Link>{" "}
+              first.
+            </>
+          )
+        }
+      >
         <Combobox
           id={`${id}-app`}
           label="App"
@@ -393,23 +443,15 @@ function EventFields({ editor, onChange, context, id }: { editor: EditorParts; o
           emptyText={(query) => `None of your apps matches “${query}”.`}
           onChange={(next) => setEvent({ app: next, event: "", config: {} })}
         />
-        {choices.usable.length === 0 && (
-          <p className="text-[12px] text-muted">
-            No app is connected yet.{" "}
-            <Link href={INTEGRATIONS_APPS_PATH} className={LINK}>
-              Connect one
-            </Link>{" "}
-            first.
-          </p>
-        )}
-      </FieldBlock>
+      </Field>
       {app && (
-        <FieldBlock>
-          <Label htmlFor={`${id}-event`} hint={chosen?.description ?? `What happens in ${titleCase(app)} that starts a run.`}>
-            What happens
-          </Label>
+        <Field
+          label="What happens"
+          htmlFor={`${id}-event`}
+          hint={events.isSuccess && events.data.length === 0 ? `${titleCase(app)} has no events an automation can start on.` : (chosen?.description ?? `What happens in ${titleCase(app)} that starts a run.`)}
+        >
           {events.isError ? (
-            <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12px] text-fg-2">Couldn’t load {titleCase(app)}’s events just now. Try again in a moment.</p>
+            <p className={NOTE}>Couldn’t load {titleCase(app)}’s events just now. Try again in a moment.</p>
           ) : (
             <Combobox
               id={`${id}-event`}
@@ -423,8 +465,7 @@ function EventFields({ editor, onChange, context, id }: { editor: EditorParts; o
               onChange={(next) => setEvent({ event: next, config: {} })}
             />
           )}
-          {events.isSuccess && events.data.length === 0 && <p className="text-[12px] text-muted">{titleCase(app)} has no events an automation can start on.</p>}
-        </FieldBlock>
+        </Field>
       )}
       {chosen && chosen.settings.length > 0 && (
         <Group title={`What ${titleCase(app)} watches for`}>
@@ -440,7 +481,7 @@ function EventFields({ editor, onChange, context, id }: { editor: EditorParts; o
         </Group>
       )}
       {app && editor.event.event && <ReadBack>It runs each time that happens, as {titleCase(app)} reports it. An app event has no clock of its own.</ReadBack>}
-    </div>
+    </FormSection>
   );
 }
 
@@ -448,37 +489,35 @@ export function TriggerForm({ editor, onChange, problems, context }: FormProps) 
   const id = useId();
   const today = wallClock(new Date().toISOString(), editor.timezone).date;
   return (
-    <div className="flex flex-col gap-4">
+    <>
       <Problems problems={problems} />
-      <FieldBlock>
-        <Label id={`${id}-mode`}>When it runs</Label>
-        {/* One under another: the settings beside the canvas are narrow. */}
-        <RadioCards<WhenMode>
-          label="When it runs"
-          options={MODES.map((mode) => ({ ...mode, description: MODE_LINE[mode.value] }))}
-          value={editor.mode}
-          onChange={(mode) => onChange({ ...editor, mode })}
-        />
-      </FieldBlock>
+      <FormSection title="Starts">
+        <Field label="When it runs" labelId={`${id}-mode`}>
+          {/* One under another: the settings beside the canvas are narrow. */}
+          <RadioCards<WhenMode>
+            label="When it runs"
+            options={MODES.map((mode) => ({ ...mode, description: MODE_LINE[mode.value] }))}
+            value={editor.mode}
+            onChange={(mode) => onChange({ ...editor, mode })}
+          />
+        </Field>
+      </FormSection>
       {editor.mode === "once" && (
-        <>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(160px,100%),1fr))] gap-3">
-            <FieldBlock>
-              <Label htmlFor={`${id}-date`}>Day</Label>
+        <FormSection title="When">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(160px,100%),1fr))] gap-4">
+            <Field label="Day" htmlFor={`${id}-date`}>
               <DatePicker id={`${id}-date`} value={editor.date} min={today} today={today} onChange={(date) => onChange({ ...editor, date })} />
-            </FieldBlock>
-            <FieldBlock>
-              <Label htmlFor={`${id}-time`}>Time</Label>
+            </Field>
+            <Field label="Time" htmlFor={`${id}-time`}>
               <TimePicker id={`${id}-time`} value={editor.time} onChange={(time) => onChange({ ...editor, time })} />
-            </FieldBlock>
+            </Field>
           </div>
           <TimeZoneField editor={editor} onChange={onChange} id={`${id}-tz`} />
-        </>
+        </FormSection>
       )}
       {editor.mode === "schedule" && <ScheduleFields editor={editor} onChange={onChange} id={id} />}
       {editor.mode === "event" && <EventFields editor={editor} onChange={onChange} context={context} id={id} />}
-      {editor.mode === "schedule" && <p className="text-[12px] text-muted">An automation runs at most every 15 minutes.</p>}
-    </div>
+    </>
   );
 }
 
@@ -488,51 +527,49 @@ export function InstructionForm({ editor, onChange, problems }: FormProps) {
   const id = useId();
   if (editor.steps.length > 0) return <PurposeForm editor={editor} onChange={onChange} problems={problems} id={id} />;
   return (
-    <div className="flex flex-col gap-4">
+    <>
       <Problems problems={problems} />
-      <FieldBlock>
-        <Label htmlFor={`${id}-title`} hint="A few words to know it by in your list.">
-          Title
-        </Label>
-        <input id={`${id}-title`} className={inputClass} maxLength={120} value={editor.title} placeholder="Monday pull requests" onChange={(event) => onChange({ ...editor, title: event.target.value })} />
-      </FieldBlock>
-      <FieldBlock>
-        <Label htmlFor={`${id}-text`} hint="Write it as you would to Tex in chat.">
-          What Tex does each time
-        </Label>
-        <textarea
-          id={`${id}-text`}
-          className={textareaClass}
-          maxLength={4000}
-          value={editor.instruction}
-          placeholder="List my open pull requests, oldest first, with who is waiting on whom."
-          onChange={(event) => onChange({ ...editor, instruction: event.target.value })}
-        />
-        <span aria-hidden className="self-end text-[12px] text-muted tabular-nums">
-          {editor.instruction.length} / 4000
-        </span>
-      </FieldBlock>
-      <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-fg-2">{INSTRUCTION_NOTE}</p>
-    </div>
+      <FormSection title="Instructions">
+        <Field label="Title" htmlFor={`${id}-title`} hint="A few words to know it by in your list.">
+          <input id={`${id}-title`} className={inputClass} maxLength={120} value={editor.title} placeholder="Monday pull requests" onChange={(event) => onChange({ ...editor, title: event.target.value })} />
+        </Field>
+        <Field
+          label="What Tex does each time"
+          htmlFor={`${id}-text`}
+          hint={
+            <span className="flex items-start justify-between gap-3">
+              <span>Write it as you would to Tex in chat.</span>
+              <span aria-hidden className="shrink-0 tabular-nums">
+                {editor.instruction.length} / 4000
+              </span>
+            </span>
+          }
+        >
+          <textarea
+            id={`${id}-text`}
+            className={textareaClass}
+            maxLength={4000}
+            value={editor.instruction}
+            placeholder="List my open pull requests, oldest first, with who is waiting on whom."
+            onChange={(event) => onChange({ ...editor, instruction: event.target.value })}
+          />
+        </Field>
+        <p className={NOTE}>{INSTRUCTION_NOTE}</p>
+      </FormSection>
+    </>
   );
 }
 
 /** With steps, the instruction is the automation's purpose in one line; the steps say what to do. */
 function PurposeForm({ editor, onChange, problems, id }: Pick<FormProps, "editor" | "onChange" | "problems"> & { id: string }) {
   return (
-    <div className="flex flex-col gap-4">
+    <>
       <Problems problems={problems} />
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-3">
-        <FieldBlock>
-          <Label htmlFor={`${id}-title`} hint="A few words to know it by in your list.">
-            Title
-          </Label>
+      <FormSection title="About it">
+        <Field label="Title" htmlFor={`${id}-title`} hint="A few words to know it by in your list.">
           <input id={`${id}-title`} className={inputClass} maxLength={120} value={editor.title} placeholder="Urgent mail from my boss" onChange={(event) => onChange({ ...editor, title: event.target.value })} />
-        </FieldBlock>
-        <FieldBlock>
-          <Label htmlFor={`${id}-text`} hint="What it is for, in one line. Tex reads it with the steps, so it knows why it does each one.">
-            Purpose
-          </Label>
+        </Field>
+        <Field label="Purpose" htmlFor={`${id}-text`} hint="What it is for, in one line. Tex reads it with the steps, so it knows why it does each one.">
           <input
             id={`${id}-text`}
             className={inputClass}
@@ -541,12 +578,12 @@ function PurposeForm({ editor, onChange, problems, id }: Pick<FormProps, "editor
             placeholder="Reply fast to urgent mail from my boss"
             onChange={(event) => onChange({ ...editor, instruction: event.target.value })}
           />
-        </FieldBlock>
-      </div>
-      <p className="rounded-xl bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-fg-2">
-        With steps, Tex follows them one at a time, in order, and the platform refuses anything that isn’t the current step. The apps it may use are the ones the steps name.
-      </p>
-    </div>
+        </Field>
+        <p className={NOTE}>
+          With steps, Tex follows them one at a time, in order, and the platform refuses anything that isn’t the current step. The apps it may use are the ones the steps name.
+        </p>
+      </FormSection>
+    </>
   );
 }
 
@@ -557,19 +594,17 @@ export function AppsForm({ editor, onChange, problems, context }: FormProps) {
   const choices = appChoices(context.apps);
   const watched = editor.mode === "event" && editor.event.app ? editor.event.app : null;
   return (
-    <div className="flex flex-col gap-4">
+    <>
       <Problems problems={problems} />
-      <FieldBlock>
-        <Label
-          htmlFor={`${id}-apps`}
-          hint={
-            editor.apps.length
-              ? "During a run Tex may use only these apps, and the app the trigger watches. An action in any other app is refused."
-              : "None picked: Tex uses whichever of your connected apps the instruction needs. Pick some to keep its runs to those."
-          }
-        >
-          Apps Tex may use
-        </Label>
+      <Field
+        label="Apps Tex may use"
+        htmlFor={`${id}-apps`}
+        hint={
+          editor.apps.length
+            ? "During a run Tex may use only these apps, and the app the trigger watches. An action in any other app is refused."
+            : "None picked: Tex uses whichever of your connected apps the instruction needs. Pick some to keep its runs to those."
+        }
+      >
         <MultiSelect
           id={`${id}-apps`}
           label="Apps Tex may use"
@@ -580,14 +615,14 @@ export function AppsForm({ editor, onChange, problems, context }: FormProps) {
           emptyText={(query) => `None of your apps matches “${query}”.`}
           onChange={(apps) => onChange({ ...editor, apps })}
         />
-      </FieldBlock>
+      </Field>
       {watched && (
-        <p className="flex items-center gap-2 text-[12px] text-fg-2">
+        <p className="flex items-center gap-2 text-[12px] leading-4 text-fg-2">
           <BrandIcon name={watched} size={14} />
           {titleCase(watched)} is the trigger’s app, so Tex may always use it.
         </p>
       )}
-      <p className="text-[12px] text-muted">
+      <p className={HINT}>
         Only connected apps your plan includes can be picked.{" "}
         <Link href={INTEGRATIONS_APPS_PATH} className={LINK}>
           Connect more
@@ -601,7 +636,7 @@ export function AppsForm({ editor, onChange, problems, context }: FormProps) {
           </>
         )}
       </p>
-    </div>
+    </>
   );
 }
 
@@ -609,7 +644,7 @@ export function AppsForm({ editor, onChange, problems, context }: FormProps) {
 
 export function AsksForm({ editor, onChange, problems }: FormProps) {
   return (
-    <div className="flex flex-col gap-4">
+    <>
       <Problems problems={problems} />
       <RadioCards<EditorParts["askFirst"]>
         label="When Tex asks you first"
@@ -630,8 +665,8 @@ export function AsksForm({ editor, onChange, problems }: FormProps) {
           },
         ]}
       />
-      <p className="text-[12px] text-muted">It can’t be looser than the platform’s rule: sending, deleting or paying always waits for your OK.</p>
-    </div>
+      <p className={HINT}>It can’t be looser than the platform’s rule: sending, deleting or paying always waits for your OK.</p>
+    </>
   );
 }
 
@@ -643,40 +678,44 @@ export function ResultsForm({ editor, onChange, problems, context }: FormProps) 
   // A copy that goes to another chat app today (made there) stays offered.
   const other = editor.copyTo && editor.copyTo !== "telegram" ? editor.copyTo : null;
   return (
-    <div className="flex flex-col gap-3">
+    <>
       <Problems problems={problems} />
-      <SwitchRow
-        on
-        locked
-        onToggle={() => {}}
-        icon={<ChatIcon size={16} className="text-success" />}
-        title="Your Automations chat"
-        description="Always: every run answers there, never in your other chats. Write there to follow up."
-      />
-      {telegram || editor.copyTo === "telegram" ? (
+      <FormSection title="Where the results go">
         <SwitchRow
-          on={editor.copyTo === "telegram"}
-          onToggle={() => onChange({ ...editor, copyTo: editor.copyTo === "telegram" ? null : "telegram" })}
-          icon={<BrandIcon name="telegram" size={16} />}
-          title="Also a copy to Telegram"
-          description={telegram ? `To your linked chat, ${telegram.displayId}.` : "No Telegram chat is linked now."}
+          on
+          locked
+          onToggle={() => {}}
+          icon={<ChatIcon size={16} className="text-success" />}
+          title="Your Automations chat"
+          description="Always: every run answers there, never in your other chats. Write there to follow up."
         />
-      ) : (
-        <p className="rounded-xl border border-dashed border-line-strong px-3 py-2 text-[12px] text-muted">
-          Want a copy of each answer on Telegram?{" "}
-          <Link href={linkChatHref("telegram")} className={LINK}>
-            Link your Telegram
-          </Link>{" "}
-          first, then switch it on here.
-        </p>
-      )}
-      {other && <SwitchRow on onToggle={() => onChange({ ...editor, copyTo: null })} icon={<BrandIcon name={other} size={16} />} title={`Also a copy to ${titleCase(other)}`} />}
+        {telegram || editor.copyTo === "telegram" ? (
+          <SwitchRow
+            on={editor.copyTo === "telegram"}
+            onToggle={() => onChange({ ...editor, copyTo: editor.copyTo === "telegram" ? null : "telegram" })}
+            icon={<BrandIcon name="telegram" size={16} />}
+            title="Also a copy to Telegram"
+            description={telegram ? `To your linked chat, ${telegram.displayId}.` : "No Telegram chat is linked now."}
+          />
+        ) : (
+          <p className="rounded-xl border border-dashed border-line-strong px-4 py-3 text-[12px] leading-4 text-muted">
+            Want a copy of each answer on Telegram?{" "}
+            <Link href={linkChatHref("telegram")} className={LINK}>
+              Link your Telegram
+            </Link>{" "}
+            first, then switch it on here.
+          </p>
+        )}
+        {other && <SwitchRow on onToggle={() => onChange({ ...editor, copyTo: null })} icon={<BrandIcon name={other} size={16} />} title={`Also a copy to ${titleCase(other)}`} />}
+      </FormSection>
       {editor.steps.length > 0 && (
-        <p className="text-[12px] leading-relaxed text-muted">
-          The answer has Tex’s short summary, the results of the steps with “Show me this” on, and a line of how each step went. {KEPT_LINE}
-        </p>
+        <FormSection title="What it says">
+          <p className={NOTE}>
+            The answer has Tex’s short summary, the results of the steps with “Show me this” on, and a line of how each step went. {KEPT_LINE}
+          </p>
+        </FormSection>
       )}
-    </div>
+    </>
   );
 }
 
