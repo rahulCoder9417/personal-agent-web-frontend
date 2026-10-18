@@ -1174,7 +1174,8 @@ export interface paths {
          *     user has no credits, when no AI is connected (`aiAccess: none`), or when the account is
          *     suspended. At most one call a minute per user does anything: a second call within the
          *     minute answers `started: false` with `reason: recent`, never 429. The usual awake time is
-         *     charged, and the 3-minute idle stop counts from the wake.
+         *     charged, and the 3-minute idle stop counts from the wake. This wake pays no wake fee by
+         *     itself: the fee (1 credit) comes with the first message handled while it is awake, once.
          */
         post: operations["prewarmAgent"];
         delete?: never;
@@ -1276,7 +1277,14 @@ export interface paths {
          * Start connecting the user's Claude plan (official Claude Code sign-in)
          * @description Wakes the user's container and starts the unmodified Claude Code sign-in there. Open
          *     `authorizeUrl` (Anthropic's own page), sign in, then send the code Anthropic shows to the
-         *     complete endpoint. We never see or store Claude credentials. Rate limited.
+         *     complete endpoint. We never see or store Claude credentials.
+         *
+         *     The container is awake while the sign-in waits, and awake time is charged (no wake fee),
+         *     so the start needs credits, like a message: at zero or below it answers 402 `out_of_credits` and wakes
+         *     nothing. At most 3 starts per user per hour (429 after that). A sign-in waits at most 5
+         *     minutes for its code (`expiresAt`); then it ends and the container may sleep. At most 2
+         *     sign-ins may wait at once on the whole server, so they never take more than 2 of the
+         *     awake places: a start beyond that answers 503 `unavailable`, try again in a few minutes.
          */
         post: operations["startClaudeLogin"];
         delete?: never;
@@ -2308,7 +2316,8 @@ export interface paths {
          * @description The same wake a turn makes: the container is made first if the user has none, then started
          *     and checked for ready; afterwards the engine and the browser switch are set again if they
          *     differ. It needs the user to have credits, because awake time is charged to them (1 credit
-         *     per 10 minutes; the idle stop puts it back to sleep after 3 quiet minutes).
+         *     per 5 minutes; the idle stop puts it back to sleep after 3 quiet minutes). This wake pays
+         *     no wake fee; the first message while it is awake does (1 credit).
          */
         post: operations["adminWakeContainer"];
         delete?: never;
@@ -3998,6 +4007,9 @@ export interface components {
              */
             monthlyCredits: number;
             /**
+             * @description Credits given once when the account is made. They last 14 days (every other credit
+             *     lasts 90). Not given when an account with the same email, or a variant of it (letter
+             *     case, Gmail dots, a +tag, googlemail.com), had or has an account already.
              * @example 100
              * @example 0
              * @example 0
@@ -4119,6 +4131,7 @@ export interface components {
             grantId?: string | null;
             /**
              * @example Usage: AI 3, awake time 1
+             * @example Waking your agent
              * @example App action: GMAIL_SEND_EMAIL
              * @example Web search
              */
@@ -4133,7 +4146,19 @@ export interface components {
             periodEnd: string;
             aiCredits: number;
             awakeSeconds?: number;
+            /**
+             * @description Awake time, at 1 credit per 5 minutes (300 seconds). Part blocks carry over to the next
+             *     period.
+             */
             awakeCredits: number;
+            /**
+             * @description Wake fees in this period: 1 credit each time the agent's container woke from sleep to
+             *     do work (a message, an automation or reminder run, a crew job, an approved action).
+             *     Charged once per awake period, when its first piece of work starts; a wake that does
+             *     no work (the web app waking it ahead of a message that never comes, a Claude sign-in)
+             *     pays only its awake time. A turn that failed because of us pays no wake fee.
+             */
+            wakeCredits: number;
             /**
              * @description Credits for app actions that changed something in this period (1 credit per successful
              *     send, create, update or delete; reading and searching are free).
@@ -4151,12 +4176,13 @@ export interface components {
              *     Max plan only. Browser time is not in here: it has its own number, `browserCredits`.
              */
             toolCredits: number;
-            /** @description aiCredits + awakeCredits + appActionCredits + browserCredits + toolCredits */
+            /** @description aiCredits + awakeCredits + wakeCredits + appActionCredits + browserCredits + toolCredits */
             totalCredits: number;
         };
         UsageTotals: {
             aiCredits: number;
             awakeCredits: number;
+            wakeCredits: number;
             appActionCredits: number;
             browserCredits: number;
             toolCredits: number;
@@ -4504,6 +4530,8 @@ export interface components {
                 browserSeconds: number;
                 /** @description AI, awake time and browser time charged by those syncs. */
                 creditsCharged: number;
+                /** @description Wake fees charged today (1 credit each time the container woke to do work). */
+                wakeCredits: number;
             };
         };
         /** @description An approval without the action's inputs. */
@@ -4963,7 +4991,10 @@ export interface components {
              * @description Anthropic's sign-in page
              */
             authorizeUrl: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the sign-in stops waiting for its code (5 minutes after the start).
+             */
             expiresAt: string;
         };
         ActivityEntry: {
@@ -7094,8 +7125,12 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            402: components["responses"]["OutOfCredits"];
             429: components["responses"]["RateLimited"];
-            /** @description The agent container is unavailable right now; retry */
+            /**
+             * @description The agent container is unavailable right now, the server has no awake place free, or
+             *     2 other sign-ins are already waiting; retry in a few minutes
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -7754,7 +7789,7 @@ export interface operations {
                     reason: string;
                     /**
                      * Format: date-time
-                     * @description Omitted = 90 days from now (like every grant); null = never expires.
+                     * @description Omitted = 90 days from now (like monthly and top-up credits); null = never expires.
                      */
                     expiresAt?: string | null;
                     idempotencyKey: string;
