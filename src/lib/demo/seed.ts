@@ -663,12 +663,26 @@ function seedApprovals(now: Date): Approval[] {
       details: { arguments: { to: "maya@acme.com", from: "aarav@northwind.studio", subject: "Moving today’s 3pm",
         body: "Hi Maya, could we move today’s 3pm to tomorrow, same time? Thanks!",
       } },
+      // What will run, as the backend writes it from the inputs (never from Tex's summary).
+      facts: [
+        { label: "Action", value: "Gmail – send email" },
+        { label: "To", value: "maya@acme.com" },
+        { label: "Subject", value: "Moving today’s 3pm" },
+        { label: "Text", value: "Hi Maya, could we move today’s 3pm to tomorrow, same time? Thanks!" },
+        { label: "Other inputs", value: "from" },
+      ],
       // As the backend offers it: "Don't ask again", only to Maya (the default) or to anyone.
       skip: { actionName: "Send email", recipients: ["maya@acme.com"], target: "people", scopes: ["listed", "anyone"] },
     },
     {
       id: "ap_slack", kind: "app_action", ...pending(earlierToday(now, 88)), summary: "Post today’s update in #team", app: "slack", action: "SLACK_SEND_MESSAGE",
       details: { arguments: { channel: "#team", workspace: "Northwind", body: "Shipped the new onboarding flow, fixed 4 bugs, demo Thursday." } },
+      facts: [
+        { label: "Action", value: "Slack – send message" },
+        { label: "To", value: "team" },
+        { label: "Text", value: "Shipped the new onboarding flow, fixed 4 bugs, demo Thursday." },
+        { label: "Other inputs", value: "workspace" },
+      ],
       skip: { actionName: "Send message", recipients: ["team"], target: "people", scopes: ["listed", "anyone"] },
     },
     {

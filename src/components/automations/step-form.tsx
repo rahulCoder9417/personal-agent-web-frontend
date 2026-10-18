@@ -125,7 +125,7 @@ function ActionPicker({ step, lane, onPick, id }: { step: EditorStep; lane: Lane
     ? `${chosen.description ? `${chosen.description} ` : ""}${chosen.changesSomething ? "It changes something in the app: 1 credit each time it is done." : "It only reads: no credit."}`
     : lane === "read"
       ? "Only the actions that read are here. Search by a word."
-      : "Search by a word. The ones that send, delete or pay say “Always asks first”.";
+      : "Search by a word. The ones that change something say “Always asks first”.";
   if (all.isError) {
     const down = all.error instanceof ApiError && all.error.status === 503;
     return (

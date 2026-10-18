@@ -79,6 +79,17 @@ export type ConnectCopy = {
   leaving: string;
 };
 
+/**
+ * The line under one connected account. The server marks a connection expired or failed when Composio says so
+ * (its webhook, a check when the Apps page is opened, or an action that failed), so an account that stopped
+ * working never keeps saying "Connected".
+ */
+export const CONNECTION_STATUS_LINE: Record<App["connections"][number]["status"], string> = {
+  active: "Connected",
+  expired: "Reconnect needed: the sign-in expired, so Tex can’t use it.",
+  error: "Reconnect needed: it stopped working. Reconnect, or disconnect it.",
+};
+
 export function connectCopy(app: Pick<App, "name" | "provider" | "description">, purpose: ConnectPurpose, newTab = false): ConnectCopy {
   const provider = providerOf(app);
   const can = (app.description as string | undefined)?.trim() || `Use ${app.name} for you, when you ask.`;
@@ -91,7 +102,7 @@ export function connectCopy(app: Pick<App, "name" | "provider" | "description">,
         ? `${app.name} stopped letting Tex in. That usually follows a password change or access being removed. Signing in again fixes it.`
         : "";
   const points: ConnectCopy["points"] = [
-    { kind: "approval", text: "Before Tex sends, deletes or changes something that’s already there, it asks you first." },
+    { kind: "approval", text: "Before Tex sends, shares, deletes or changes anything in your apps, it asks you first. Only a draft, a label or a new private file goes ahead without asking." },
     { kind: "credits", text: "Reading is free. Each change Tex makes costs 1 credit." },
     { kind: "signin", text: `You sign in on ${provider}’s own page. Textcrew never sees your password, and you can disconnect at any time.` },
   ];

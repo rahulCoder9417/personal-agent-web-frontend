@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError, type App, type Automation } from "@/lib/api/client";
 import {
+  CONNECTION_STATUS_LINE,
   appsToOffer,
   automationsWatching,
   categoriesOf,
@@ -160,7 +161,7 @@ describe("the connect screen", () => {
       leaving: "Taking you to Google…",
     });
     expect(copy.points.map((p) => p.kind)).toEqual(["approval", "credits", "signin"]);
-    expect(copy.points[0]!.text).toBe("Before Tex sends, deletes or changes something that’s already there, it asks you first.");
+    expect(copy.points[0]!.text).toBe("Before Tex sends, shares, deletes or changes anything in your apps, it asks you first. Only a draft, a label or a new private file goes ahead without asking.");
     expect(copy.points[1]!.text).toBe("Reading is free. Each change Tex makes costs 1 credit.");
     expect(copy.points[2]!.text).toContain("You sign in on Google’s own page. Textcrew never sees your password");
   });
@@ -271,5 +272,13 @@ describe("disconnecting an account", () => {
     expect(copy.title).toBe("Disconnect Gmail?");
     expect(copy.done.body).toBe("Tex no longer has access to Gmail.");
     expect(copy.watching).toEqual([]);
+  });
+});
+
+describe("an account's status line", () => {
+  it("says Reconnect needed for an expired or failed connection, Connected only for a working one", () => {
+    expect(CONNECTION_STATUS_LINE.active).toBe("Connected");
+    expect(CONNECTION_STATUS_LINE.expired).toMatch(/^Reconnect needed: the sign-in expired/);
+    expect(CONNECTION_STATUS_LINE.error).toMatch(/^Reconnect needed: it stopped working/);
   });
 });

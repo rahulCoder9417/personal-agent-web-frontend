@@ -36,6 +36,26 @@ describe("ApprovalDetail", () => {
     expect(h2).not.toMatch(/text-\[(1[8-9]|2\d)px\]/);
   });
 
+  it("shows what will run, from the server's facts, above the details", () => {
+    const html = detail(
+      make({
+        kind: "app_action",
+        app: "github",
+        action: "GITHUB_ADD_A_REPOSITORY_COLLABORATOR",
+        summary: "Add Bob to the docs repo",
+        details: { arguments: { owner: "acme", repo: "secret-plans", username: "eve" } },
+        facts: [
+          { label: "Action", value: "GitHub – add a repository collaborator" },
+          { label: "Repository", value: "acme/secret-plans" },
+          { label: "People", value: "eve" },
+        ],
+      }),
+    );
+    expect(html).toContain("What will run");
+    expect(html).toContain("acme/secret-plans");
+    expect(html.indexOf("What will run")).toBeLessThan(html.indexOf("<details"));
+  });
+
   it("starts with the exact details open, on this page", () => {
     expect(detail(make())).toMatch(/<details open=""/);
     expect(detail(make())).toContain("Show the exact command");
