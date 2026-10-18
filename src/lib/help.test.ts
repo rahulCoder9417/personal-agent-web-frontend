@@ -218,4 +218,12 @@ describe("the first-time reader's way in", () => {
     const found = topics.find(({ topic }) => topic.id === "start-whatsapp")!;
     expect(topicText(found.section, found.topic)).toContain("not yet");
   });
+
+  it("says the desktop and phone apps are in beta and points to the web app and Telegram", () => {
+    const found = topics.find(({ topic }) => topic.id === "start-apps")!;
+    const words = topicText(found.section, found.topic);
+    expect(words).toContain("beta");
+    expect(words).toContain("web app");
+    expect(words).toContain("telegram");
+  });
 });

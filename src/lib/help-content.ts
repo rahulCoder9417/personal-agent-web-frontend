@@ -65,6 +65,11 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         blocks: [p("Not yet. Today you talk to Tex in the web app and on Telegram. Nothing else is live, and we will say here when it is.")],
       },
       {
+        id: "start-apps",
+        title: "Is there a desktop or phone app?",
+        blocks: [p("Both are in beta, so there is nothing to download yet. For now use the web app, in any browser, on a phone too, or Telegram. We will say here when the apps are ready.")],
+      },
+      {
         id: "start-dots",
         title: "What do the dots and counts mean?",
         blocks: [

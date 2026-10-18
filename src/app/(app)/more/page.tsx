@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ActivityIcon, AppsIcon, ChevronRightIcon, PricingIcon, SettingsIcon } from "@/components/icons";
+import { DevicesBlock } from "@/components/more/devices";
 import { GettingStartedCard, useGettingStarted } from "@/components/onboarding/getting-started";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { AgentFigure } from "@/components/tex";
@@ -85,6 +86,8 @@ export default function MorePage() {
           <Row href="/settings" icon={<SettingsIcon size={17} />} title="Settings" />
           <Row href="/help" icon={glyph("?")} title="Help" detail="How Textcrew works" />
         </div>
+
+        <DevicesBlock telegramLinked={channels.data ? linked.includes(CHANNEL_LABEL.telegram) : undefined} />
       </PageBody>
     </Page>
   );
