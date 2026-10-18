@@ -117,8 +117,8 @@ describe("account", () => {
     const searches = charges.filter((entry) => entry.description === "Web search");
     const wakes = charges.filter((entry) => entry.description === "Waking your agent");
     expect(actions.length + usage.length + searches.length + wakes.length).toBe(charges.length);
-    expect(wakes.length).toBeGreaterThan(3);
-    expect(wakes.every((entry) => entry.delta === -1)).toBe(true);
+    // No wake fee (removed 18 Oct 2026): the demo charges none.
+    expect(wakes).toEqual([]);
     expect(actions.every((entry) => entry.delta === -1)).toBe(true);
     expect(searches.length).toBeGreaterThan(3);
 

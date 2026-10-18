@@ -14,7 +14,7 @@ export type Series = { id: SeriesId; label: string; color: string };
  */
 export const SERIES: readonly Series[] = [
   { id: "awake", label: "Running time", color: "#3355F5" },
-  // 1 credit each time the agent woke up to start work (the wake fee).
+  // The old wake fee (removed 18 Oct 2026): only a few hours of history can have it.
   { id: "wake", label: "Waking up", color: "#9B74D6" },
   { id: "actions", label: "App actions", color: "#C22866" },
   // Minutes Scout spent in a real browser (Max plan).

@@ -595,7 +595,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
           list(
             "Free allows 1 automation, Pro 5 and Max 50. Reminders and paused ones count. A repo with pull-request review counts as one.",
             "A schedule can run at most once every 15 minutes.",
-            "Each run costs what a message costs: running time, 1 credit if Tex has to wake up for it, the AI on Textcrew AI, and 1 credit for each app action that changes something.",
+            "Each run costs what a message costs: running time, the AI on Textcrew AI, and 1 credit for each app action that changes something.",
             "A risky action in a run still waits for your **Approve**.",
           ),
         ],

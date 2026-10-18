@@ -173,8 +173,7 @@ function dailyCredits(): number[] {
  * Something Tex did: a charge in the ledger, a line in the activity log, or both.
  * As in the backend, the time the agent ran is charged as "Usage: awake time N", each app
  * action that changed something as its own one-credit "App action: NAME" (reading is free),
- * each web search as its own "Web search" (a paid tool), and each time the agent woke up to
- * start work as its own one-credit "Waking your agent".
+ * and each web search as its own "Web search" (a paid tool). There is no wake fee.
  */
 type Happened = {
   at: string;
@@ -196,7 +195,7 @@ const ranFor = (at: string, credits: number): Happened => ({
   charge: { amount: credits, description: `Usage: awake time ${credits}`, part: "awake" },
 });
 
-/** The agent woke up from sleep to start work: the 1-credit wake fee. */
+/** The old wake fee (1 credit, removed 18 Oct 2026). Kept for the type; the demo charges none. */
 const woke = (at: string): Happened => ({
   at,
   charge: { amount: 1, description: "Waking your agent", part: "wake" },
@@ -347,9 +346,9 @@ function seedHappened(now: Date): Happened[] {
     // On some days Scout looked something up. The rest of the day's credits are running time.
     const searches = d % 4 === 1 ? Math.max(0, Math.min(2, total - changes - 1)) : 0;
     const minute = (d * 7) % 50;
-    // The day's first work woke the agent: 1 credit of the day's running time is its wake fee.
+    // No wake fee (removed 18 Oct 2026): all of the day's running credits are running time.
     const running = total - changes - searches;
-    const wakes = running >= 2 ? 1 : 0;
+    const wakes = 0;
     if (wakes) happened.push(woke(atDay(now, d, 10, minute)));
     happened.push(read(atDay(now, d, 10, minute), PAST_READS[d % PAST_READS.length]));
     for (let i = 0; i < changes; i++) {

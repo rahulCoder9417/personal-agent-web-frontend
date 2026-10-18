@@ -1174,8 +1174,8 @@ export interface paths {
          *     user has no credits, when no AI is connected (`aiAccess: none`), or when the account is
          *     suspended. At most one call a minute per user does anything: a second call within the
          *     minute answers `started: false` with `reason: recent`, never 429. The usual awake time is
-         *     charged, and the 3-minute idle stop counts from the wake. This wake pays no wake fee by
-         *     itself: the fee (1 credit) comes with the first message handled while it is awake, once.
+         *     charged, and the 3-minute idle stop counts from the wake. Waking costs nothing extra (there
+         *     is no wake fee).
          */
         post: operations["prewarmAgent"];
         delete?: never;
@@ -1279,7 +1279,7 @@ export interface paths {
          *     `authorizeUrl` (Anthropic's own page), sign in, then send the code Anthropic shows to the
          *     complete endpoint. We never see or store Claude credentials.
          *
-         *     The container is awake while the sign-in waits, and awake time is charged (no wake fee),
+         *     The container is awake while the sign-in waits, and awake time is charged,
          *     so the start needs credits, like a message: at zero or below it answers 402 `out_of_credits` and wakes
          *     nothing. At most 3 starts per user per hour (429 after that). A sign-in waits at most 5
          *     minutes for its code (`expiresAt`); then it ends and the container may sleep. At most 2
@@ -2316,8 +2316,8 @@ export interface paths {
          * @description The same wake a turn makes: the container is made first if the user has none, then started
          *     and checked for ready; afterwards the engine and the browser switch are set again if they
          *     differ. It needs the user to have credits, because awake time is charged to them (1 credit
-         *     per 5 minutes; the idle stop puts it back to sleep after 3 quiet minutes). This wake pays
-         *     no wake fee; the first message while it is awake does (1 credit).
+         *     per 5 minutes; the idle stop puts it back to sleep after 3 quiet minutes). Waking costs
+         *     nothing extra (there is no wake fee).
          */
         post: operations["adminWakeContainer"];
         delete?: never;
@@ -4131,7 +4131,6 @@ export interface components {
             grantId?: string | null;
             /**
              * @example Usage: AI 3, awake time 1
-             * @example Waking your agent
              * @example App action: GMAIL_SEND_EMAIL
              * @example Web search
              */
@@ -4152,11 +4151,9 @@ export interface components {
              */
             awakeCredits: number;
             /**
-             * @description Wake fees in this period: 1 credit each time the agent's container woke from sleep to
-             *     do work (a message, an automation or reminder run, a crew job, an approved action).
-             *     Charged once per awake period, when its first piece of work starts; a wake that does
-             *     no work (the web app waking it ahead of a message that never comes, a Claude sign-in)
-             *     pays only its awake time. A turn that failed because of us pays no wake fee.
+             * @description Wake fees in this period. There is no wake fee (it was removed on 18 Oct 2026, after a
+             *     few hours at 1 credit per wake), so this is 0 except for those few hours. Waking the
+             *     agent costs nothing extra; only its awake time is charged.
              */
             wakeCredits: number;
             /**
@@ -4530,7 +4527,7 @@ export interface components {
                 browserSeconds: number;
                 /** @description AI, awake time and browser time charged by those syncs. */
                 creditsCharged: number;
-                /** @description Wake fees charged today (1 credit each time the container woke to do work). */
+                /** @description Wake fees charged today. There is no wake fee any more (removed 18 Oct 2026), so this is 0. */
                 wakeCredits: number;
             };
         };

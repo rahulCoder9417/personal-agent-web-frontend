@@ -268,7 +268,7 @@ export function describeAutomationCost(automation: Pick<Automation, "kind" | "pr
 
 /** What a run costs, said once for the whole list. The numbers are the ones in credit-costs.ts. */
 export const AUTOMATION_CREDITS =
-  "A run costs what the same request in chat would: 1 credit per 5 minutes of running time, 1 credit if Tex has to wake up for it, and 1 credit for each app action that changes something. Reading and searching are free.";
+  "A run costs what the same request in chat would: 1 credit per 5 minutes of running time, and 1 credit for each app action that changes something. Reading and searching are free.";
 
 // ---------------------------------------------------------------- the card and the overview
 
