@@ -2,17 +2,20 @@
 
 import type { UsagePeriod, UsageTotals } from "@/lib/api/client";
 
-export type SeriesId = "awake" | "actions" | "browser" | "tools" | "ai";
+export type SeriesId = "awake" | "wake" | "actions" | "browser" | "tools" | "ai";
 
 export type Series = { id: SeriesId; label: string; color: string };
 
 /**
- * Fixed order and colours; a series keeps its colour whatever else is on screen. The five were
- * validated as a set, every pair against every other, because a day's column leaves out what it
- * didn't use, so any two can end up touching.
+ * Fixed order and colours; a series keeps its colour whatever else is on screen. The six were
+ * validated as a set, every pair against every other (colour-blind separation 9.8 or more, 17.7 or
+ * more in full colour), because a day's column leaves out what it didn't use, so any two can end
+ * up touching.
  */
 export const SERIES: readonly Series[] = [
   { id: "awake", label: "Running time", color: "#3355F5" },
+  // 1 credit each time the agent woke up to start work (the wake fee).
+  { id: "wake", label: "Waking up", color: "#9B74D6" },
   { id: "actions", label: "App actions", color: "#C22866" },
   // Minutes Scout spent in a real browser (Max plan).
   { id: "browser", label: "Browser use", color: "#7C4A03" },
@@ -23,6 +26,7 @@ export const SERIES: readonly Series[] = [
 
 const FIELD = {
   awake: "awakeCredits",
+  wake: "wakeCredits",
   actions: "appActionCredits",
   browser: "browserCredits",
   tools: "toolCredits",

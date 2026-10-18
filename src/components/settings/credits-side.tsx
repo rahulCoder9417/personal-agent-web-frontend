@@ -140,7 +140,7 @@ export function CreditsExplainer() {
         </ul>
       </div>
       <p>
-        <strong className="font-semibold text-fg">Every credit lasts 90 days</strong> from the day you get it, whether it came from your plan, a top-up or a code. The oldest are used first.
+        <strong className="font-semibold text-fg">Credits last 90 days</strong> from the day you get them, whether they came from your plan, a top-up or a code. The 100 sign-up credits last 14 days. The ones that expire soonest are used first.
       </p>
       <p>
         <strong className="font-semibold text-fg">No surprise bills.</strong> At zero, Tex pauses and tells you in chat.

@@ -103,7 +103,7 @@ describe("account", () => {
     expect(usage.body.totals.totalCredits).toBe(usage.body.items.reduce((sum, day) => sum + day.totalCredits, 0));
     // Browser use and paid tools are separate numbers, and every part is in the total.
     for (const day of usage.body.items) {
-      expect(day.aiCredits + day.awakeCredits + day.appActionCredits + day.browserCredits + day.toolCredits).toBe(day.totalCredits);
+      expect(day.aiCredits + day.awakeCredits + day.wakeCredits + day.appActionCredits + day.browserCredits + day.toolCredits).toBe(day.totalCredits);
     }
     expect(usage.body.totals.browserCredits).toBe(0);
     expect(usage.body.totals.toolCredits).toBe(usage.body.items.reduce((sum, day) => sum + day.toolCredits, 0));
@@ -115,7 +115,10 @@ describe("account", () => {
     const actions = charges.filter((entry) => entry.description?.startsWith("App action: "));
     const usage = charges.filter((entry) => entry.description?.startsWith("Usage: awake time "));
     const searches = charges.filter((entry) => entry.description === "Web search");
-    expect(actions.length + usage.length + searches.length).toBe(charges.length);
+    const wakes = charges.filter((entry) => entry.description === "Waking your agent");
+    expect(actions.length + usage.length + searches.length + wakes.length).toBe(charges.length);
+    expect(wakes.length).toBeGreaterThan(3);
+    expect(wakes.every((entry) => entry.delta === -1)).toBe(true);
     expect(actions.every((entry) => entry.delta === -1)).toBe(true);
     expect(searches.length).toBeGreaterThan(3);
 
@@ -123,6 +126,7 @@ describe("account", () => {
     expect(days.reduce((sum, day) => sum + day.actions, 0)).toBe(actions.length);
     expect(days.reduce((sum, day) => sum + day.awake, 0)).toBe(usage.reduce((sum, entry) => sum - entry.delta, 0));
     expect(days.reduce((sum, day) => sum + day.tools, 0)).toBe(searches.reduce((sum, entry) => sum - entry.delta, 0));
+    expect(days.reduce((sum, day) => sum + day.wake, 0)).toBe(wakes.length);
     // Each search is in the activity log with what it cost.
     expect(store.activity.filter((entry) => entry.action === "web_search" && entry.creditsCharged === 1)).toHaveLength(searches.length);
 

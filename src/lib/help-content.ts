@@ -595,7 +595,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
           list(
             "Free allows 1 automation, Pro 5 and Max 50. Reminders and paused ones count. A repo with pull-request review counts as one.",
             "A schedule can run at most once every 15 minutes.",
-            "Each run costs what a message costs: running time, the AI on Textcrew AI, and 1 credit for each app action that changes something.",
+            "Each run costs what a message costs: running time, 1 credit if Tex has to wake up for it, the AI on Textcrew AI, and 1 credit for each app action that changes something.",
             "A risky action in a run still waits for your **Approve**.",
           ),
         ],
@@ -649,11 +649,12 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         id: "credits-expiry",
-        title: "Credits last 90 days",
+        title: "How long credits last",
         blocks: [
           list(
             "Credits come in batches: 100 when you sign up, your plan’s credits every month, a top-up, or a coupon.",
-            "Each batch lasts 90 days from the day you get it. A coupon may set its own length.",
+            "The 100 sign-up credits last 14 days. Every other batch lasts 90 days from the day you get it. A coupon may set its own length.",
+            "Sign-up credits are given once per email inbox. A new account with the same inbox (another spelling of a Gmail address, or a +tag) gets none, and neither does one made again after deleting an account.",
             "The batch that ends soonest is spent first, so you lose as few as possible.",
             "Monthly credits you don’t use carry over until their 90 days are up.",
           ),
@@ -686,7 +687,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         blocks: [
           table(
             ["Plan", "What you get"],
-            ["**Free**", "100 credits once, when you sign up. 10 apps. 1 automation."],
+            ["**Free**", "100 credits once, when you sign up; they last 14 days. 10 apps. 1 automation."],
             ["**Pro** ($19 a month at launch)", "1,500 credits every month. All apps. 5 automations. Top-ups."],
             ["**Max** ($30 a month at launch)", "4,500 credits every month. All apps and your own MCP servers. 50 automations. Web search through Textcrew. First in line when the server is busy."],
           ),

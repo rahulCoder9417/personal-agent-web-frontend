@@ -44,9 +44,9 @@ const CREDIT_LIFETIME_DAYS = 90;
  * Credits used in a day, by what they paid for. `tools` is paid tools (Scout's web search).
  * There is no browser part: Scout's browser isn't built yet, as `GET /v1/crew` says.
  */
-export type DayUsage = { ai: number; awake: number; actions: number; tools: number };
+export type DayUsage = { ai: number; awake: number; wake: number; actions: number; tools: number };
 
-export const emptyDay = (): DayUsage => ({ ai: 0, awake: 0, actions: 0, tools: 0 });
+export const emptyDay = (): DayUsage => ({ ai: 0, awake: 0, wake: 0, actions: 0, tools: 0 });
 
 /** What the automation itself doesn't carry: which repo it watches and where the verdict goes. */
 export type DemoPrReview = { automationId: string; owner: string; repo: string; channel: ChannelType };
@@ -173,7 +173,8 @@ function dailyCredits(): number[] {
  * Something Tex did: a charge in the ledger, a line in the activity log, or both.
  * As in the backend, the time the agent ran is charged as "Usage: awake time N", each app
  * action that changed something as its own one-credit "App action: NAME" (reading is free),
- * and each web search as its own "Web search" (a paid tool).
+ * each web search as its own "Web search" (a paid tool), and each time the agent woke up to
+ * start work as its own one-credit "Waking your agent".
  */
 type Happened = {
   at: string;
@@ -193,6 +194,12 @@ type Happened = {
 const ranFor = (at: string, credits: number): Happened => ({
   at,
   charge: { amount: credits, description: `Usage: awake time ${credits}`, part: "awake" },
+});
+
+/** The agent woke up from sleep to start work: the 1-credit wake fee. */
+const woke = (at: string): Happened => ({
+  at,
+  charge: { amount: 1, description: "Waking your agent", part: "wake" },
 });
 
 const changed = (at: string, action: string, summary: string): Happened => ({
@@ -340,6 +347,10 @@ function seedHappened(now: Date): Happened[] {
     // On some days Scout looked something up. The rest of the day's credits are running time.
     const searches = d % 4 === 1 ? Math.max(0, Math.min(2, total - changes - 1)) : 0;
     const minute = (d * 7) % 50;
+    // The day's first work woke the agent: 1 credit of the day's running time is its wake fee.
+    const running = total - changes - searches;
+    const wakes = running >= 2 ? 1 : 0;
+    if (wakes) happened.push(woke(atDay(now, d, 10, minute)));
     happened.push(read(atDay(now, d, 10, minute), PAST_READS[d % PAST_READS.length]));
     for (let i = 0; i < changes; i++) {
       const change = PAST_CHANGES[(d + i * 3) % PAST_CHANGES.length];
@@ -348,7 +359,7 @@ function seedHappened(now: Date): Happened[] {
     for (let i = 0; i < searches; i++) {
       happened.push(searched(atDay(now, d, 11 + i * 2, minute + 5), PAST_SEARCHES[(d + i) % PAST_SEARCHES.length]));
     }
-    happened.push(ranFor(atDay(now, d, 15, minute), total - changes - searches));
+    happened.push(ranFor(atDay(now, d, 15, minute), running - wakes));
   }
   happened.push(
     ...memoryTrail(now),

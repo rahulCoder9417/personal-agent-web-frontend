@@ -296,33 +296,36 @@ export const getUsage: Handler = ({ state, url }) => {
   if (to.getTime() - from.getTime() > MAX_USAGE_DAYS * 86_400_000) throw badRequest("Ask for a year at most");
 
   const items: UsagePeriod[] = [];
-  const totals: UsageTotals = { aiCredits: 0, awakeCredits: 0, appActionCredits: 0, browserCredits: 0, toolCredits: 0, totalCredits: 0 };
+  const totals: UsageTotals = { aiCredits: 0, awakeCredits: 0, wakeCredits: 0, appActionCredits: 0, browserCredits: 0, toolCredits: 0, totalCredits: 0 };
   const day = new Date(from);
   day.setHours(0, 0, 0, 0);
   while (day < to) {
     const next = new Date(day);
     next.setDate(next.getDate() + 1);
-    const { ai, awake, actions, tools } = state.usage[dayKey(day)] ?? emptyDay();
+    const { ai, awake, actions, tools, wake = 0 } = state.usage[dayKey(day)] ?? emptyDay();
     items.push({
       periodStart: day.toISOString(),
       periodEnd: next.toISOString(),
       aiCredits: ai,
-      // One credit per 10 minutes the agent ran.
-      awakeSeconds: awake * 600,
+      // One credit per 5 minutes the agent ran.
+      awakeSeconds: awake * 300,
       awakeCredits: awake,
+      // One credit each time it woke up to start work.
+      wakeCredits: wake,
       appActionCredits: actions,
       // Scout's browser isn't built yet, so there is no browser time to charge.
       browserSeconds: 0,
       browserCredits: 0,
       // Paid tools only (web search); browser time has its own number.
       toolCredits: tools,
-      totalCredits: ai + awake + actions + tools,
+      totalCredits: ai + awake + wake + actions + tools,
     });
     totals.aiCredits += ai;
     totals.awakeCredits += awake;
+    totals.wakeCredits += wake;
     totals.appActionCredits += actions;
     totals.toolCredits += tools;
-    totals.totalCredits += ai + awake + actions + tools;
+    totals.totalCredits += ai + awake + wake + actions + tools;
     day.setTime(next.getTime());
   }
   return json({ items, totals });

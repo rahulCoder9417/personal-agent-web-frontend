@@ -41,8 +41,8 @@ export function HowCreditsWork({ autoTopUp = false }: { autoTopUp?: boolean }) {
         </Rule>
         <div className="flex flex-col gap-5">
           <Rule title="They last 90 days">
-            From the day you get them, whether from your plan, a top-up or a code (a code may set its own length). The ones that expire soonest are used first,
-            and monthly credits you don’t use carry over until their 90 days are up.
+            From the day you get them, whether from your plan, a top-up or a code (a code may set its own length). The 100 sign-up credits last 14 days. The
+            ones that expire soonest are used first, and monthly credits you don’t use carry over until their 90 days are up.
           </Rule>
           <Rule title="At zero, Tex pauses">
             {autoTopUp

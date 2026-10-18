@@ -1,11 +1,16 @@
 // What credits pay for, written once so every screen says the same thing.
 // The prices are the launch plan's (decision D6); the backend does the charging.
 
-export type CreditCost = { id: "ai" | "time" | "actions" | "tools" | "browser"; name: string; detail: string };
+export type CreditCost = { id: "ai" | "time" | "wake" | "actions" | "tools" | "browser"; name: string; detail: string };
 
 export const CREDIT_COSTS: readonly CreditCost[] = [
   { id: "ai", name: "Textcrew AI", detail: "only if you use it. With your own AI, the AI part isn’t charged." },
-  { id: "time", name: "Your agent’s running time", detail: "1 credit per 10 minutes." },
+  { id: "time", name: "Your agent’s running time", detail: "1 credit per 5 minutes." },
+  {
+    id: "wake",
+    name: "Waking your agent",
+    detail: "1 credit each time it wakes up to start work. More messages while it’s awake don’t pay it again.",
+  },
   {
     id: "actions",
     name: "Actions in your apps",
@@ -17,8 +22,8 @@ export const CREDIT_COSTS: readonly CreditCost[] = [
 
 /** The same thing in one sentence, for places with no room for a list. */
 export const CREDITS_PAY_FOR =
-  "Credits pay for Textcrew AI if you use it, your agent’s running time (1 credit per 10 minutes), actions in your apps (1 credit per action that changes something; reading and searching are free), paid tools such as Scout’s web search (about 1 credit per search) and, on the Max plan, browser use (2 credits per minute). With your own AI, the AI part isn’t charged.";
+  "Credits pay for Textcrew AI if you use it, your agent’s running time (1 credit per 5 minutes), waking your agent (1 credit each time it wakes up to start work), actions in your apps (1 credit per action that changes something; reading and searching are free), paid tools such as Scout’s web search (about 1 credit per search) and, on the Max plan, browser use (2 credits per minute). With your own AI, the AI part isn’t charged.";
 
 /** What the usage numbers are made of, for the line under the chart. */
 export const USAGE_RATES =
-  "Running time is 1 credit per 10 minutes. An app action that changes something is 1 credit; reading and searching are free. A web search is a paid tool, about 1 credit. Browser use, on the Max plan, is 2 credits per minute.";
+  "Running time is 1 credit per 5 minutes, and waking your agent to start work is 1 credit each time. An app action that changes something is 1 credit; reading and searching are free. A web search is a paid tool, about 1 credit. Browser use, on the Max plan, is 2 credits per minute.";
