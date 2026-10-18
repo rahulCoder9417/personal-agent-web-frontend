@@ -194,7 +194,7 @@ describe("Integrations → Apps", () => {
     }
     expect(words).toContain("Email · 2 accounts");
     expect(html).toMatch(/<button[^>]*aria-label="Reconnect Google Drive aarav@northwind.studio"/);
-    expect(words).toContain("Sign-in expired");
+    expect(words).toContain("Reconnect needed: the sign-in expired");
     expect(words).toContain("Add more");
   });
 });

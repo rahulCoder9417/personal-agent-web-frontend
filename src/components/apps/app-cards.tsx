@@ -11,7 +11,7 @@ import type { App } from "@/lib/api/client";
 import { useAutomations, useDisconnectApp } from "@/lib/api/hooks";
 import { cn, titleCase } from "@/lib/format";
 import { connectedReturnPath } from "@/lib/integrations";
-import { disconnectCopy, isConnectable, NOT_AVAILABLE_LABEL } from "./apps-logic";
+import { CONNECTION_STATUS_LINE, disconnectCopy, isConnectable, NOT_AVAILABLE_LABEL } from "./apps-logic";
 import { useConnectDialog } from "./connect-dialog";
 import { PRICING_PATH } from "@/lib/pricing";
 
@@ -100,12 +100,6 @@ function DisconnectDialog({
   );
 }
 
-const STATUS_LINE: Record<Connection["status"], string> = {
-  active: "Connected",
-  expired: "Sign-in expired. Reconnect so Tex can use it again.",
-  error: "Not working. Reconnect, or disconnect it.",
-};
-
 /** One connected account: who it is, whether it works, and Reconnect (when it doesn't) and Disconnect. */
 function ConnectionRow({ app, connection, flow }: { app: App; connection: Connection; flow: ConnectFlow }) {
   const [asking, setAsking] = useState(false);
@@ -122,7 +116,7 @@ function ConnectionRow({ app, connection, flow }: { app: App; connection: Connec
           <span className="truncate text-[13.5px] font-medium" title={label}>
             {label}
           </span>
-          <span className={cn("text-[12px]", healthy ? "text-muted" : "text-danger")}>{STATUS_LINE[connection.status] ?? STATUS_LINE.error}</span>
+          <span className={cn("text-[12px]", healthy ? "text-muted" : "text-danger")}>{CONNECTION_STATUS_LINE[connection.status] ?? CONNECTION_STATUS_LINE.error}</span>
         </div>
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-2">

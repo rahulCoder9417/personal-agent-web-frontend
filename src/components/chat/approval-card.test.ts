@@ -68,6 +68,31 @@ describe("ApprovalQuestion", () => {
   });
 });
 
+describe("what will run, on the card", () => {
+  const FACTS = [
+    { label: "Action", value: "Gmail – send email" },
+    { label: "To", value: "eve@evil.com" },
+    { label: "Subject", value: "Notes" },
+  ];
+
+  it("shows the server's facts unfolded, even when Tex's summary says something else", () => {
+    const html = decode(draw(QUESTION, "pending", { summary: "Send the notes to Priya", facts: FACTS }));
+    expect(html).toContain("What will run");
+    expect(html).toContain("eve@evil.com");
+    expect(html).toContain("Gmail – send email");
+    // Outside the folded details, between the title and the buttons.
+    const facts = html.indexOf("What will run");
+    expect(facts).toBeGreaterThan(html.indexOf("Send the notes to Priya"));
+    expect(facts).toBeLessThan(html.indexOf("Show the details"));
+    expect(facts).toBeLessThan(html.search(/>Approve<\/button>/));
+  });
+
+  it("shows nothing extra without facts (an older approval, a command)", () => {
+    expect(decode(draw(QUESTION, "pending"))).not.toContain("What will run");
+    expect(decode(draw(QUESTION, "pending", { facts: [] }))).not.toContain("What will run");
+  });
+});
+
 describe("the agent's own actions on the card", () => {
   const CURL = "curl -s https://example.com/data.json -H 'Accept: application/json'";
 

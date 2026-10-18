@@ -4961,6 +4961,19 @@ components:
         summary: { type: string, examples: ["Send email to priya@acme.com: \"Report delayed to Monday\""] }
         app: { type: [string, "null"], examples: [gmail] }
         action: { type: [string, "null"], examples: [GMAIL_SEND_EMAIL] }
+        facts:
+          type: array
+          description: |
+            `app_action` only (empty for the other kinds): what will really run, written by the
+            server from the action and its inputs, never from the agent's summary. The first is
+            the app and the action (label `Action`, e.g. "Gmail – send email"), then where it acts
+            and who it goes to or who gets access (`Repository`, `To`, `People`, `Shared with`,
+            `Visibility`…), then the subject or title and the first words of the text. Values are
+            cut short and secrets are never shown. The last, `Other inputs`, names any inputs not
+            shown. The same facts are the second line of the question on Telegram, WhatsApp and
+            iMessage ("What will run: Gmail – send email · To: priya@acme.com · Subject: Notes").
+            Show them on the card next to the summary, not folded away.
+          items: { $ref: "#/components/schemas/ApprovalFact" }
         details: { type: object, additionalProperties: true }
         createdAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
@@ -4988,6 +5001,13 @@ components:
           oneOf:
             - type: "null"
             - $ref: "#/components/schemas/ApprovalRun"
+
+    ApprovalFact:
+      type: object
+      required: [label, value]
+      properties:
+        label: { type: string, examples: [To] }
+        value: { type: string, examples: [priya@acme.com] }
 
     App:
       type: object

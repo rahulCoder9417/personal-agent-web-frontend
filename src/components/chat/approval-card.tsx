@@ -6,7 +6,7 @@ import { findCachedApproval, useCreateSkipRule, useDecideApproval } from "@/lib/
 import { ruleSavedToast, webApprovalLine } from "@/lib/approvals";
 import { noteAnswered } from "@/lib/chat-thread";
 import { cn, formatTimeLeft } from "@/lib/format";
-import { ApprovalDetailsFold, ApprovalTitle, DecidedLine, approvalView } from "../approvals/approval-parts";
+import { ApprovalDetailsFold, ApprovalFacts, ApprovalTitle, DecidedLine, approvalView } from "../approvals/approval-parts";
 import { SkipPicker } from "../approvals/skip-picker";
 import { AppIcon } from "../brand-icon";
 import { toast, toastError } from "../toast";
@@ -94,6 +94,8 @@ export function ApprovalCard({ approvalId, fallbackText, skipOpen = false }: { a
           {why && <p className={cn("text-[13.5px] leading-normal", forcePush ? "text-danger" : "text-fg-2")}>{why}</p>}
         </div>
       </div>
+
+      <ApprovalFacts approval={approval} className="-mt-1" />
 
       {hasDetails && <ApprovalDetailsFold approval={approval} className="-mt-1" />}
 

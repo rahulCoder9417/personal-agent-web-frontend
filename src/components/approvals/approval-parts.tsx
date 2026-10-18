@@ -30,6 +30,30 @@ export function ApprovalTitle({ summary, className }: { summary: string; classNa
   return <span className={cn("line-clamp-2 text-[15px] leading-[1.35] font-semibold tracking-[-0.01em] [overflow-wrap:anywhere]", className)}>{summary}</span>;
 }
 
+/**
+ * What will really run (an app action's `facts`), written by the server from the action's inputs, never from
+ * Tex's summary: the app and action, who it goes to or who gets access, the repository, calendar or file, the
+ * subject and the first words. Always shown, so a wrong or tricked summary can't hide where it really goes. The
+ * same facts are the second line of the question on Telegram, WhatsApp and iMessage.
+ */
+export function ApprovalFacts({ approval, className }: { approval: Approval; className?: string }) {
+  const facts = approval.facts ?? [];
+  if (facts.length === 0) return null;
+  return (
+    <div className={cn("flex flex-col gap-1.5 rounded-xl bg-surface px-3.5 py-3", className)} aria-label="What will run">
+      <span className="text-[12px] font-semibold text-muted">What will run</span>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]">
+        {facts.map((fact, i) => (
+          <div key={`${fact.label}-${i}`} className="contents">
+            <dt className="text-muted">{fact.label}</dt>
+            <dd className={cn("min-w-0 [overflow-wrap:anywhere]", i === 0 && "font-medium")}>{fact.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 /** The exact details, folded behind a quiet toggle (`open`: unfolded to begin with). */
 export function ApprovalDetailsFold({ approval, open = false, className }: { approval: Approval; open?: boolean; className?: string }) {
   const { own, fields, preview, toggle, hasDetails } = approvalView(approval);

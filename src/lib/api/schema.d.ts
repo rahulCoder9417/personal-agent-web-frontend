@@ -3175,6 +3175,18 @@ export interface components {
             app?: string | null;
             /** @example GMAIL_SEND_EMAIL */
             action?: string | null;
+            /**
+             * @description `app_action` only (empty for the other kinds): what will really run, written by the
+             *     server from the action and its inputs, never from the agent's summary. The first is
+             *     the app and the action (label `Action`, e.g. "Gmail – send email"), then where it acts
+             *     and who it goes to or who gets access (`Repository`, `To`, `People`, `Shared with`,
+             *     `Visibility`…), then the subject or title and the first words of the text. Values are
+             *     cut short and secrets are never shown. The last, `Other inputs`, names any inputs not
+             *     shown. The same facts are the second line of the question on Telegram, WhatsApp and
+             *     iMessage ("What will run: Gmail – send email · To: priya@acme.com · Subject: Notes").
+             *     Show them on the card next to the summary, not folded away.
+             */
+            facts?: components["schemas"]["ApprovalFact"][];
             details?: {
                 [key: string]: unknown;
             };
@@ -3197,6 +3209,12 @@ export interface components {
             };
             /** @description An app action the platform ran (after the yes, or by a skip rule) and how it went. Null otherwise. */
             run?: null | components["schemas"]["ApprovalRun"];
+        };
+        ApprovalFact: {
+            /** @example To */
+            label: string;
+            /** @example priya@acme.com */
+            value: string;
         };
         App: {
             /** @example gmail */

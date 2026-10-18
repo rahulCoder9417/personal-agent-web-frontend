@@ -5,7 +5,7 @@ import { useCreateSkipRule, useDecideApproval } from "@/lib/api/hooks";
 import { cn, formatDateTime, titleCase } from "@/lib/format";
 import { toast, toastError } from "../toast";
 import { Button } from "../ui";
-import { ApprovalDetailsFold, DecidedLine, RunResult, approvalView } from "./approval-parts";
+import { ApprovalDetailsFold, ApprovalFacts, DecidedLine, RunResult, approvalView } from "./approval-parts";
 import { ApprovalIcon, CARD_EDGE } from "./approval-list";
 import { SkipPicker } from "./skip-picker";
 import { approvalOutcome, approvalReasonOf, ownAction, ruleSavedToast, ruleScopeLine, type SettledStatus } from "@/lib/approvals";
@@ -104,6 +104,8 @@ export function ApprovalDetail({
           <p className="truncate text-[12px] text-muted">{meta}</p>
         </div>
       </div>
+
+      <ApprovalFacts approval={approval} className="-mt-1" />
 
       {/* There is room on this page, so the exact command or fields start unfolded. */}
       <ApprovalDetailsFold approval={approval} open className="-mt-1" />
