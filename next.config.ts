@@ -5,6 +5,13 @@ import { OLD_CREW_ADDRESSES } from "./src/lib/crew-address";
 import { OLD_ADDRESSES } from "./src/lib/integrations";
 import { OLD_PRICING_ADDRESSES } from "./src/lib/pricing";
 
+// Nobody may show this app inside a frame (clickjacking). Only frame-ancestors, not a full
+// Content-Security-Policy, so Clerk, the live stream and Polar are not affected.
+export const SECURITY_HEADERS = [
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+];
+
 const nextConfig: NextConfig = {
   // The dev badge sits bottom-left by default, on top of the sidebar's account row.
   devIndicators: { position: "bottom-right" },
@@ -15,6 +22,7 @@ const nextConfig: NextConfig = {
   // The apps moved under Integrations, Settings → Plans became Pricing, the Crew screen is gone
   // (/crew leads to the crew's part of Help), and pull-request review joined the Automations list;
   // the old addresses lead there, with the query as it was.
+  headers: async () => [{ source: "/:path*", headers: SECURITY_HEADERS }],
   redirects: async () =>
     [...OLD_ADDRESSES, ...OLD_PRICING_ADDRESSES, ...OLD_CREW_ADDRESSES, ...OLD_AUTOMATION_ADDRESSES].map((redirect) => ({ ...redirect })),
 };
