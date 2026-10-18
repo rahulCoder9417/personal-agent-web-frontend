@@ -69,6 +69,31 @@ export function waitingForTexUntil(
   return sent + (state === "busy" || state === "waking" ? ANSWER_TURN_MAX_MS : QUEUED_WORKING_MS);
 }
 
+/** What a message of the person's says under it once it has waited too long for a reply. */
+export const TAKING_LONGER_NOTE = "Tex is busy; this is taking longer than usual";
+
+/**
+ * When a message that still waits (`queued`, saved) starts to show `TAKING_LONGER_NOTE`: 2 minutes
+ * after it was sent (`QUEUED_WORKING_MS`). Null for anything else: a message that was taken, answered,
+ * failed, or is still on its way to the API.
+ */
+export function takingLongerFrom(message: Pick<Message, "id" | "direction" | "status" | "createdAt">): number | null {
+  if (message.direction !== "in" || message.status !== "queued" || message.id.startsWith(LOCAL_PREFIX)) return null;
+  const sent = Date.parse(message.createdAt);
+  return Number.isNaN(sent) ? null : sent + QUEUED_WORKING_MS;
+}
+
+/** Whether the quiet "taking longer" note shows under the message at `now`. */
+export function isTakingLonger(message: Pick<Message, "id" | "direction" | "status" | "createdAt">, now: number): boolean {
+  const from = takingLongerFrom(message);
+  return from !== null && now >= from;
+}
+
+/** A failed message of the person's can be sent again (the backend marks it failed when Tex could not start). */
+export function canSendAgain(message: Pick<Message, "id" | "direction" | "status">): boolean {
+  return message.direction === "in" && message.status === "failed" && !message.id.startsWith(LOCAL_PREFIX);
+}
+
 /** The local id of a message shown before the API saved it (`localMessage` in api/hooks.ts). */
 const LOCAL_PREFIX = "local:";
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "./api/client";
 import { localMessage } from "./api/hooks";
-import { ANSWER_TURN_MAX_MS, answeredBy, inboundStatusWord, isAnswer, QUEUED_WORKING_MS, threadActivity, threadIsWorking, waitingForTexUntil } from "./chat-thread";
+import { ANSWER_TURN_MAX_MS, answeredBy, inboundStatusWord, isAnswer, QUEUED_WORKING_MS, canSendAgain, isTakingLonger, takingLongerFrom, threadActivity, threadIsWorking, waitingForTexUntil } from "./chat-thread";
 
 type Row = Pick<Message, "direction" | "status">;
 const inbound = (status: Message["status"]): Row => ({ direction: "in", status });
@@ -202,5 +202,25 @@ describe("Tex's answer and the message it answers", () => {
     expect(answeredBy([texSaid("hi"), person("local:4b0e8f0a", "queued")], "awake")).toBeUndefined();
     // A message left waiting behind one that has its last state is not this answer's.
     expect(answeredBy([texSaid("answer"), person("b", "delivered"), person("stale", "processing")], "busy")).toBeUndefined();
+  });
+});
+
+describe("the busy note and Send again", () => {
+  const sent = Date.parse("2026-10-18T10:00:00Z");
+  const msg = (status: Message["status"], id = "m1") => ({ id, direction: "in" as const, status, createdAt: new Date(sent).toISOString() });
+
+  it("shows the note only after 2 minutes of waiting, for a saved queued message", () => {
+    expect(takingLongerFrom(msg("queued"))).toBe(sent + QUEUED_WORKING_MS);
+    expect(isTakingLonger(msg("queued"), sent + QUEUED_WORKING_MS - 1)).toBe(false);
+    expect(isTakingLonger(msg("queued"), sent + QUEUED_WORKING_MS)).toBe(true);
+    expect(isTakingLonger(msg("processing"), sent + 10 * QUEUED_WORKING_MS)).toBe(false);
+    expect(isTakingLonger(msg("queued", "local:abc"), sent + 10 * QUEUED_WORKING_MS)).toBe(false);
+  });
+
+  it("offers Send again for a failed message of the person's only", () => {
+    expect(canSendAgain(msg("failed"))).toBe(true);
+    expect(canSendAgain(msg("delivered"))).toBe(false);
+    expect(canSendAgain({ id: "m2", direction: "out", status: "failed" })).toBe(false);
+    expect(canSendAgain(msg("failed", "local:x"))).toBe(false);
   });
 });

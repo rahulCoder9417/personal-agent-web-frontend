@@ -3,10 +3,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Automation, Conversation, Message } from "@/lib/api/client";
-import { useAgentProgress, useAgentStatus, useThread } from "@/lib/api/hooks";
+import { useAgentProgress, useAgentStatus, useSendMessage, useThread } from "@/lib/api/hooks";
 import { updateDrafts, useCatchUpWhileQuiet, useDrafts } from "@/lib/api/stream";
 import { nextRunLine } from "@/lib/automations";
-import { inboundStatusWord, useAnsweredHere, waitingForTexUntil } from "@/lib/chat-thread";
+import { canSendAgain, inboundStatusWord, isTakingLonger, takingLongerFrom, TAKING_LONGER_NOTE, useAnsweredHere, waitingForTexUntil } from "@/lib/chat-thread";
 import { isAutomationsChat, readOnlyNote } from "@/lib/conversations";
 import type { ProgressLine } from "@/lib/crew";
 import { answerInThread, type DraftStep, stepLine, stepsToShow, trailLine, turnAnswered, turnOnScreen } from "@/lib/drafts";
@@ -65,6 +65,39 @@ function MetaLine({ message, align, extra }: { message: Message; align: "start" 
   );
 }
 
+/**
+ * Under the person's own message: a quiet note when it has waited over 2 minutes without a reply
+ * (Tex is busy), and "Send again" when the backend marked it failed (it could not start Tex).
+ */
+function InboundNote({ message }: { message: Message }) {
+  const now = useTimeAt(takingLongerFrom(message));
+  const send = useSendMessage();
+  if (canSendAgain(message)) {
+    return (
+      <div className="flex items-center gap-2 text-[12px] text-muted">
+        <span>Tex couldn’t start on this one.</span>
+        <Button
+          size="sm"
+          variant="secondary"
+          pending={send.isPending}
+          onClick={() =>
+            send.mutate({
+              text: message.text,
+              clientMessageId: crypto.randomUUID(),
+              conversationId: message.conversationId,
+              // Only the file ids are sent; the rest of the record is not read.
+              attachments: message.attachments?.flatMap((file) => (file.id ? [{ id: file.id, name: file.name ?? "File", sizeBytes: 0, mimeType: file.mimeType ?? "" }] : [])),
+            })
+          }
+        >
+          Send again
+        </Button>
+      </div>
+    );
+  }
+  return isTakingLonger(message, now) ? <p className="text-[12px] text-muted">{TAKING_LONGER_NOTE}</p> : null;
+}
+
 function TexAvatar({ working }: { working?: boolean }) {
   return (
     <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-accent-soft">
@@ -87,6 +120,7 @@ function BubbleBody({ message, stepsToggle, steps }: { message: Message; stepsTo
           {message.text}
         </div>
         <MetaLine message={message} align="end" />
+        <InboundNote message={message} />
       </div>
     );
   }
