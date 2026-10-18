@@ -5047,7 +5047,14 @@ components:
                   (GitHub). The app is asked once, when Tex first looks at the user's apps; null
                   until then, and for apps that cannot say.
                 examples: [work@acme.com, rahulcoder9417]
-              status: { type: string, enum: [active, expired, error] }
+              status:
+                type: string
+                enum: [active, expired, error]
+                description: |
+                  `expired` (the sign-in expired) and `error` (it failed): show "Reconnect needed".
+                  The server copies them from Composio's webhook, and also asks Composio about a
+                  working connection when this list is asked for (at most once in 15 minutes) and
+                  right after an action on it failed, so a broken one never stays `active`.
 
     McpServer:
       type: object

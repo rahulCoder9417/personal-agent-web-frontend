@@ -3261,7 +3261,13 @@ export interface components {
                  * @example rahulcoder9417
                  */
                 accountLabel?: string | null;
-                /** @enum {string} */
+                /**
+                 * @description `expired` (the sign-in expired) and `error` (it failed): show "Reconnect needed".
+                 *     The server copies them from Composio's webhook, and also asks Composio about a
+                 *     working connection when this list is asked for (at most once in 15 minutes) and
+                 *     right after an action on it failed, so a broken one never stays `active`.
+                 * @enum {string}
+                 */
                 status: "active" | "expired" | "error";
             }[];
         };
