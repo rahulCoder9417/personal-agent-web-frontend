@@ -31,10 +31,10 @@ describe("the Help page", () => {
   it("is called Help, with a search field that says what it is", () => {
     expect(html).toMatch(/<h1[^>]*>Help<\/h1>/);
     expect(html).toMatch(/<label for="([^"]+)" class="sr-only">Search help<\/label><svg[^>]*>.*?<input id="\1" type="search"/);
+    expect(html).toContain("Short answers on how Textcrew works.");
   });
 
   it("starts with what Textcrew is, and the answers most asked for", () => {
-    expect(html).toContain(">How Textcrew works</h2>");
     expect(html).toContain("Most asked:");
     expect(html).toContain('href="#apps-gmail"');
     expect(html).toContain('href="#approvals-why"');
@@ -45,15 +45,43 @@ describe("the Help page", () => {
     const start = /<section aria-labelledby="help-start"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
     expect(start.match(/<li /g)).toHaveLength(3);
     for (const href of ['href="/settings/agent"', 'href="/integrations/apps"', 'href="/"', 'href="#apps-gmail"']) expect(start).toContain(href);
-    expect(html).toContain('href="mailto:support@textcrew.in"');
+    expect(html).toMatch(/href="mailto:support@textcrew\.in\?subject=Textcrew%20help&amp;body=/);
   });
 
-  it("lists the topics at the top, each leading to its part of the page", () => {
+  it("lists the topics as cards with their number of questions, each leading to its part of the page", () => {
     const contents = /<nav id="help-contents" aria-label="Help topics"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? "";
     for (const section of HELP_SECTIONS) {
       expect(contents).toContain(`href="#${section.id}"`);
-      expect(contents).toContain(`>${section.title}</span>`);
+      expect(contents).toContain(`${section.title} <span`);
+      expect(contents).toContain(`· ${section.topics.length}</span>`);
     }
+  });
+
+  it("has a row of section chips for phones and a rail for desktop, both leading to every section", () => {
+    const chips = /<nav aria-label="Help sections"[\s\S]*?<\/nav>/.exec(html)?.[0] ?? "";
+    const rail = /<nav aria-label="Sections"[\s\S]*?<\/nav>/.exec(html)?.[0] ?? "";
+    expect(chips).toContain("lg:hidden");
+    expect(rail).toContain("lg:block");
+    for (const section of HELP_SECTIONS) {
+      expect(chips).toContain(`href="#${section.id}"`);
+      expect(rail).toContain(`href="#${section.id}"`);
+    }
+  });
+
+  it("draws every question closed, as a button that says so, with its answer in a panel it controls", () => {
+    for (const section of HELP_SECTIONS)
+      for (const topic of section.topics) {
+        expect(html).toMatch(new RegExp(`<button type="button" aria-expanded="false" aria-controls="${topic.id}-panel"`));
+        expect(html).toContain(`id="${topic.id}-panel"`);
+      }
+    expect(html).not.toContain('aria-expanded="true"');
+  });
+
+  it("has a compact support card near the top and a full one at the end", () => {
+    expect(html.match(/aria-label="Contact support"/g)).toHaveLength(2);
+    expect(html.indexOf('aria-label="Contact support"')).toBeLessThan(html.indexOf('id="help-contents"'));
+    expect(html.match(/We usually reply within a day\./g)).toHaveLength(2);
+    expect(html.match(/>Copy address</g)).toHaveLength(2);
   });
 
   it("draws every topic with its heading, and every answer in it", () => {
@@ -76,10 +104,10 @@ describe("the Help page", () => {
 
   it("leads only to pages the app has, to parts of this page, or to the privacy policy", () => {
     const routes = appRoutes();
-    expect(hrefs.length).toBeGreaterThan(80);
+    expect(hrefs.length).toBeGreaterThan(50);
     for (const href of hrefs) {
       if (href.startsWith("#")) expect(idsOnPage, href).toContain(href.slice(1));
-      else if (href.startsWith("mailto:")) expect(href).toBe("mailto:support@textcrew.in");
+      else if (href.startsWith("mailto:")) expect(href).toMatch(/^mailto:support@textcrew\.in\?subject=Textcrew%20help&body=/);
       else if (/^https?:/.test(href)) expect(href).toBe("https://textcrew.in/privacy");
       else expect(routes, href).toContain(pathOf(href));
     }
@@ -99,7 +127,7 @@ describe("the Help page", () => {
     for (const example of [CREW_EXAMPLES.byte, CREW_EXAMPLES.patch, CREW_EXAMPLES.scout])
       expect(crew).toContain(`href="/?draft=${encodeURIComponent(example)}"`);
     expect(crew).toContain("Fix the typo in the README on my repo");
-    expect(crew).toContain("There is no form for the crew: you ask in plain words.");
+    expect(crew).toContain("There is no form: you ask in plain words.");
     // Reviewing every pull request in a repo is the one thing set up on a screen: its template's canvas.
     expect(crew).toContain('href="/automations/new?template=pr-review"');
     expect(html).not.toMatch(/Give (Patch a review|Byte a job|the crew a job)|Crew page|crew jobs?/i);

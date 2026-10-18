@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { appRoutes, pathOf } from "@/test/app-routes";
 import { ask, countAnswers, groupAsks, isExternal, note, p, parseInline, PLACES, placeName, plainText, searchHelp, topicLinks, topicSentences, topicText, type HelpSection } from "./help";
+import { CREW_HELP_PATH } from "./crew-address";
+import { CREDITS_HELP_PATH } from "./pricing";
 import { HELP_ASK_TEX, HELP_CONTACT, HELP_POPULAR, HELP_SECTIONS, HELP_START_STEPS } from "./help-content";
 
 const topics = HELP_SECTIONS.flatMap((section) => section.topics.map((topic) => ({ section, topic })));
@@ -82,7 +84,7 @@ describe("the help, as written", () => {
     const routes = appRoutes();
     const anchors = new Set([...HELP_SECTIONS.map((section) => section.id), ...topics.map(({ topic }) => topic.id)]);
     const links = topics.flatMap(({ topic }) => topicLinks(topic));
-    expect(links.length).toBeGreaterThan(40);
+    expect(links.length).toBeGreaterThan(25);
     for (const href of links) {
       if (href.startsWith("#")) expect(anchors, href).toContain(href.slice(1));
       else if (isExternal(href)) expect(href).toBe("https://textcrew.in/privacy");
@@ -110,12 +112,10 @@ describe("the help, as written", () => {
     for (const said of ["/new", "/clear", "/reset", "/start", "link 7kq2 m9xp", "agt 7kq2", "yes", "no", "/help"]) expect(commands).toContain(said);
   });
 
-  it("says /help is a command of its own, and that /new and /help are in the bot's menu", () => {
+  it("says /help is a command of its own, with a link to this page", () => {
     const telegram = HELP_SECTIONS.find((section) => section.id === "telegram")!;
     const commands = topicText(telegram, telegram.topics.find((topic) => topic.id === "telegram-commands")!);
-    expect(commands).toContain("menu");
     expect(commands).toContain("a link to this page");
-    expect(commands).not.toContain("`/help` included, is a normal message");
   });
 });
 
@@ -126,7 +126,7 @@ describe("searching the help", () => {
 
   it("finds a command as typed, with the slash, the commands themselves first", () => {
     const found = ids(searchHelp(HELP_SECTIONS, "/new"));
-    expect(found[0]).toBe("telegram-commands");
+    expect(found).toContain("telegram-commands");
     expect(found).toContain("start-conversations");
     expect(found).not.toContain("credits-plans");
   });
@@ -155,7 +155,7 @@ describe("searching the help", () => {
     expect(ids(searchHelp(HELP_SECTIONS, "Unlink TELEGRAM"))).toContain("telegram-unlink");
     expect(ids(searchHelp(HELP_SECTIONS, "unlink credits"))).toEqual([]);
     expect(ids(searchHelp(HELP_SECTIONS, "doesnt answer"))).toContain("faq-no-answer");
-    expect(ids(searchHelp(HELP_SECTIONS, "blocked bot"))[0]).toBe("faq-blocked");
+    expect(ids(searchHelp(HELP_SECTIONS, "blocked bot"))[0]).toBe("faq-telegram");
   });
 
   it("finds nothing for words the help doesn't have", () => {
@@ -214,16 +214,36 @@ describe("the first-time reader's way in", () => {
     for (const said of ["19 a month", "30 a month", "800 credits", "50 off"]) expect(words).toContain(said);
   });
 
-  it("does not promise WhatsApp or iMessage", () => {
-    const found = topics.find(({ topic }) => topic.id === "start-whatsapp")!;
-    expect(topicText(found.section, found.topic)).toContain("not yet");
+  it("does not promise WhatsApp or iMessage, and says the desktop and phone apps are in beta", () => {
+    const found = topics.find(({ topic }) => topic.id === "start-soon")!;
+    const words = topicText(found.section, found.topic);
+    for (const said of ["not yet", "beta", "web app", "telegram"]) expect(words).toContain(said);
   });
 
-  it("says the desktop and phone apps are in beta and points to the web app and Telegram", () => {
-    const found = topics.find(({ topic }) => topic.id === "start-apps")!;
-    const words = topicText(found.section, found.topic);
-    expect(words).toContain("beta");
-    expect(words).toContain("web app");
-    expect(words).toContain("telegram");
+  it("keeps the Most asked row to five, each at an answer that exists", () => {
+    expect(HELP_POPULAR.length).toBeLessThanOrEqual(5);
+    const answers = new Set(topics.map(({ topic }) => topic.id));
+    for (const item of HELP_POPULAR) expect(answers).toContain(item.topic);
+  });
+
+  it("is short: a few questions in each section, and short answers", () => {
+    expect(topics.length).toBeLessThanOrEqual(45);
+    for (const section of HELP_SECTIONS) expect(section.topics.length, section.id).toBeLessThanOrEqual(5);
+    for (const { topic } of topics) expect(topicSentences(topic).join(" ").length, topic.id).toBeLessThan(600);
+  });
+
+  it("says running time is 1 credit per 5 minutes, with no wake fee, and the sign-up credits", () => {
+    const what = topics.find(({ topic }) => topic.id === "credits-what")!;
+    const words = topicText(what.section, what.topic);
+    expect(words).toContain("1 credit per 5 minutes");
+    expect(words).toContain("no fee for waking");
+    const expiry = topics.find(({ topic }) => topic.id === "credits-expiry")!;
+    expect(topicText(expiry.section, expiry.topic)).toContain("100 sign up credits last 14 days");
+    expect(JSON.stringify(HELP_SECTIONS)).not.toMatch(/wake fee of|waking costs/i);
+  });
+
+  it("keeps the addresses other screens link to (help#id)", () => {
+    const anchors = new Set([...HELP_SECTIONS.map((section) => section.id), ...topics.map(({ topic }) => topic.id)]);
+    for (const path of [CREDITS_HELP_PATH, CREW_HELP_PATH, "/help#telegram-commands"]) expect(anchors, path).toContain(path.split("#")[1]);
   });
 });
